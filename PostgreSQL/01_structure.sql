@@ -198,6 +198,10 @@ CREATE TABLE citizens (
         NOT NULL
         UNIQUE,
 
+    points INTEGER
+        NOT NULL
+        DEFAULT 0,
+
     CONSTRAINT fk_citizens_user
         FOREIGN KEY (id)
         REFERENCES users(id)
@@ -206,7 +210,7 @@ CREATE TABLE citizens (
 );
 
 COMMENT ON TABLE citizens IS
-'Especialização da tabela users para cidadãos.';
+'Especialização da tabela users para cidadãos. O campo points armazena a pontuação acumulada (desnormalização intencional; histórico em delivery_pev.points_earned).';
 
 -- ============================================================================
 -- TABELA: establishment
@@ -237,6 +241,10 @@ CREATE TABLE establishment (
         NOT NULL
         UNIQUE,
 
+    points INTEGER
+        NOT NULL
+        DEFAULT 0,
+
     CONSTRAINT fk_establishment_user
         FOREIGN KEY (id)
         REFERENCES users(id)
@@ -257,7 +265,7 @@ CREATE TABLE establishment (
 );
 
 COMMENT ON TABLE establishment IS
-'Especialização da tabela users para estabelecimentos.';
+'Especialização da tabela users para estabelecimentos. O campo points armazena a pontuação acumulada (desnormalização intencional; histórico em collection.points_earned).';
 
 /*
 ===============================================================================
@@ -681,6 +689,9 @@ CREATE TABLE citizens_log (
     qr_token VARCHAR(64)
         NOT NULL,
 
+    points INTEGER
+        NOT NULL,
+
     CONSTRAINT fk_citizens_log_user
         FOREIGN KEY (performed_by)
         REFERENCES users(id)
@@ -727,6 +738,9 @@ CREATE TABLE establishment_log (
         NOT NULL,
 
     address_id UUID
+        NOT NULL,
+
+    points INTEGER
         NOT NULL,
 
     CONSTRAINT fk_establishment_log_user
@@ -1021,7 +1035,7 @@ CREATE TABLE certificate_log (
     establishment_id UUID
         NOT NULL,
 
-    CONSTRAINT fk_certificate_log_userKO
+    CONSTRAINT fk_certificate_log_user
         FOREIGN KEY (performed_by)
         REFERENCES users(id)
         ON UPDATE CASCADE
