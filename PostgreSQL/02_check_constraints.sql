@@ -50,6 +50,10 @@ ALTER TABLE citizens
 ADD CONSTRAINT ck_citizens_cpf_length
 CHECK (LENGTH(cpf) = 11);
 
+ALTER TABLE citizens
+ADD CONSTRAINT ck_citizens_points_non_negative
+CHECK (points >= 0);
+
 
 -- ============================================================================
 -- ESTABLISHMENT
@@ -62,6 +66,10 @@ CHECK (LENGTH(cnpj) = 14);
 ALTER TABLE establishment
 ADD CONSTRAINT ck_establishment_qr_token_not_blank
 CHECK (TRIM(qr_token) <> '');
+
+ALTER TABLE establishment
+ADD CONSTRAINT ck_establishment_points_non_negative
+CHECK (points >= 0);
 
 
 -- ============================================================================
