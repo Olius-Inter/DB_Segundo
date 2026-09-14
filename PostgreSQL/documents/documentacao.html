@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>OLIUS · Atlas da modelagem de dados</title>
+    <link rel="stylesheet" href="style.css">
+  </head>
+  <body>
+    <header>
+      <div class="header-row">
+        <div>
+          <div class="brand">OLIUS / ÓLEO AMIGO</div>
+          <h1>Atlas da modelagem de dados</h1>
+          <p class="sub">Arquitetura de negócio · visão geral, relações e campos reais do PostgreSQL.</p>
+        </div>
+        <div class="stamp">Fonte: <b>01_structure.sql</b>
+        <br>Revisão do script: 10/09/2026<br>Análise: 11/09/2026</div>
+      </div>
+    </header>
+    <main class="shell">
+      <nav class="primary-nav" aria-label="Áreas da documentação">
+        <button type="button" data-section="overview">Visão geral</button>
+        <button type="button" data-section="model">Modelagem</button>
+        <button type="button" data-section="journeys">Jornadas</button>
+      </nav>
+      <nav id="views" aria-label="Diagramas por domínio">
+      </nav>
+      <div id="journey-picker" class="journey-picker" aria-label="Escolher jornada" hidden>
+      </div>
+      <div id="journey-intro" class="journey-intro" hidden>
+      </div>
+      <div class="workbench">
+        <section aria-label="Diagrama da modelagem">
+          <div class="diagram-head">
+            <h2 id="diagram-title">Visão geral</h2>
+            <div class="tools">
+              <button class="tool" id="zoom-out" aria-label="Reduzir diagrama">−</button>
+              <span id="zoom-label" class="caption">100%</span>
+              <button class="tool" id="zoom-in" aria-label="Ampliar diagrama">+</button>
+              <button class="tool" id="zoom-reset">Ajustar</button>
+            </div>
+          </div>
+          <p class="caption" id="diagram-caption">
+          </p>
+          <div id="stage" class="stage">
+          </div>
+          <div class="legend">
+            <span>
+              <b class="pk">PK</b> chave primária</span>
+              <span>
+                <b class="fk">FK</b> chave estrangeira</span>
+                <span>
+                  <b>UQ</b> único individualmente</span>
+                  <span>1 · exatamente um</span>
+                  <span>0..1 · opcional, único</span>
+                  <span>0..N · zero ou vários</span>
+                  <span>Contorno tracejado · contexto de outro domínio</span>
+                </div>
+                <div class="selected-summary" id="selection" aria-live="polite">Selecione uma tabela para consultar os campos e todas as suas FKs.</div>
+              </section>
+              <aside id="inspector" class="panel" aria-label="Detalhes da tabela">
+              </aside>
+            </div>
+            <section class="notes">
+              <details>
+                <summary>Como ler os relacionamentos e os limites desta análise</summary>
+                <p>As setas vão da tabela que contém a FK para a tabela referenciada. Em cada ponta, a cardinalidade indica quantas linhas daquele lado podem corresponder a uma linha do lado oposto. Por exemplo, <b>telephone (0..N) → users (1)</b>: um usuário pode ter vários telefones; cada telefone exige um usuário.</p>
+                <p>As cardinalidades foram inferidas das PKs, FKs, UNIQUEs, nulabilidade e constantes geradas do script 01. Não se presume que um registro pai já tenha filhos. Em FKs compostas, uma coluna anulável pode tornar o vínculo opcional (MATCH SIMPLE). As regras condicionais dos índices parciais estão na aba <b>Regras</b>, sem transformar uma relação geral 1:N em 1:1.</p>
+                <p>Os diagramas temáticos priorizam as relações principais. A ficha de cada tabela apresenta <b>todas as FKs de entrada e saída entre as 28 tabelas incluídas</b>, inclusive autoria, validação e correção. Uma linha com “×2” representa duas FKs distintas entre o mesmo par; selecione a linha para ver as duas. Cardinalidades diferentes são indicadas por “ver FKs”.</p>
+                <p>As descrições vêm dos comentários do script: podem citar regras implementadas no script 02 ou nas futuras rotinas. A descrição de uma regra não é tratada como prova de que ela já está garantida pela estrutura. O diagrama não é uma validação do banco em execução.</p>
+                <p>
+                  <b>Referências compostas são preservadas.</b> Campos como establishment_id podem integrar uma FK para subscription_cycle ou billing_order, sem uma FK direta para establishment. Nenhuma ligação direta foi criada apenas pela semelhança de nomes.</p>
+                </details>
+                <details>
+                  <summary id="exclusion-title">Escopo e tabelas excluídas</summary>
+                  <p>Fora dos diagramas: as 30 tabelas *_log de auditoria, payment_refund_attempt (tentativas técnicas de reembolso) e payment_provider_event (processamento de eventos do provedor).</p>
+                  <div class="excluded" id="excluded">
+                  </div>
+                  <p>Mantidas: <b>collection_schedule_history</b> (acordos de agendamento), <b>subscription_cycle_change</b> (upgrades pagos) e <b>point_calculation / point_transaction</b> (cálculo e componentes da pontuação). Esses registros têm significado de negócio; não são apenas rastros técnicos de execução.</p>
+                </details>
+                <div class="foot" id="provenance">
+                </div>
+              </section>
+            </main>
+            <script src="script.js">
+            </script>
+          </body>
+        </html>
