@@ -742,27 +742,6 @@ COMMENT ON TABLE users_log IS 'Histórico de users, preenchido pelas rotinas de 
 -- concedidos diretamente a outros papéis exigem controle separado.
 REVOKE ALL ON users_log FROM PUBLIC;
 
-CREATE TABLE establishment_type_log (
-    LIKE establishment_type,
-    log_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    audit_event_id UUID NOT NULL,
-    snapshot_kind audit_snapshot_t NOT NULL,
-    operation operation_status_t NOT NULL,
-    performed_at TIMESTAMPTZ NOT NULL,
-    performed_by UUID,
-    actor_kind audit_actor_t NOT NULL,
-    operational_driver_id UUID,
-    audit_reason TEXT,
-    changed_columns TEXT[] NOT NULL,
-    CONSTRAINT fk_establishment_type_log_user FOREIGN KEY (performed_by)
-        REFERENCES users(id) ON DELETE RESTRICT,
-    CONSTRAINT fk_establishment_type_log_driver FOREIGN KEY (operational_driver_id)
-        REFERENCES driver(id) ON DELETE RESTRICT
-);
-COMMENT ON TABLE establishment_type_log IS 'Histórico de establishment_type, preenchido pelas rotinas de auditoria.';
-
-REVOKE ALL ON establishment_type_log FROM PUBLIC;
-
 CREATE TABLE addresses_log (
     LIKE addresses,
     log_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -783,27 +762,6 @@ CREATE TABLE addresses_log (
 COMMENT ON TABLE addresses_log IS 'Histórico de addresses, preenchido pelas rotinas de auditoria.';
 
 REVOKE ALL ON addresses_log FROM PUBLIC;
-
-CREATE TABLE telephone_log (
-    LIKE telephone,
-    log_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    audit_event_id UUID NOT NULL,
-    snapshot_kind audit_snapshot_t NOT NULL,
-    operation operation_status_t NOT NULL,
-    performed_at TIMESTAMPTZ NOT NULL,
-    performed_by UUID,
-    actor_kind audit_actor_t NOT NULL,
-    operational_driver_id UUID,
-    audit_reason TEXT,
-    changed_columns TEXT[] NOT NULL,
-    CONSTRAINT fk_telephone_log_user FOREIGN KEY (performed_by)
-        REFERENCES users(id) ON DELETE RESTRICT,
-    CONSTRAINT fk_telephone_log_driver FOREIGN KEY (operational_driver_id)
-        REFERENCES driver(id) ON DELETE RESTRICT
-);
-COMMENT ON TABLE telephone_log IS 'Histórico de telephone, preenchido pelas rotinas de auditoria.';
-
-REVOKE ALL ON telephone_log FROM PUBLIC;
 
 CREATE TABLE user_qr_code_log (
     LIKE user_qr_code,
@@ -870,27 +828,6 @@ ALTER TABLE establishment_log DROP COLUMN qr_token;
 COMMENT ON TABLE establishment_log IS 'Histórico de establishment, preenchido pelas rotinas de auditoria.';
 
 REVOKE ALL ON establishment_log FROM PUBLIC;
-
-CREATE TABLE driver_log (
-    LIKE driver,
-    log_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    audit_event_id UUID NOT NULL,
-    snapshot_kind audit_snapshot_t NOT NULL,
-    operation operation_status_t NOT NULL,
-    performed_at TIMESTAMPTZ NOT NULL,
-    performed_by UUID,
-    actor_kind audit_actor_t NOT NULL,
-    operational_driver_id UUID,
-    audit_reason TEXT,
-    changed_columns TEXT[] NOT NULL,
-    CONSTRAINT fk_driver_log_user FOREIGN KEY (performed_by)
-        REFERENCES users(id) ON DELETE RESTRICT,
-    CONSTRAINT fk_driver_log_driver FOREIGN KEY (operational_driver_id)
-        REFERENCES driver(id) ON DELETE RESTRICT
-);
-COMMENT ON TABLE driver_log IS 'Histórico de driver, preenchido pelas rotinas de auditoria.';
-
-REVOKE ALL ON driver_log FROM PUBLIC;
 
 CREATE TABLE pev_log (
     LIKE pev,
@@ -1060,27 +997,6 @@ COMMENT ON TABLE payment_application_log IS 'Histórico de payment_application, 
 
 REVOKE ALL ON payment_application_log FROM PUBLIC;
 
-CREATE TABLE subscription_cycle_change_log (
-    LIKE subscription_cycle_change,
-    log_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    audit_event_id UUID NOT NULL,
-    snapshot_kind audit_snapshot_t NOT NULL,
-    operation operation_status_t NOT NULL,
-    performed_at TIMESTAMPTZ NOT NULL,
-    performed_by UUID,
-    actor_kind audit_actor_t NOT NULL,
-    operational_driver_id UUID,
-    audit_reason TEXT,
-    changed_columns TEXT[] NOT NULL,
-    CONSTRAINT fk_subscription_cycle_change_log_user FOREIGN KEY (performed_by)
-        REFERENCES users(id) ON DELETE RESTRICT,
-    CONSTRAINT fk_subscription_cycle_change_log_driver FOREIGN KEY (operational_driver_id)
-        REFERENCES driver(id) ON DELETE RESTRICT
-);
-COMMENT ON TABLE subscription_cycle_change_log IS 'Histórico de subscription_cycle_change, preenchido pelas rotinas de auditoria.';
-
-REVOKE ALL ON subscription_cycle_change_log FROM PUBLIC;
-
 CREATE TABLE payment_refund_log (
     LIKE payment_refund,
     log_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -1102,48 +1018,6 @@ COMMENT ON TABLE payment_refund_log IS 'Histórico de payment_refund, preenchido
 
 REVOKE ALL ON payment_refund_log FROM PUBLIC;
 
-CREATE TABLE payment_refund_attempt_log (
-    LIKE payment_refund_attempt,
-    log_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    audit_event_id UUID NOT NULL,
-    snapshot_kind audit_snapshot_t NOT NULL,
-    operation operation_status_t NOT NULL,
-    performed_at TIMESTAMPTZ NOT NULL,
-    performed_by UUID,
-    actor_kind audit_actor_t NOT NULL,
-    operational_driver_id UUID,
-    audit_reason TEXT,
-    changed_columns TEXT[] NOT NULL,
-    CONSTRAINT fk_payment_refund_attempt_log_user FOREIGN KEY (performed_by)
-        REFERENCES users(id) ON DELETE RESTRICT,
-    CONSTRAINT fk_payment_refund_attempt_log_driver FOREIGN KEY (operational_driver_id)
-        REFERENCES driver(id) ON DELETE RESTRICT
-);
-COMMENT ON TABLE payment_refund_attempt_log IS 'Histórico de payment_refund_attempt, preenchido pelas rotinas de auditoria.';
-
-REVOKE ALL ON payment_refund_attempt_log FROM PUBLIC;
-
-CREATE TABLE payment_provider_event_log (
-    LIKE payment_provider_event,
-    log_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    audit_event_id UUID NOT NULL,
-    snapshot_kind audit_snapshot_t NOT NULL,
-    operation operation_status_t NOT NULL,
-    performed_at TIMESTAMPTZ NOT NULL,
-    performed_by UUID,
-    actor_kind audit_actor_t NOT NULL,
-    operational_driver_id UUID,
-    audit_reason TEXT,
-    changed_columns TEXT[] NOT NULL,
-    CONSTRAINT fk_payment_provider_event_log_user FOREIGN KEY (performed_by)
-        REFERENCES users(id) ON DELETE RESTRICT,
-    CONSTRAINT fk_payment_provider_event_log_driver FOREIGN KEY (operational_driver_id)
-        REFERENCES driver(id) ON DELETE RESTRICT
-);
-COMMENT ON TABLE payment_provider_event_log IS 'Histórico de payment_provider_event, preenchido pelas rotinas de auditoria.';
-
-REVOKE ALL ON payment_provider_event_log FROM PUBLIC;
-
 CREATE TABLE collection_request_log (
     LIKE collection_request,
     log_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -1164,27 +1038,6 @@ CREATE TABLE collection_request_log (
 COMMENT ON TABLE collection_request_log IS 'Histórico de collection_request, preenchido pelas rotinas de auditoria.';
 
 REVOKE ALL ON collection_request_log FROM PUBLIC;
-
-CREATE TABLE collection_schedule_history_log (
-    LIKE collection_schedule_history,
-    log_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    audit_event_id UUID NOT NULL,
-    snapshot_kind audit_snapshot_t NOT NULL,
-    operation operation_status_t NOT NULL,
-    performed_at TIMESTAMPTZ NOT NULL,
-    performed_by UUID,
-    actor_kind audit_actor_t NOT NULL,
-    operational_driver_id UUID,
-    audit_reason TEXT,
-    changed_columns TEXT[] NOT NULL,
-    CONSTRAINT fk_collection_schedule_history_log_user FOREIGN KEY (performed_by)
-        REFERENCES users(id) ON DELETE RESTRICT,
-    CONSTRAINT fk_collection_schedule_history_log_driver FOREIGN KEY (operational_driver_id)
-        REFERENCES driver(id) ON DELETE RESTRICT
-);
-COMMENT ON TABLE collection_schedule_history_log IS 'Histórico de collection_schedule_history, preenchido pelas rotinas de auditoria.';
-
-REVOKE ALL ON collection_schedule_history_log FROM PUBLIC;
 
 CREATE TABLE collection_log (
     LIKE collection,
@@ -1291,27 +1144,6 @@ COMMENT ON TABLE point_calculation_log IS 'Histórico de point_calculation, pree
 
 REVOKE ALL ON point_calculation_log FROM PUBLIC;
 
-CREATE TABLE point_transaction_log (
-    LIKE point_transaction,
-    log_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    audit_event_id UUID NOT NULL,
-    snapshot_kind audit_snapshot_t NOT NULL,
-    operation operation_status_t NOT NULL,
-    performed_at TIMESTAMPTZ NOT NULL,
-    performed_by UUID,
-    actor_kind audit_actor_t NOT NULL,
-    operational_driver_id UUID,
-    audit_reason TEXT,
-    changed_columns TEXT[] NOT NULL,
-    CONSTRAINT fk_point_transaction_log_user FOREIGN KEY (performed_by)
-        REFERENCES users(id) ON DELETE RESTRICT,
-    CONSTRAINT fk_point_transaction_log_driver FOREIGN KEY (operational_driver_id)
-        REFERENCES driver(id) ON DELETE RESTRICT
-);
-COMMENT ON TABLE point_transaction_log IS 'Histórico de point_transaction, preenchido pelas rotinas de auditoria.';
-
-REVOKE ALL ON point_transaction_log FROM PUBLIC;
-
 CREATE TABLE certificate_level_log (
     LIKE certificate_level,
     log_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -1406,14 +1238,8 @@ CREATE UNIQUE INDEX uq_point_delivery_current
 ALTER TABLE users_log
     ADD CONSTRAINT uq_users_log_snapshot UNIQUE (audit_event_id, id, snapshot_kind);
 
-ALTER TABLE establishment_type_log
-    ADD CONSTRAINT uq_establishment_type_log_snapshot UNIQUE (audit_event_id, id, snapshot_kind);
-
 ALTER TABLE addresses_log
     ADD CONSTRAINT uq_addresses_log_snapshot UNIQUE (audit_event_id, id, snapshot_kind);
-
-ALTER TABLE telephone_log
-    ADD CONSTRAINT uq_telephone_log_snapshot UNIQUE (audit_event_id, id, snapshot_kind);
 
 ALTER TABLE user_qr_code_log
     ADD CONSTRAINT uq_user_qr_code_log_snapshot UNIQUE (audit_event_id, user_id, snapshot_kind);
@@ -1423,9 +1249,6 @@ ALTER TABLE citizens_log
 
 ALTER TABLE establishment_log
     ADD CONSTRAINT uq_establishment_log_snapshot UNIQUE (audit_event_id, id, snapshot_kind);
-
-ALTER TABLE driver_log
-    ADD CONSTRAINT uq_driver_log_snapshot UNIQUE (audit_event_id, id, snapshot_kind);
 
 ALTER TABLE pev_log
     ADD CONSTRAINT uq_pev_log_snapshot UNIQUE (audit_event_id, id, snapshot_kind);
@@ -1451,23 +1274,11 @@ ALTER TABLE payment_log
 ALTER TABLE payment_application_log
     ADD CONSTRAINT uq_payment_application_log_snapshot UNIQUE (audit_event_id, id, snapshot_kind);
 
-ALTER TABLE subscription_cycle_change_log
-    ADD CONSTRAINT uq_subscription_cycle_change_log_snapshot UNIQUE (audit_event_id, id, snapshot_kind);
-
 ALTER TABLE payment_refund_log
     ADD CONSTRAINT uq_payment_refund_log_snapshot UNIQUE (audit_event_id, id, snapshot_kind);
 
-ALTER TABLE payment_refund_attempt_log
-    ADD CONSTRAINT uq_payment_refund_attempt_log_snapshot UNIQUE (audit_event_id, id, snapshot_kind);
-
-ALTER TABLE payment_provider_event_log
-    ADD CONSTRAINT uq_payment_provider_event_log_snapshot UNIQUE (audit_event_id, id, snapshot_kind);
-
 ALTER TABLE collection_request_log
     ADD CONSTRAINT uq_collection_request_log_snapshot UNIQUE (audit_event_id, id, snapshot_kind);
-
-ALTER TABLE collection_schedule_history_log
-    ADD CONSTRAINT uq_collection_schedule_history_log_snapshot UNIQUE (audit_event_id, id, snapshot_kind);
 
 ALTER TABLE collection_log
     ADD CONSTRAINT uq_collection_log_snapshot UNIQUE (audit_event_id, id, snapshot_kind);
@@ -1483,9 +1294,6 @@ ALTER TABLE delivery_pev_log
 
 ALTER TABLE point_calculation_log
     ADD CONSTRAINT uq_point_calculation_log_snapshot UNIQUE (audit_event_id, id, snapshot_kind);
-
-ALTER TABLE point_transaction_log
-    ADD CONSTRAINT uq_point_transaction_log_snapshot UNIQUE (audit_event_id, id, snapshot_kind);
 
 ALTER TABLE certificate_level_log
     ADD CONSTRAINT uq_certificate_level_log_snapshot UNIQUE (audit_event_id, id, snapshot_kind);
