@@ -15,7 +15,7 @@
           <p class="sub">Arquitetura de negócio · visão geral, relações e campos reais do PostgreSQL.</p>
         </div>
         <div class="stamp">Fonte: <b>01_structure.sql</b>
-        <br>Revisão do script: 10/09/2026<br>Análise: 11/09/2026</div>
+        <br>Revisão do script: 10/09/2026<br>Análise: 13/09/2026</div>
       </div>
     </header>
     <main class="shell">
@@ -74,7 +74,7 @@
                 </details>
                 <details>
                   <summary id="exclusion-title">Escopo e tabelas excluídas</summary>
-                  <p>Fora dos diagramas: as 30 tabelas *_log de auditoria, payment_refund_attempt (tentativas técnicas de reembolso) e payment_provider_event (processamento de eventos do provedor).</p>
+                  <p>Fora dos diagramas: as 22 tabelas *_log de auditoria, payment_refund_attempt (tentativas técnicas de reembolso) e payment_provider_event (processamento de eventos do provedor).</p>
                   <div class="excluded" id="excluded">
                   </div>
                   <p>Mantidas: <b>collection_schedule_history</b> (acordos de agendamento), <b>subscription_cycle_change</b> (upgrades pagos) e <b>point_calculation / point_transaction</b> (cálculo e componentes da pontuação). Esses registros têm significado de negócio; não são apenas rastros técnicos de execução.</p>
