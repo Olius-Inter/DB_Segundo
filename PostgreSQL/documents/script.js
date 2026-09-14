@@ -6232,15 +6232,7 @@ const MODEL = {
       "reason": "Retratos tipados de auditoria (BEFORE/AFTER)."
     },
     {
-      "name": "establishment_type_log",
-      "reason": "Retratos tipados de auditoria (BEFORE/AFTER)."
-    },
-    {
       "name": "addresses_log",
-      "reason": "Retratos tipados de auditoria (BEFORE/AFTER)."
-    },
-    {
-      "name": "telephone_log",
       "reason": "Retratos tipados de auditoria (BEFORE/AFTER)."
     },
     {
@@ -6253,10 +6245,6 @@ const MODEL = {
     },
     {
       "name": "establishment_log",
-      "reason": "Retratos tipados de auditoria (BEFORE/AFTER)."
-    },
-    {
-      "name": "driver_log",
       "reason": "Retratos tipados de auditoria (BEFORE/AFTER)."
     },
     {
@@ -6292,27 +6280,11 @@ const MODEL = {
       "reason": "Retratos tipados de auditoria (BEFORE/AFTER)."
     },
     {
-      "name": "subscription_cycle_change_log",
-      "reason": "Retratos tipados de auditoria (BEFORE/AFTER)."
-    },
-    {
       "name": "payment_refund_log",
       "reason": "Retratos tipados de auditoria (BEFORE/AFTER)."
     },
     {
-      "name": "payment_refund_attempt_log",
-      "reason": "Retratos tipados de auditoria (BEFORE/AFTER)."
-    },
-    {
-      "name": "payment_provider_event_log",
-      "reason": "Retratos tipados de auditoria (BEFORE/AFTER)."
-    },
-    {
       "name": "collection_request_log",
-      "reason": "Retratos tipados de auditoria (BEFORE/AFTER)."
-    },
-    {
-      "name": "collection_schedule_history_log",
       "reason": "Retratos tipados de auditoria (BEFORE/AFTER)."
     },
     {
@@ -6336,10 +6308,6 @@ const MODEL = {
       "reason": "Retratos tipados de auditoria (BEFORE/AFTER)."
     },
     {
-      "name": "point_transaction_log",
-      "reason": "Retratos tipados de auditoria (BEFORE/AFTER)."
-    },
-    {
       "name": "certificate_level_log",
       "reason": "Retratos tipados de auditoria (BEFORE/AFTER)."
     },
@@ -6350,10 +6318,10 @@ const MODEL = {
   ],
   "source": {
     "file": "01_structure.sql",
-    "sha256": "58f95a2a9995b1602a6374e0aac1736091844e87fe8a30fd6fc97957733fc90e",
+    "sha256": "af17e505f8ef4c52aff6ffb87348ef5f840029235d598c85876737e381027d0a",
     "revision": "10/09/2026",
-    "analyzed": "11/09/2026",
-    "checks_sha256": "0f8e8e249be888d6b47efb5146bd4334bc7a264329ff567e9c2c306adeede344"
+    "analyzed": "13/09/2026",
+    "checks_sha256": "51c32b61c580c8df3ab327df8485fd3b55110ccfd76b1ae983fb2745a45b9bf6"
   },
   "partial": [
     {
@@ -8496,8 +8464,8 @@ function decorateInspector() {
 }
 // Inicialização da documentação e apresentação das fontes.
 $('excluded').innerHTML=MODEL.excluded.map(e=>'<div>'+esc(e.name)+'</div>').join('');
-$('exclusion-title').textContent='Escopo: 60 tabelas analisadas · 28 incluídas · 32 excluídas';
-$('provenance').textContent='Estrutura: 01_structure.sql · '+F.length+' FKs · SHA-256: '+MODEL.source.sha256+' · Jornadas: regras aprovadas (revisão 2), scripts 01 e 02. Nenhum SQL foi alterado.';
+$('exclusion-title').textContent='Escopo: 52 tabelas analisadas · 28 incluídas · 24 excluídas';
+$('provenance').textContent='Estrutura: 01_structure.sql · '+F.length+' FKs · SHA-256: '+MODEL.source.sha256+' · Jornadas: regras aprovadas (revisão 2), scripts 01 e 02. Documentação de consulta; não executa SQL.';
 nav();
 initJourneys();
 show('overview');
