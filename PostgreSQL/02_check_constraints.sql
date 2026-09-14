@@ -723,18 +723,6 @@ ALTER TABLE users_log
     ADD CONSTRAINT ck_users_log_performed_at
     CHECK (isfinite(performed_at));
 
-ALTER TABLE establishment_type_log
-    ADD CONSTRAINT ck_establishment_type_log_snapshot
-    CHECK ((operation = 'INSERT' AND snapshot_kind = 'AFTER') OR (operation = 'DELETE' AND snapshot_kind = 'BEFORE') OR operation = 'UPDATE');
-
-ALTER TABLE establishment_type_log
-    ADD CONSTRAINT ck_establishment_type_log_actor
-    CHECK ((actor_kind = 'USER' AND performed_by IS NOT NULL) OR (actor_kind = 'DRIVER_FORM' AND performed_by IS NULL AND operational_driver_id IS NOT NULL) OR (actor_kind = 'SYSTEM' AND performed_by IS NULL));
-
-ALTER TABLE establishment_type_log
-    ADD CONSTRAINT ck_establishment_type_log_performed_at
-    CHECK (isfinite(performed_at));
-
 ALTER TABLE addresses_log
     ADD CONSTRAINT ck_addresses_log_snapshot
     CHECK ((operation = 'INSERT' AND snapshot_kind = 'AFTER') OR (operation = 'DELETE' AND snapshot_kind = 'BEFORE') OR operation = 'UPDATE');
@@ -745,18 +733,6 @@ ALTER TABLE addresses_log
 
 ALTER TABLE addresses_log
     ADD CONSTRAINT ck_addresses_log_performed_at
-    CHECK (isfinite(performed_at));
-
-ALTER TABLE telephone_log
-    ADD CONSTRAINT ck_telephone_log_snapshot
-    CHECK ((operation = 'INSERT' AND snapshot_kind = 'AFTER') OR (operation = 'DELETE' AND snapshot_kind = 'BEFORE') OR operation = 'UPDATE');
-
-ALTER TABLE telephone_log
-    ADD CONSTRAINT ck_telephone_log_actor
-    CHECK ((actor_kind = 'USER' AND performed_by IS NOT NULL) OR (actor_kind = 'DRIVER_FORM' AND performed_by IS NULL AND operational_driver_id IS NOT NULL) OR (actor_kind = 'SYSTEM' AND performed_by IS NULL));
-
-ALTER TABLE telephone_log
-    ADD CONSTRAINT ck_telephone_log_performed_at
     CHECK (isfinite(performed_at));
 
 ALTER TABLE user_qr_code_log
@@ -793,18 +769,6 @@ ALTER TABLE establishment_log
 
 ALTER TABLE establishment_log
     ADD CONSTRAINT ck_establishment_log_performed_at
-    CHECK (isfinite(performed_at));
-
-ALTER TABLE driver_log
-    ADD CONSTRAINT ck_driver_log_snapshot
-    CHECK ((operation = 'INSERT' AND snapshot_kind = 'AFTER') OR (operation = 'DELETE' AND snapshot_kind = 'BEFORE') OR operation = 'UPDATE');
-
-ALTER TABLE driver_log
-    ADD CONSTRAINT ck_driver_log_actor
-    CHECK ((actor_kind = 'USER' AND performed_by IS NOT NULL) OR (actor_kind = 'DRIVER_FORM' AND performed_by IS NULL AND operational_driver_id IS NOT NULL) OR (actor_kind = 'SYSTEM' AND performed_by IS NULL));
-
-ALTER TABLE driver_log
-    ADD CONSTRAINT ck_driver_log_performed_at
     CHECK (isfinite(performed_at));
 
 ALTER TABLE pev_log
@@ -903,18 +867,6 @@ ALTER TABLE payment_application_log
     ADD CONSTRAINT ck_payment_application_log_performed_at
     CHECK (isfinite(performed_at));
 
-ALTER TABLE subscription_cycle_change_log
-    ADD CONSTRAINT ck_subscription_cycle_change_log_snapshot
-    CHECK ((operation = 'INSERT' AND snapshot_kind = 'AFTER') OR (operation = 'DELETE' AND snapshot_kind = 'BEFORE') OR operation = 'UPDATE');
-
-ALTER TABLE subscription_cycle_change_log
-    ADD CONSTRAINT ck_subscription_cycle_change_log_actor
-    CHECK ((actor_kind = 'USER' AND performed_by IS NOT NULL) OR (actor_kind = 'DRIVER_FORM' AND performed_by IS NULL AND operational_driver_id IS NOT NULL) OR (actor_kind = 'SYSTEM' AND performed_by IS NULL));
-
-ALTER TABLE subscription_cycle_change_log
-    ADD CONSTRAINT ck_subscription_cycle_change_log_performed_at
-    CHECK (isfinite(performed_at));
-
 ALTER TABLE payment_refund_log
     ADD CONSTRAINT ck_payment_refund_log_snapshot
     CHECK ((operation = 'INSERT' AND snapshot_kind = 'AFTER') OR (operation = 'DELETE' AND snapshot_kind = 'BEFORE') OR operation = 'UPDATE');
@@ -927,30 +879,6 @@ ALTER TABLE payment_refund_log
     ADD CONSTRAINT ck_payment_refund_log_performed_at
     CHECK (isfinite(performed_at));
 
-ALTER TABLE payment_refund_attempt_log
-    ADD CONSTRAINT ck_payment_refund_attempt_log_snapshot
-    CHECK ((operation = 'INSERT' AND snapshot_kind = 'AFTER') OR (operation = 'DELETE' AND snapshot_kind = 'BEFORE') OR operation = 'UPDATE');
-
-ALTER TABLE payment_refund_attempt_log
-    ADD CONSTRAINT ck_payment_refund_attempt_log_actor
-    CHECK ((actor_kind = 'USER' AND performed_by IS NOT NULL) OR (actor_kind = 'DRIVER_FORM' AND performed_by IS NULL AND operational_driver_id IS NOT NULL) OR (actor_kind = 'SYSTEM' AND performed_by IS NULL));
-
-ALTER TABLE payment_refund_attempt_log
-    ADD CONSTRAINT ck_payment_refund_attempt_log_performed_at
-    CHECK (isfinite(performed_at));
-
-ALTER TABLE payment_provider_event_log
-    ADD CONSTRAINT ck_payment_provider_event_log_snapshot
-    CHECK ((operation = 'INSERT' AND snapshot_kind = 'AFTER') OR (operation = 'DELETE' AND snapshot_kind = 'BEFORE') OR operation = 'UPDATE');
-
-ALTER TABLE payment_provider_event_log
-    ADD CONSTRAINT ck_payment_provider_event_log_actor
-    CHECK ((actor_kind = 'USER' AND performed_by IS NOT NULL) OR (actor_kind = 'DRIVER_FORM' AND performed_by IS NULL AND operational_driver_id IS NOT NULL) OR (actor_kind = 'SYSTEM' AND performed_by IS NULL));
-
-ALTER TABLE payment_provider_event_log
-    ADD CONSTRAINT ck_payment_provider_event_log_performed_at
-    CHECK (isfinite(performed_at));
-
 ALTER TABLE collection_request_log
     ADD CONSTRAINT ck_collection_request_log_snapshot
     CHECK ((operation = 'INSERT' AND snapshot_kind = 'AFTER') OR (operation = 'DELETE' AND snapshot_kind = 'BEFORE') OR operation = 'UPDATE');
@@ -961,18 +889,6 @@ ALTER TABLE collection_request_log
 
 ALTER TABLE collection_request_log
     ADD CONSTRAINT ck_collection_request_log_performed_at
-    CHECK (isfinite(performed_at));
-
-ALTER TABLE collection_schedule_history_log
-    ADD CONSTRAINT ck_collection_schedule_history_log_snapshot
-    CHECK ((operation = 'INSERT' AND snapshot_kind = 'AFTER') OR (operation = 'DELETE' AND snapshot_kind = 'BEFORE') OR operation = 'UPDATE');
-
-ALTER TABLE collection_schedule_history_log
-    ADD CONSTRAINT ck_collection_schedule_history_log_actor
-    CHECK ((actor_kind = 'USER' AND performed_by IS NOT NULL) OR (actor_kind = 'DRIVER_FORM' AND performed_by IS NULL AND operational_driver_id IS NOT NULL) OR (actor_kind = 'SYSTEM' AND performed_by IS NULL));
-
-ALTER TABLE collection_schedule_history_log
-    ADD CONSTRAINT ck_collection_schedule_history_log_performed_at
     CHECK (isfinite(performed_at));
 
 ALTER TABLE collection_log
@@ -1033,18 +949,6 @@ ALTER TABLE point_calculation_log
 
 ALTER TABLE point_calculation_log
     ADD CONSTRAINT ck_point_calculation_log_performed_at
-    CHECK (isfinite(performed_at));
-
-ALTER TABLE point_transaction_log
-    ADD CONSTRAINT ck_point_transaction_log_snapshot
-    CHECK ((operation = 'INSERT' AND snapshot_kind = 'AFTER') OR (operation = 'DELETE' AND snapshot_kind = 'BEFORE') OR operation = 'UPDATE');
-
-ALTER TABLE point_transaction_log
-    ADD CONSTRAINT ck_point_transaction_log_actor
-    CHECK ((actor_kind = 'USER' AND performed_by IS NOT NULL) OR (actor_kind = 'DRIVER_FORM' AND performed_by IS NULL AND operational_driver_id IS NOT NULL) OR (actor_kind = 'SYSTEM' AND performed_by IS NULL));
-
-ALTER TABLE point_transaction_log
-    ADD CONSTRAINT ck_point_transaction_log_performed_at
     CHECK (isfinite(performed_at));
 
 ALTER TABLE certificate_level_log

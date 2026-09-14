@@ -140,14 +140,8 @@ CREATE INDEX idx_provider_event_pending
 CREATE INDEX idx_users_log_history
     ON users_log (id, performed_at DESC);
 
-CREATE INDEX idx_establishment_type_log_history
-    ON establishment_type_log (id, performed_at DESC);
-
 CREATE INDEX idx_addresses_log_history
     ON addresses_log (id, performed_at DESC);
-
-CREATE INDEX idx_telephone_log_history
-    ON telephone_log (id, performed_at DESC);
 
 CREATE INDEX idx_user_qr_code_log_history
     ON user_qr_code_log (user_id, performed_at DESC);
@@ -157,9 +151,6 @@ CREATE INDEX idx_citizens_log_history
 
 CREATE INDEX idx_establishment_log_history
     ON establishment_log (id, performed_at DESC);
-
-CREATE INDEX idx_driver_log_history
-    ON driver_log (id, performed_at DESC);
 
 CREATE INDEX idx_pev_log_history
     ON pev_log (id, performed_at DESC);
@@ -185,23 +176,11 @@ CREATE INDEX idx_payment_log_history
 CREATE INDEX idx_payment_application_log_history
     ON payment_application_log (id, performed_at DESC);
 
-CREATE INDEX idx_subscription_cycle_change_log_history
-    ON subscription_cycle_change_log (id, performed_at DESC);
-
 CREATE INDEX idx_payment_refund_log_history
     ON payment_refund_log (id, performed_at DESC);
 
-CREATE INDEX idx_payment_refund_attempt_log_history
-    ON payment_refund_attempt_log (id, performed_at DESC);
-
-CREATE INDEX idx_payment_provider_event_log_history
-    ON payment_provider_event_log (id, performed_at DESC);
-
 CREATE INDEX idx_collection_request_log_history
     ON collection_request_log (id, performed_at DESC);
-
-CREATE INDEX idx_collection_schedule_history_log_history
-    ON collection_schedule_history_log (id, performed_at DESC);
 
 CREATE INDEX idx_collection_log_history
     ON collection_log (id, performed_at DESC);
@@ -220,9 +199,6 @@ CREATE INDEX idx_delivery_pev_log_history
 
 CREATE INDEX idx_point_calculation_log_history
     ON point_calculation_log (id, performed_at DESC);
-
-CREATE INDEX idx_point_transaction_log_history
-    ON point_transaction_log (id, performed_at DESC);
 
 CREATE INDEX idx_certificate_level_log_history
     ON certificate_level_log (id, performed_at DESC);
