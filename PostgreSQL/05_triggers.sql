@@ -3,25 +3,189 @@
 PROJETO.............: ÓLEO AMIGO — OLIUS
 BANCO DE DADOS......: PostgreSQL 16.15 (alvo)
 SCRIPT..............: 05 - Functions de Trigger e Triggers
-VERSÃO..............: Reorganizada
+VERSÃO..............: Revisada após feedbacks
 ===============================================================================
 
 OBJETIVO
 -------------------------------------------------------------------------------
-Concentrar exclusivamente:
+Concentrar toda a infraestrutura necessária às triggers:
+- Functions auxiliares de contexto e gravação da auditoria;
 - Functions que retornam TRIGGER;
 - Criação/remoção das triggers;
 - Consultas de conferência relacionadas às triggers.
 
-DEPENDÊNCIA
+DEPENDÊNCIAS
 -------------------------------------------------------------------------------
-Este script deve ser executado DEPOIS do script 04, pois a auditoria utiliza
-as functions auxiliares definidas nele.
+Este script depende dos tipos, tabelas e tabelas *_log definidos nos scripts
+anteriores de estrutura/constraints. Ele NÃO depende das functions/procedures
+de negócio do script 04 e pode ser desenvolvido/executado independentemente
+ dele, desde que a estrutura necessária já exista.
+
+IMPORTANTE
+-------------------------------------------------------------------------------
+A instalação/substituição das functions e triggers é executada em uma única
+transação. Em caso de erro, as alterações desta instalação não devem ser
+confirmadas parcialmente.
 ===============================================================================
 */
 
+BEGIN;
+
 -- ============================================================================
--- 1. FUNCTION DE TRIGGER — AUDITORIA
+-- 1. FUNCTIONS AUXILIARES DE CONTEXTO DE AUDITORIA
+-- ============================================================================
+
+CREATE OR REPLACE FUNCTION fn_olius_audit_actor()
+RETURNS audit_actor_t
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    v_actor TEXT;
+BEGIN
+    v_actor := NULLIF(BTRIM(current_setting('app.audit_actor', true)), '');
+
+    IF v_actor IS NULL THEN
+        RETURN 'SYSTEM'::audit_actor_t;
+    END IF;
+
+    RETURN v_actor::audit_actor_t;
+EXCEPTION
+    WHEN invalid_text_representation THEN
+        RAISE EXCEPTION
+            'app.audit_actor inválido: %. Valores aceitos: USER, DRIVER_FORM, SYSTEM.',
+            v_actor;
+END;
+$$;
+
+
+CREATE OR REPLACE FUNCTION fn_olius_current_user_id()
+RETURNS UUID
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    v_value TEXT;
+BEGIN
+    v_value := NULLIF(BTRIM(current_setting('app.current_user_id', true)), '');
+
+    IF v_value IS NULL THEN
+        RETURN NULL;
+    END IF;
+
+    RETURN v_value::UUID;
+EXCEPTION
+    WHEN invalid_text_representation THEN
+        RAISE EXCEPTION
+            'app.current_user_id deve conter um UUID válido.';
+END;
+$$;
+
+
+CREATE OR REPLACE FUNCTION fn_olius_operational_driver_id()
+RETURNS UUID
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    v_value TEXT;
+BEGIN
+    v_value := NULLIF(BTRIM(current_setting('app.operational_driver_id', true)), '');
+
+    IF v_value IS NULL THEN
+        RETURN NULL;
+    END IF;
+
+    RETURN v_value::UUID;
+EXCEPTION
+    WHEN invalid_text_representation THEN
+        RAISE EXCEPTION
+            'app.operational_driver_id deve conter um UUID válido.';
+END;
+$$;
+
+
+CREATE OR REPLACE FUNCTION fn_olius_audit_reason()
+RETURNS TEXT
+LANGUAGE sql
+STABLE
+AS $$
+    SELECT NULLIF(BTRIM(current_setting('app.audit_reason', true)), '');
+$$;
+
+
+-- ============================================================================
+-- 2. FUNCTION AUXILIAR — GRAVAÇÃO GENÉRICA DE SNAPSHOT
+-- ============================================================================
+
+CREATE OR REPLACE FUNCTION fn_olius_write_audit_snapshot(
+    p_table_name TEXT,
+    p_row JSONB,
+    p_operation operation_status_t,
+    p_snapshot_kind audit_snapshot_t,
+    p_audit_event_id UUID,
+    p_changed_columns TEXT[]
+)
+RETURNS VOID
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    v_log_table TEXT := p_table_name || '_log';
+    v_actor audit_actor_t := fn_olius_audit_actor();
+    v_user_id UUID := fn_olius_current_user_id();
+    v_driver_id UUID := fn_olius_operational_driver_id();
+    v_reason TEXT := fn_olius_audit_reason();
+    v_payload JSONB;
+BEGIN
+    /*
+    O objeto base da linha é combinado com os metadados do log.
+    O lado direito do || prevalece em caso de mesma chave.
+    clock_timestamp() representa o instante efetivo da gravação do snapshot,
+    e não o início da transação.
+    */
+    v_payload :=
+        p_row
+        || jsonb_build_object(
+            'log_id', gen_random_uuid(),
+            'audit_event_id', p_audit_event_id,
+            'snapshot_kind', p_snapshot_kind,
+            'operation', p_operation,
+            'performed_at', clock_timestamp(),
+            'performed_by', v_user_id,
+            'actor_kind', v_actor,
+            'operational_driver_id', v_driver_id,
+            'audit_reason', v_reason,
+            'changed_columns', COALESCE(p_changed_columns, ARRAY[]::TEXT[])
+        );
+
+    /*
+    jsonb_populate_record ignora chaves que não existem na tabela de log.
+    Isso permite que logs que removem dados sensíveis continuem compatíveis
+    com a gravação genérica do snapshot.
+    */
+    EXECUTE format(
+        'INSERT INTO %I.%I
+         SELECT (jsonb_populate_record(NULL::%I.%I, $1)).*',
+        'public',
+        v_log_table,
+        'public',
+        v_log_table
+    )
+    USING v_payload;
+END;
+$$;
+
+
+-- ============================================================================
+-- 3. LIMPEZA DE MECANISMO DE CORRELAÇÃO OBSOLETO
+-- ============================================================================
+
+/*
+A correlação por tabela temporária deixou de ser necessária porque o UPDATE é
+inteiramente auditado em uma única execução AFTER UPDATE.
+*/
+DROP FUNCTION IF EXISTS fn_olius_audit_row_key(OID, JSONB);
+
+
+-- ============================================================================
+-- 4. FUNCTION DE TRIGGER — AUDITORIA
 -- ============================================================================
 
 CREATE OR REPLACE FUNCTION fn_olius_audit_trigger()
@@ -30,13 +194,24 @@ LANGUAGE plpgsql
 AS $$
 DECLARE
     v_event_id UUID;
-    v_row_key TEXT;
     v_changed_columns TEXT[];
     v_old JSONB;
     v_new JSONB;
 BEGIN
-    IF TG_OP = 'INSERT' THEN
+    /*
+    Toda a auditoria é instalada como AFTER. Isso garante que os snapshots
+    representem operações que chegaram ao estágio posterior da alteração e,
+    no UPDATE, que NEW contenha os valores finais produzidos por BEFORE triggers.
+    */
+    IF TG_WHEN <> 'AFTER' THEN
+        RAISE EXCEPTION
+            'fn_olius_audit_trigger() deve ser executada somente por triggers AFTER. Recebido: %.%',
+            TG_OP,
+            TG_WHEN;
+    END IF;
 
+
+    IF TG_OP = 'INSERT' THEN
         v_event_id := gen_random_uuid();
 
         PERFORM fn_olius_write_audit_snapshot(
@@ -52,10 +227,55 @@ BEGIN
     END IF;
 
 
-    IF TG_OP = 'DELETE' THEN
-
+    IF TG_OP = 'UPDATE' THEN
+        v_old := to_jsonb(OLD);
+        v_new := to_jsonb(NEW);
         v_event_id := gen_random_uuid();
 
+        /*
+        changed_columns é calculado uma única vez a partir dos estados finais
+        OLD e NEW e reutilizado nos dois snapshots do mesmo audit_event_id.
+        */
+        SELECT ARRAY(
+            SELECT key
+            FROM jsonb_each(v_old) o
+            JOIN jsonb_each(v_new) n USING (key)
+            WHERE o.value IS DISTINCT FROM n.value
+            ORDER BY key
+        )
+        INTO v_changed_columns;
+
+        v_changed_columns := COALESCE(v_changed_columns, ARRAY[]::TEXT[]);
+
+        PERFORM fn_olius_write_audit_snapshot(
+            TG_TABLE_NAME,
+            v_old,
+            'UPDATE'::operation_status_t,
+            'BEFORE'::audit_snapshot_t,
+            v_event_id,
+            v_changed_columns
+        );
+
+        PERFORM fn_olius_write_audit_snapshot(
+            TG_TABLE_NAME,
+            v_new,
+            'UPDATE'::operation_status_t,
+            'AFTER'::audit_snapshot_t,
+            v_event_id,
+            v_changed_columns
+        );
+
+        RETURN NEW;
+    END IF;
+
+
+    IF TG_OP = 'DELETE' THEN
+        v_event_id := gen_random_uuid();
+
+        /*
+        A trigger é AFTER DELETE, mas o snapshot continua sendo BEFORE porque
+        o conteúdo registrado é OLD: o estado que existia antes da exclusão.
+        */
         PERFORM fn_olius_write_audit_snapshot(
             TG_TABLE_NAME,
             to_jsonb(OLD),
@@ -69,123 +289,15 @@ BEGIN
     END IF;
 
 
-    /*
-    UPDATE — BEFORE
-    */
-    IF TG_OP = 'UPDATE' AND TG_WHEN = 'BEFORE' THEN
-
-        v_old := to_jsonb(OLD);
-        v_new := to_jsonb(NEW);
-
-        v_event_id := gen_random_uuid();
-        v_row_key := fn_olius_audit_row_key(TG_RELID, v_old);
-
-        CREATE TEMP TABLE IF NOT EXISTS pg_temp.olius_audit_events (
-            table_name TEXT NOT NULL,
-            row_key TEXT NOT NULL,
-            audit_event_id UUID NOT NULL,
-            PRIMARY KEY (table_name, row_key)
-        ) ON COMMIT DELETE ROWS;
-
-        INSERT INTO pg_temp.olius_audit_events (
-            table_name,
-            row_key,
-            audit_event_id
-        )
-        VALUES (
-            TG_TABLE_NAME,
-            v_row_key,
-            v_event_id
-        )
-        ON CONFLICT (table_name, row_key)
-        DO UPDATE
-           SET audit_event_id = EXCLUDED.audit_event_id;
-
-        SELECT ARRAY(
-            SELECT key
-            FROM jsonb_each(v_old) o
-            JOIN jsonb_each(v_new) n USING (key)
-            WHERE o.value IS DISTINCT FROM n.value
-            ORDER BY key
-        )
-        INTO v_changed_columns;
-
-        PERFORM fn_olius_write_audit_snapshot(
-            TG_TABLE_NAME,
-            v_old,
-            'UPDATE'::operation_status_t,
-            'BEFORE'::audit_snapshot_t,
-            v_event_id,
-            COALESCE(v_changed_columns, ARRAY[]::TEXT[])
-        );
-
-        RETURN NEW;
-    END IF;
-
-
-    /*
-    UPDATE — AFTER
-    */
-    IF TG_OP = 'UPDATE' AND TG_WHEN = 'AFTER' THEN
-
-        v_old := to_jsonb(OLD);
-        v_new := to_jsonb(NEW);
-        v_row_key := fn_olius_audit_row_key(TG_RELID, v_old);
-
-        CREATE TEMP TABLE IF NOT EXISTS pg_temp.olius_audit_events (
-            table_name TEXT NOT NULL,
-            row_key TEXT NOT NULL,
-            audit_event_id UUID NOT NULL,
-            PRIMARY KEY (table_name, row_key)
-        ) ON COMMIT DELETE ROWS;
-
-        SELECT audit_event_id
-          INTO v_event_id
-          FROM pg_temp.olius_audit_events
-         WHERE table_name = TG_TABLE_NAME
-           AND row_key = v_row_key;
-
-        IF v_event_id IS NULL THEN
-            RAISE EXCEPTION
-                'Audit event não encontrado para UPDATE em %. Chave: %.',
-                TG_TABLE_NAME,
-                v_row_key;
-        END IF;
-
-        SELECT ARRAY(
-            SELECT key
-            FROM jsonb_each(v_old) o
-            JOIN jsonb_each(v_new) n USING (key)
-            WHERE o.value IS DISTINCT FROM n.value
-            ORDER BY key
-        )
-        INTO v_changed_columns;
-
-        PERFORM fn_olius_write_audit_snapshot(
-            TG_TABLE_NAME,
-            v_new,
-            'UPDATE'::operation_status_t,
-            'AFTER'::audit_snapshot_t,
-            v_event_id,
-            COALESCE(v_changed_columns, ARRAY[]::TEXT[])
-        );
-
-        DELETE FROM pg_temp.olius_audit_events
-        WHERE table_name = TG_TABLE_NAME
-          AND row_key = v_row_key;
-
-        RETURN NEW;
-    END IF;
-
     RAISE EXCEPTION
-        'Operação/timing não suportado pela auditoria: %.%',
-        TG_OP,
-        TG_WHEN;
+        'Operação não suportada pela auditoria: %.',
+        TG_OP;
 END;
 $$;
 
+
 -- ============================================================================
--- 2. FUNCTION DE TRIGGER — updated_at
+-- 5. FUNCTION DE TRIGGER — updated_at
 -- ============================================================================
 
 CREATE OR REPLACE FUNCTION fn_olius_set_updated_at()
@@ -193,69 +305,122 @@ RETURNS TRIGGER
 LANGUAGE plpgsql
 AS $$
 BEGIN
-    NEW.updated_at := CURRENT_TIMESTAMP;
+    /* Momento efetivo da atualização, não o início da transação. */
+    NEW.updated_at := clock_timestamp();
     RETURN NEW;
 END;
 $$;
 
+
 -- ============================================================================
--- 3. FUNCTION DE TRIGGER — SINCRONIZAÇÃO establishment.is_pev
+-- 6. FUNCTION DE TRIGGER — SINCRONIZAÇÃO establishment.is_pev
 -- ============================================================================
 
 CREATE OR REPLACE FUNCTION fn_olius_sync_establishment_is_pev()
 RETURNS TRIGGER
 LANGUAGE plpgsql
 AS $$
+DECLARE
+    v_is_pev BOOLEAN;
 BEGIN
-    IF TG_OP = 'UPDATE'
-       AND OLD.establishment_id IS DISTINCT FROM NEW.establishment_id
-       AND OLD.establishment_id IS NOT NULL THEN
+    /*
+    INSERT: recalcula apenas o estabelecimento associado ao novo PEV.
+    */
+    IF TG_OP = 'INSERT' THEN
+        IF NEW.establishment_id IS NOT NULL THEN
+            SELECT EXISTS (
+                SELECT 1
+                FROM pev p
+                WHERE p.establishment_id = NEW.establishment_id
+                  AND p.status = 'APPROVED'
+            )
+            INTO v_is_pev;
 
-        UPDATE establishment e
-           SET is_pev = EXISTS (
-               SELECT 1
-               FROM pev p
-               WHERE p.establishment_id = e.id
-                 AND p.status = 'APPROVED'
-           )
-         WHERE e.id = OLD.establishment_id;
+            UPDATE establishment e
+               SET is_pev = v_is_pev
+             WHERE e.id = NEW.establishment_id
+               AND e.is_pev IS DISTINCT FROM v_is_pev;
+        END IF;
+
+        RETURN NEW;
     END IF;
 
 
+    /*
+    DELETE: o PEV já não está mais visível na tabela; recalcula o antigo
+    estabelecimento com base nos PEVs restantes.
+    */
     IF TG_OP = 'DELETE' THEN
-
         IF OLD.establishment_id IS NOT NULL THEN
+            SELECT EXISTS (
+                SELECT 1
+                FROM pev p
+                WHERE p.establishment_id = OLD.establishment_id
+                  AND p.status = 'APPROVED'
+            )
+            INTO v_is_pev;
+
             UPDATE establishment e
-               SET is_pev = EXISTS (
-                   SELECT 1
-                   FROM pev p
-                   WHERE p.establishment_id = e.id
-                     AND p.status = 'APPROVED'
-               )
-             WHERE e.id = OLD.establishment_id;
+               SET is_pev = v_is_pev
+             WHERE e.id = OLD.establishment_id
+               AND e.is_pev IS DISTINCT FROM v_is_pev;
         END IF;
 
         RETURN OLD;
     END IF;
 
 
-    IF NEW.establishment_id IS NOT NULL THEN
-        UPDATE establishment e
-           SET is_pev = EXISTS (
-               SELECT 1
-               FROM pev p
-               WHERE p.establishment_id = e.id
-                 AND p.status = 'APPROVED'
-           )
-         WHERE e.id = NEW.establishment_id;
+    /*
+    UPDATE: a trigger de UPDATE só chama esta função quando status ou
+    establishment_id realmente mudam. Se o estabelecimento mudou, primeiro
+    recalculamos o antigo; depois recalculamos o novo/atual.
+    */
+    IF TG_OP = 'UPDATE' THEN
+        IF OLD.establishment_id IS DISTINCT FROM NEW.establishment_id
+           AND OLD.establishment_id IS NOT NULL THEN
+
+            SELECT EXISTS (
+                SELECT 1
+                FROM pev p
+                WHERE p.establishment_id = OLD.establishment_id
+                  AND p.status = 'APPROVED'
+            )
+            INTO v_is_pev;
+
+            UPDATE establishment e
+               SET is_pev = v_is_pev
+             WHERE e.id = OLD.establishment_id
+               AND e.is_pev IS DISTINCT FROM v_is_pev;
+        END IF;
+
+        IF NEW.establishment_id IS NOT NULL THEN
+            SELECT EXISTS (
+                SELECT 1
+                FROM pev p
+                WHERE p.establishment_id = NEW.establishment_id
+                  AND p.status = 'APPROVED'
+            )
+            INTO v_is_pev;
+
+            UPDATE establishment e
+               SET is_pev = v_is_pev
+             WHERE e.id = NEW.establishment_id
+               AND e.is_pev IS DISTINCT FROM v_is_pev;
+        END IF;
+
+        RETURN NEW;
     END IF;
 
-    RETURN NEW;
+
+    RAISE EXCEPTION
+        'Operação não suportada na sincronização establishment.is_pev: %.',
+        TG_OP;
 END;
 $$;
 
+
 -- ============================================================================
--- 4. REMOÇÃO IDEMPOTENTE DOS TRIGGERS DESTA VERSÃO
+-- 7. REMOÇÃO IDEMPOTENTE DOS TRIGGERS DESTA VERSÃO E VERSÕES ANTERIORES
 -- ============================================================================
 
 DO $$
@@ -267,12 +432,21 @@ BEGIN
         FROM information_schema.triggers
         WHERE trigger_schema = 'public'
           AND trigger_name IN (
+              -- Auditoria: versão atual e nomes das versões anteriores
               'trg_olius_audit_insert',
+              'trg_olius_audit_update',
               'trg_olius_audit_update_before',
               'trg_olius_audit_update_after',
               'trg_olius_audit_delete',
+
+              -- updated_at
               'trg_olius_set_updated_at',
-              'trg_olius_sync_establishment_is_pev'
+
+              -- PEV: versão unificada anterior e versão atual separada
+              'trg_olius_sync_establishment_is_pev',
+              'trg_olius_sync_establishment_is_pev_insert',
+              'trg_olius_sync_establishment_is_pev_update',
+              'trg_olius_sync_establishment_is_pev_delete'
           )
     LOOP
         EXECUTE format(
@@ -286,7 +460,7 @@ $$;
 
 
 -- ============================================================================
--- 5. AUDITORIA — AS 22 TABELAS COM *_log NA ESTRUTURA ATUAL
+-- 8. AUDITORIA — AS 22 TABELAS COM *_log COBERTAS POR ESTE SCRIPT
 -- ============================================================================
 
 DO $$
@@ -328,15 +502,7 @@ BEGIN
         );
 
         EXECUTE format(
-            'CREATE TRIGGER trg_olius_audit_update_before
-             BEFORE UPDATE ON public.%I
-             FOR EACH ROW
-             EXECUTE FUNCTION fn_olius_audit_trigger()',
-            v_table
-        );
-
-        EXECUTE format(
-            'CREATE TRIGGER trg_olius_audit_update_after
+            'CREATE TRIGGER trg_olius_audit_update
              AFTER UPDATE ON public.%I
              FOR EACH ROW
              EXECUTE FUNCTION fn_olius_audit_trigger()',
@@ -345,7 +511,7 @@ BEGIN
 
         EXECUTE format(
             'CREATE TRIGGER trg_olius_audit_delete
-             BEFORE DELETE ON public.%I
+             AFTER DELETE ON public.%I
              FOR EACH ROW
              EXECUTE FUNCTION fn_olius_audit_trigger()',
             v_table
@@ -356,7 +522,7 @@ $$;
 
 
 -- ============================================================================
--- 6. updated_at — TABELAS DEFINIDAS PELO SCRIPT 02
+-- 9. updated_at — TABELAS DEFINIDAS PELO SCRIPT 02
 -- ============================================================================
 
 DO $$
@@ -389,7 +555,7 @@ $$;
 
 
 -- ============================================================================
--- 7. updated_at — OUTRAS TABELAS COM CAMPO updated_at
+-- 10. updated_at — OUTRAS TABELAS COM CAMPO updated_at
 -- ============================================================================
 
 CREATE TRIGGER trg_olius_set_updated_at
@@ -411,31 +577,76 @@ EXECUTE FUNCTION fn_olius_set_updated_at();
 
 
 -- ============================================================================
--- 8. PEV -> establishment.is_pev
+-- 11. PEV -> establishment.is_pev
 -- ============================================================================
 
-CREATE TRIGGER trg_olius_sync_establishment_is_pev
-AFTER INSERT OR UPDATE OR DELETE ON public.pev
+/*
+INSERT e DELETE sempre exigem recálculo do estabelecimento relacionado.
+UPDATE só dispara quando status ou establishment_id realmente mudarem.
+*/
+CREATE TRIGGER trg_olius_sync_establishment_is_pev_insert
+AFTER INSERT ON public.pev
+FOR EACH ROW
+EXECUTE FUNCTION fn_olius_sync_establishment_is_pev();
+
+
+CREATE TRIGGER trg_olius_sync_establishment_is_pev_update
+AFTER UPDATE ON public.pev
+FOR EACH ROW
+WHEN (
+    OLD.status IS DISTINCT FROM NEW.status
+    OR OLD.establishment_id IS DISTINCT FROM NEW.establishment_id
+)
+EXECUTE FUNCTION fn_olius_sync_establishment_is_pev();
+
+
+CREATE TRIGGER trg_olius_sync_establishment_is_pev_delete
+AFTER DELETE ON public.pev
 FOR EACH ROW
 EXECUTE FUNCTION fn_olius_sync_establishment_is_pev();
 
 
 -- ============================================================================
--- 9. COMENTÁRIOS
+-- 12. COMENTÁRIOS
 -- ============================================================================
+
+COMMENT ON FUNCTION fn_olius_audit_actor()
+IS 'Obtém o tipo de ator da auditoria a partir do contexto local da transação.';
+
+COMMENT ON FUNCTION fn_olius_current_user_id()
+IS 'Obtém o UUID do usuário responsável a partir do contexto local da transação.';
+
+COMMENT ON FUNCTION fn_olius_operational_driver_id()
+IS 'Obtém o UUID do motorista operacional a partir do contexto local da transação.';
+
+COMMENT ON FUNCTION fn_olius_audit_reason()
+IS 'Obtém a justificativa opcional da auditoria a partir do contexto local da transação.';
+
+COMMENT ON FUNCTION fn_olius_write_audit_snapshot(
+    TEXT,
+    JSONB,
+    operation_status_t,
+    audit_snapshot_t,
+    UUID,
+    TEXT[]
+)
+IS 'Grava snapshot genérico na tabela *_log correspondente, com timestamp efetivo via clock_timestamp().';
 
 COMMENT ON FUNCTION fn_olius_audit_trigger()
-IS 'Auditoria genérica: INSERT=AFTER, UPDATE=BEFORE+AFTER, DELETE=BEFORE.';
+IS 'Auditoria genérica executada somente em AFTER: INSERT=NEW/AFTER, UPDATE=OLD/BEFORE + NEW/AFTER no mesmo evento, DELETE=OLD/BEFORE.';
 
 COMMENT ON FUNCTION fn_olius_set_updated_at()
-IS 'Atualiza updated_at automaticamente em alterações do registro.';
+IS 'Atualiza updated_at com clock_timestamp(), representando o instante efetivo da alteração.';
 
 COMMENT ON FUNCTION fn_olius_sync_establishment_is_pev()
-IS 'Mantém establishment.is_pev derivado dos PEVs APPROVED na mesma transação.';
+IS 'Mantém establishment.is_pev derivado de PEVs APPROVED, evitando UPDATE quando a flag já está correta.';
+
+
+COMMIT;
 
 
 -- ============================================================================
--- 10. CONSULTAS DE CONFERÊNCIA
+-- 13. CONSULTAS DE CONFERÊNCIA — EXECUTADAS APÓS A INSTALAÇÃO
 -- ============================================================================
 
 SELECT
@@ -446,7 +657,21 @@ SELECT
 FROM information_schema.triggers
 WHERE trigger_schema = 'public'
   AND trigger_name LIKE 'trg_olius_%'
-ORDER BY event_object_table, trigger_name;
+ORDER BY event_object_table, trigger_name, event_manipulation;
+
+
+/*
+Conferir se não restou nenhuma auditoria BEFORE:
+*/
+-- SELECT
+--     event_object_table,
+--     trigger_name,
+--     event_manipulation,
+--     action_timing
+-- FROM information_schema.triggers
+-- WHERE trigger_schema = 'public'
+--   AND trigger_name LIKE 'trg_olius_audit_%'
+--   AND action_timing <> 'AFTER';
 
 
 /*
@@ -473,7 +698,7 @@ Conferir pares BEFORE/AFTER de UPDATE:
 
 
 /*
-Conferir saldo derivado:
+Conferir saldo/flags derivadas:
 */
 -- SELECT id, points FROM citizens;
 -- SELECT id, points, is_pev FROM establishment;
