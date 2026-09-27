@@ -1,0 +1,82 @@
+language: "pt-BR"
+
+reviews:
+  profile: "assertive"
+
+  high_level_summary: true
+  poem: false
+  review_status: true
+  collapse_walkthrough: false
+
+  auto_review:
+    enabled: true
+    drafts: false
+
+  path_instructions:
+    - path: "PostgreSQL/**/*.sql"
+      instructions: |
+        Revise qualquer script SQL considerando boas práticas de PostgreSQL,
+        modelagem relacional, integridade dos dados, segurança, desempenho
+        e manutenibilidade.
+
+        Analise a alteração de acordo com o tipo de objeto SQL encontrado,
+        incluindo tabelas, colunas, constraints, índices, funções,
+        procedures, window functions, triggers, views e outros objetos
+        PostgreSQL adicionados futuramente ao projeto.
+
+        Verifique especialmente:
+        - sintaxe e compatibilidade com PostgreSQL;
+        - tipos de dados e valores padrão;
+        - chaves primárias e estrangeiras;
+        - integridade referencial;
+        - constraints e regras de domínio;
+        - comportamento de ON DELETE e ON UPDATE;
+        - índices redundantes, ausentes ou inadequados;
+        - impacto de índices sobre operações de escrita;
+        - funções e procedures quanto a parâmetros, retornos e efeitos colaterais;
+        - triggers quanto a condições, recursão e efeitos inesperados;
+        - consultas quanto a joins, filtros e operações potencialmente custosas;
+        - dependências entre objetos do banco;
+        - ordem de criação dos objetos;
+        - possíveis problemas de concorrência e consistência;
+        - exposição ou armazenamento inadequado de informações sensíveis.
+
+        Identifique explicitamente operações potencialmente destrutivas,
+        como DROP, TRUNCATE, DELETE sem filtro e alterações de estrutura
+        que possam provocar perda ou incompatibilidade de dados.
+
+        Considere o contexto dos demais scripts do banco quando uma alteração
+        depender de objetos definidos em outros arquivos.
+
+        Evite sugerir otimizações sem benefício claro ou índices sem
+        justificativa relacionada ao padrão esperado de acesso aos dados.
+
+    - path: "PostgreSQL/documents/**"
+      instructions: |
+        Revise a documentação e seus recursos auxiliares considerando
+        consistência com a estrutura atual do banco.
+
+        Verifique se exemplos, nomes de tabelas, campos, relacionamentos,
+        funções, triggers e demais objetos documentados continuam
+        compatíveis com os scripts SQL.
+
+        Para HTML, JavaScript e CSS, identifique também erros relevantes,
+        problemas de manutenção e possíveis riscos de segurança.
+
+    - path: ".github/workflows/**"
+      instructions: |
+        Revise alterações no CI considerando a execução correta dos scripts
+        PostgreSQL e a capacidade do workflow de detectar falhas.
+
+        Verifique permissões mínimas, exposição de secrets ou credenciais,
+        Actions fixadas por SHA, segurança da cadeia de dependências
+        e consistência da ordem de execução dos scripts.
+
+    - path: "sonar-project.properties"
+      instructions: |
+        Verifique se alterações na configuração do SonarQube continuam
+        compatíveis com a estrutura do repositório e não excluem
+        inadvertidamente arquivos relevantes da análise.
+
+chat:
+  auto_reply: true
