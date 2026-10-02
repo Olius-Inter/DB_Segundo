@@ -522,7 +522,7 @@ BEGIN
             SELECT d.id, d.record_status, d.oil_volume_liters
             FROM public.delivery_pev AS d
             WHERE d.citizen_id = p_user_id
-            ORDER BY d.delivery_date, d.id
+            ORDER BY d.processing_order, d.id
         LOOP
             v_volume_points := CASE
                 WHEN v_event.record_status = 'RECORDED'::public.record_status_t
@@ -1395,6 +1395,7 @@ CREATE OR REPLACE PROCEDURE public.record_pev_delivery(
 LANGUAGE plpgsql AS $$
 DECLARE
     v_pev public.pev%ROWTYPE;
+    v_order BIGINT;
 BEGIN
     IF p_idempotency_key IS NULL THEN RAISE EXCEPTION 'A chave de idempotência é obrigatória.' USING ERRCODE = '22023'; END IF;
     PERFORM pg_advisory_xact_lock(hashtextextended(p_idempotency_key::TEXT, 0));
@@ -1425,10 +1426,26 @@ BEGIN
     IF p_validator_id = p_citizen_id THEN
         RAISE EXCEPTION 'O cidadão beneficiário não pode validar a própria entrega.' USING ERRCODE = '42501';
     END IF;
+    -- Mesmo bloqueio usado pela reconstrução e pela correção B2C.
+    -- Chamadas para o mesmo cidadão aguardam a transação anterior.
+    PERFORM 1
+    FROM public.citizens AS c
+    WHERE c.id = p_citizen_id
+    FOR UPDATE;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'O cidadão beneficiário não existe.'
+            USING ERRCODE = 'P0002';
+    END IF;
     SELECT p.* INTO v_pev FROM public.pev p WHERE p.id = p_pev_id FOR SHARE;
     IF NOT FOUND OR v_pev.status <> 'APPROVED'::public.approval_status_t THEN
         RAISE EXCEPTION 'O PEV não existe ou não está aprovado.' USING ERRCODE = '42501';
     END IF;
+    -- Inclui anuladas: a identidade de processamento não é reciclada.
+    SELECT COALESCE(MAX(d.processing_order), 0) + 1
+    INTO v_order
+    FROM public.delivery_pev AS d
+    WHERE d.citizen_id = p_citizen_id;
     -- O usuário autenticado que chama a rotina é o responsável pelo PEV;
     -- o cidadão QR é apenas o beneficiário da entrega.
     IF v_pev.citizen_id IS NULL AND NOT EXISTS (
@@ -1451,12 +1468,14 @@ BEGIN
         END IF;
     END IF;
     INSERT INTO public.delivery_pev (
-        oil_volume_liters, points_earned, delivery_date, citizen_id, pev_id,
-        validated_by, idempotency_key, record_status, revision
+        oil_volume_liters, points_earned, delivery_date, citizen_id,
+        processing_order, pev_id, validated_by, idempotency_key,
+        record_status, revision
     ) VALUES (
-        p_oil_volume_liters, FLOOR(p_oil_volume_liters)::BIGINT, p_delivery_date,
-        p_citizen_id, p_pev_id, p_validator_id,
-        p_idempotency_key, 'RECORDED'::public.record_status_t, 1
+        p_oil_volume_liters, FLOOR(p_oil_volume_liters)::BIGINT,
+        p_delivery_date, p_citizen_id, v_order, p_pev_id,
+        p_validator_id, p_idempotency_key,
+        'RECORDED'::public.record_status_t, 1
     ) RETURNING id INTO p_delivery_pev_id;
     CALL public.rebuild_user_points(p_citizen_id, NULL, NULL);
 END;
@@ -1613,37 +1632,41 @@ LANGUAGE plpgsql AS $$
 DECLARE
     v_delivery public.delivery_pev%ROWTYPE;
 BEGIN
-    IF p_expected_revision IS NULL OR p_expected_revision < 1
-       OR p_correction_reason IS NULL OR BTRIM(p_correction_reason) = '' THEN
-        RAISE EXCEPTION 'A revisão esperada e a justificativa são obrigatórias.' USING ERRCODE = '22023';
-    END IF;
-    IF NOT EXISTS (SELECT 1 FROM public.users u WHERE u.id = p_admin_id
-        AND u.user_type = 'ADMIN'::public.user_type_t AND u.status = 'ACTIVE'::public.active_status_t) THEN
-        RAISE EXCEPTION 'O administrador informado não existe ou não está ativo.' USING ERRCODE = '42501';
-    END IF;
-    SELECT d.* INTO v_delivery FROM public.delivery_pev d WHERE d.id = p_delivery_pev_id FOR UPDATE;
-    IF NOT FOUND THEN RAISE EXCEPTION 'A entrega % não existe.', p_delivery_pev_id USING ERRCODE = 'P0002'; END IF;
-    IF v_delivery.revision <> p_expected_revision THEN
-        RAISE EXCEPTION 'A entrega mudou desde a leitura. Recarregue o registro antes de corrigir.' USING ERRCODE = '40001';
-    END IF;
-    IF p_record_status = 'RECORDED'::public.record_status_t THEN
-        IF p_oil_volume_liters IS NULL OR p_oil_volume_liters <= 0
-           OR p_oil_volume_liters = 'NaN'::NUMERIC OR p_delivery_date IS NULL
-           OR NOT isfinite(p_delivery_date) OR p_delivery_date > v_delivery.created_at THEN
-            RAISE EXCEPTION 'Volume ou data da entrega corrigida são inválidos.' USING ERRCODE = '22023';
-        END IF;
-    ELSIF p_record_status IS NULL
-       OR p_record_status <> 'ANNULLED'::public.record_status_t THEN
-        RAISE EXCEPTION 'A situação corrigida é inválida.' USING ERRCODE = '22023';
-    END IF;
-    UPDATE public.delivery_pev d
-    SET record_status = p_record_status,
-        oil_volume_liters = CASE WHEN p_record_status = 'RECORDED'::public.record_status_t THEN p_oil_volume_liters ELSE d.oil_volume_liters END,
-        points_earned = CASE WHEN p_record_status = 'RECORDED'::public.record_status_t THEN FLOOR(p_oil_volume_liters)::BIGINT ELSE 0 END,
-        delivery_date = CASE WHEN p_record_status = 'RECORDED'::public.record_status_t THEN p_delivery_date ELSE d.delivery_date END,
-        revision = d.revision + 1, corrected_at = clock_timestamp(),
-        corrected_by = p_admin_id, correction_reason = BTRIM(p_correction_reason)
+    -- Leitura inicial apenas para localizar o participante.
+    SELECT d.* INTO v_delivery
+    FROM public.delivery_pev AS d
     WHERE d.id = p_delivery_pev_id;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'A entrega % não existe.', p_delivery_pev_id
+            USING ERRCODE = 'P0002';
+    END IF;
+
+    PERFORM 1
+    FROM public.citizens AS c
+    WHERE c.id = v_delivery.citizen_id
+    FOR UPDATE;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'O cidadão beneficiário não existe.'
+            USING ERRCODE = 'P0002';
+    END IF;
+
+    -- Releitura após o bloqueio: a revisão inicial pode estar desatualizada.
+    SELECT d.* INTO v_delivery
+    FROM public.delivery_pev AS d
+    WHERE d.id = p_delivery_pev_id
+    FOR UPDATE;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'A entrega % não existe.', p_delivery_pev_id
+            USING ERRCODE = 'P0002';
+    END IF;
+
+    IF v_delivery.revision <> p_expected_revision THEN
+        RAISE EXCEPTION 'A entrega mudou desde a leitura. Recarregue o registro antes de corrigir.'
+            USING ERRCODE = '40001';
+    END IF;
     CALL public.rebuild_user_points(v_delivery.citizen_id, p_admin_id, BTRIM(p_correction_reason));
 END;
 $$;

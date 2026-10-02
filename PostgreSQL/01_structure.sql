@@ -583,6 +583,7 @@ id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     delivery_date TIMESTAMPTZ NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     citizen_id UUID NOT NULL,
+    processing_order BIGINT NOT NULL,
     pev_id UUID NOT NULL,
     validated_by UUID NOT NULL,
     idempotency_key UUID NOT NULL,
@@ -593,6 +594,7 @@ id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     correction_reason TEXT,
     admin_type user_type_t GENERATED ALWAYS AS ('ADMIN'::user_type_t) STORED,
     CONSTRAINT uq_delivery_owner UNIQUE (id, citizen_id),
+    CONSTRAINT uq_delivery_order UNIQUE (citizen_id, processing_order),
     CONSTRAINT uq_delivery_idempotency UNIQUE (idempotency_key),
     CONSTRAINT fk_delivery_citizen FOREIGN KEY (citizen_id)
         REFERENCES citizens (id) ON UPDATE RESTRICT ON DELETE RESTRICT,
@@ -705,6 +707,8 @@ COMMENT ON COLUMN collection_request.forfeited_volume_liters IS
 'Franquia perdida por cancelamento tardio; não representa óleo recolhido, pontos ou volume ambiental.';
 COMMENT ON COLUMN collection.processing_order IS
 'Ordem fixa por estabelecimento para reconstruir pontos e piso zero, independente da data física da visita.';
+COMMENT ON COLUMN delivery_pev.processing_order IS 
+'Ordem fixa por cidadão para reconstruir pontos e saldos, independente da data física da entrega. Atribuída sob bloqueio do cidadão e preservada nas correções.';
 COMMENT ON COLUMN point_calculation.revision IS
 'Revisão do cálculo, inclusive por correção de evento anterior; não precisa coincidir com a revisão da coleta.';
 
