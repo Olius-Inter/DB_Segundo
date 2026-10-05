@@ -2,7 +2,9 @@
 
 Local: OLIUS_TEST_DOCKER_CONTAINER=nome (Docker com usuário postgres/db olius_test).
 CI: usa psql e as variáveis PGHOST/PGPORT/PGUSER/PGPASSWORD/PGDATABASE.
-Não instala scripts e não lê/escreve arquivos do usuário.
+Não instala os scripts 01..05. Lê apenas a fixture SQL ao lado deste arquivo
+e a envia pelo stdin ao psql; não é necessário copiá-la para o contêiner.
+Cria dados artificiais no banco descartável e não escreve arquivos locais.
 """
 import os
 import subprocess
@@ -20,7 +22,7 @@ if os.name == "nt":
 
 def query(sql):
     result = subprocess.run(command, input=sql, text=True, capture_output=True,
-                            timeout=30, **process_options)
+                            timeout=30, check=False, **process_options)
     if result.returncode:
         raise RuntimeError(result.stderr)
     return result.stdout.strip()
@@ -72,11 +74,8 @@ def pair(label, first, second, second_should_fail=False, rollback_first=False):
                 proc.wait()
 
 
-fixture = "/tmp/tests/fixtures_procedures.sql" if container else str(Path(__file__).with_name("fixtures_procedures.sql"))
-result = subprocess.run(command + ["-f", fixture], text=True, capture_output=True,
-                        timeout=30, **process_options)
-if result.returncode:
-    raise RuntimeError(result.stderr)
+fixture_sql = Path(__file__).with_name("fixtures_procedures.sql").read_text(encoding="utf-8")
+query(fixture_sql)
 
 query("""
 DO $$ DECLARE r UUID; c UUID; d UUID; BEGIN

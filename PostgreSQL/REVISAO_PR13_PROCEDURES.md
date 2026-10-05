@@ -9,7 +9,7 @@
 
 O CI foi preservado: as alterações propostas em `../.github/workflows/ci.yml` foram revertidas a pedido do responsável pelas procedures. Os testes deste pacote não são executados automaticamente pelo workflow atual; sua integração deve ser decidida pelo responsável pelo CI.
 
-Scripts 01, 02 e 03 não foram alterados neste pacote. O campo de ordem B2C e suas constraints já estavam presentes.
+Considerando a PR inteira, os Scripts 01 e 02 foram alterados: `01_structure.sql` adiciona chaves de idempotência, constraints de unicidade e `delivery_pev.processing_order`; `02_check_constraints.sql` adiciona `ck_delivery_pev_order`. `03_indexes.sql` não foi alterado. Essas mudanças estruturais já estavam presentes antes da última rodada de correções das procedures.
 
 ## Comentários atendidos
 
@@ -54,6 +54,8 @@ python3 PostgreSQL/tests/procedures_concurrency.py
 
 Os testes concorrentes deixam fixtures no banco descartável. Para repetir a instalação/concorrência, usar outra base vazia. Não reutilizar uma base com fixtures ou tabelas do projeto já instaladas.
 
+O executor Python lê `fixtures_procedures.sql` da própria pasta de testes e envia seu conteúdo pelo stdin ao psql, tanto no modo local quanto no Docker. Não depende de uma cópia da fixture em `/tmp` no contêiner.
+
 ## Evidências e limite da validação local
 
 Executado em PostgreSQL **16.15** isolado no Docker:
@@ -67,5 +69,3 @@ Executado em PostgreSQL **16.15** isolado no Docker:
 **A bateria final funcional e os sete cenários concorrentes foram executados e passaram sobre o código final.** A execução anteriormente pendente foi posteriormente autorizada e concluída. Os testes não alteraram arquivos do repositório nem utilizaram o banco de trabalho.
 
 Essa evidência cobre os cenários implementados nos testes, não garante ausência de qualquer defeito nem substitui a revisão do parceiro. A nova análise CI/Sonar da PR ainda deve ser conferida após o envio; a validação de negócio relatada aqui foi executada localmente, não pelo workflow atual.
-
-Não houve commit, push, alteração de comentários da PR nem merge por esta tarefa. A validação local foi concluída; a aprovação continua dependente do envio das alterações e da revisão do parceiro.
