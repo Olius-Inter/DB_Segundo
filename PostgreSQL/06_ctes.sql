@@ -14,11 +14,16 @@ consultas B2B/B2C para permitir executar cada consulta independentemente.
 Para consultar outro ano, substituir a expressão ranking_year em parameters
 por um inteiro, por exemplo: 2026::INTEGER AS ranking_year.
 
-A seleção de participantes por solicitação ainda depende da definição do
-período/status B2B e do equivalente B2C. Estas consultas retornam somente
-participantes com operações RECORDED e cálculo vigente no ano. Incluem score
-zero quando ele resulta dessas operações. Não são a lista final de elegíveis.
-O DENSE_RANK() será integrado à base de participantes quando essa regra fechar.
+Participação: pelo menos uma operação RECORDED no ano consultado, com cálculo
+vigente. B2B considera collection; B2C considera delivery_pev. Solicitações
+sem coleta não habilitam participação. ANNULLED fica fora dos dois perfis.
+No B2B, SUCCESSFUL e UNSUCCESSFUL são resultados válidos: a coleta malsucedida
+participa com a penalidade vigente. Score zero não exclui quem tem operação
+válida. Operações de outros anos não habilitam participação no ano consultado.
+Os Sorted Sets do Redis recebem participant_id e annual_points, separados
+por perfil e ano. A publicação e a remoção de membros que deixem de ser
+elegíveis após anulações cabem à integração, após o commit no PostgreSQL.
+A exibição de posições empatadas (1, 1, 2) será tratada na leitura do ranking.
 */
 
 -- =============================================================================
