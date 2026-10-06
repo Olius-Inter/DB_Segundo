@@ -48,9 +48,12 @@ year_context AS (
         make_timestamptz(p.ranking_year, 1, 1, 0, 0, 0, p.ranking_timezone) AS year_start,
         make_timestamptz(p.ranking_year + 1, 1, 1, 0, 0, 0, p.ranking_timezone) AS next_year_start
     FROM parameters AS p
-)
-SELECT ranking_year, ranking_timezone, year_start, next_year_start
-FROM year_context;
+),
+current_calculations AS (
+    SELECT pc.user_id, pc.collection_id, pc.delivery_pev_id, pc.points_total
+    FROM public.point_calculation AS pc
+    WHERE pc.is_current = TRUE
+),
 
 -- =============================================================================
 -- 2. SOMENTE B2B — piso zero sequencial por estabelecimento
@@ -60,23 +63,6 @@ FROM year_context;
 -- O bônus de recorrência já está em points_total e considera o histórico
 -- geral: não recalcular a recorrência usando apenas as coletas deste ano.
 
-WITH parameters AS (
-    SELECT
-        EXTRACT(YEAR FROM CURRENT_TIMESTAMP AT TIME ZONE 'America/Sao_Paulo')::INTEGER AS ranking_year,
-        'America/Sao_Paulo'::TEXT AS ranking_timezone
-),
-year_context AS (
-    SELECT
-        p.ranking_year,
-        make_timestamptz(p.ranking_year, 1, 1, 0, 0, 0, p.ranking_timezone) AS year_start,
-        make_timestamptz(p.ranking_year + 1, 1, 1, 0, 0, 0, p.ranking_timezone) AS next_year_start
-    FROM parameters AS p
-),
-current_calculations AS (
-    SELECT pc.user_id, pc.collection_id, pc.delivery_pev_id, pc.points_total
-    FROM public.point_calculation AS pc
-    WHERE pc.is_current = TRUE
-),
 valid_collections AS (
     SELECT
         yc.ranking_year,
@@ -128,7 +114,7 @@ last_operations AS (
         ) AS operation_position
     FROM annual_balances AS ab
 ),
-annual_scores AS (
+b2b_annual_scores AS (
     -- O saldo final é o da última operação, não o maior saldo do ano.
     SELECT
         lo.ranking_year,
@@ -136,10 +122,7 @@ annual_scores AS (
         lo.annual_balance AS annual_points
     FROM last_operations AS lo
     WHERE lo.operation_position = 1
-)
-SELECT ranking_year, participant_id, annual_points
-FROM annual_scores
-ORDER BY annual_points DESC, participant_id;
+),
 
 -- =============================================================================
 -- 3. SOMENTE B2C — soma anual por cidadão beneficiário
@@ -148,23 +131,6 @@ ORDER BY annual_points DESC, participant_id;
 -- Os pontos pertencem ao cidadão beneficiário, não ao responsável pelo PEV.
 -- B2C não precisa de janelas de piso zero: a soma por cidadão é suficiente.
 
-WITH parameters AS (
-    SELECT
-        EXTRACT(YEAR FROM CURRENT_TIMESTAMP AT TIME ZONE 'America/Sao_Paulo')::INTEGER AS ranking_year,
-        'America/Sao_Paulo'::TEXT AS ranking_timezone
-),
-year_context AS (
-    SELECT
-        p.ranking_year,
-        make_timestamptz(p.ranking_year, 1, 1, 0, 0, 0, p.ranking_timezone) AS year_start,
-        make_timestamptz(p.ranking_year + 1, 1, 1, 0, 0, 0, p.ranking_timezone) AS next_year_start
-    FROM parameters AS p
-),
-current_calculations AS (
-    SELECT pc.user_id, pc.collection_id, pc.delivery_pev_id, pc.points_total
-    FROM public.point_calculation AS pc
-    WHERE pc.is_current = TRUE
-),
 valid_deliveries AS (
     SELECT
         yc.ranking_year,
@@ -179,14 +145,27 @@ valid_deliveries AS (
       AND d.delivery_date >= yc.year_start
       AND d.delivery_date < yc.next_year_start
 ),
-annual_scores AS (
+b2c_annual_scores AS (
     SELECT
         vd.ranking_year,
         vd.citizen_id AS participant_id,
         SUM(vd.points_total) AS annual_points
     FROM valid_deliveries AS vd
     GROUP BY vd.ranking_year, vd.citizen_id
+),
+
+-- =============================================================================
+-- 4. AMBOS OS PERFIS - resultafo para publicação nos Sorted Sets separados
+-- =============================================================================
+
+annual_scores AS (
+    SELECT 'B2B'::TEXT AS profile, b.*
+    FROM b2b_annual_scores AS b
+    UNION ALL
+    SELECT 'B2C'::TEXT AS profile, c.*
+    FROM b2c_annual_scores AS c
 )
-SELECT ranking_year, participant_id, annual_points
+SELECT profile, ranking_year, participant_id, annual_points
 FROM annual_scores
-ORDER BY annual_points DESC, participant_id;
+-- Para consultar apenas um perfil, acrescenter WHERE profile = 'B2B' ou 'B2C'.
+ORDER BY profile, annual_points DESC, participant_id;
