@@ -463,6 +463,7 @@ id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     establishment_id UUID NOT NULL,
     subscription_cycle_id UUID NOT NULL,
+    idempotency_key UUID NOT NULL,
     approved_by UUID,
     approved_at TIMESTAMPTZ,
     admin_type user_type_t GENERATED ALWAYS AS ('ADMIN'::user_type_t) STORED,
@@ -493,7 +494,8 @@ id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     CONSTRAINT fk_request_arrival_driver FOREIGN KEY (arrival_driver_id)
         REFERENCES driver (id) ON UPDATE RESTRICT ON DELETE RESTRICT,
     CONSTRAINT fk_request_service_accepted_by FOREIGN KEY (service_accepted_by)
-        REFERENCES establishment (id) ON UPDATE RESTRICT ON DELETE RESTRICT
+        REFERENCES establishment (id) ON UPDATE RESTRICT ON DELETE RESTRICT,
+    CONSTRAINT uq_request_idempotency UNIQUE (establishment_id, idempotency_key)
 );
 
 COMMENT ON TABLE collection_request IS 'Reserva estimativa + uma vaga desde PENDING no ciclo de origem. Após coleta, não permitir cancelamento.';
@@ -581,8 +583,10 @@ id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     delivery_date TIMESTAMPTZ NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     citizen_id UUID NOT NULL,
+    processing_order BIGINT NOT NULL,
     pev_id UUID NOT NULL,
     validated_by UUID NOT NULL,
+    idempotency_key UUID NOT NULL,
     record_status record_status_t NOT NULL DEFAULT 'RECORDED',
     revision INTEGER NOT NULL DEFAULT 1,
     corrected_at TIMESTAMPTZ,
@@ -590,6 +594,8 @@ id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     correction_reason TEXT,
     admin_type user_type_t GENERATED ALWAYS AS ('ADMIN'::user_type_t) STORED,
     CONSTRAINT uq_delivery_owner UNIQUE (id, citizen_id),
+    CONSTRAINT uq_delivery_order UNIQUE (citizen_id, processing_order),
+    CONSTRAINT uq_delivery_idempotency UNIQUE (idempotency_key),
     CONSTRAINT fk_delivery_citizen FOREIGN KEY (citizen_id)
         REFERENCES citizens (id) ON UPDATE RESTRICT ON DELETE RESTRICT,
     -- A FK preserva o vínculo mesmo se o PEV for inativado posteriormente.
@@ -701,6 +707,8 @@ COMMENT ON COLUMN collection_request.forfeited_volume_liters IS
 'Franquia perdida por cancelamento tardio; não representa óleo recolhido, pontos ou volume ambiental.';
 COMMENT ON COLUMN collection.processing_order IS
 'Ordem fixa por estabelecimento para reconstruir pontos e piso zero, independente da data física da visita.';
+COMMENT ON COLUMN delivery_pev.processing_order IS 
+'Ordem fixa por cidadão para reconstruir pontos e saldos, independente da data física da entrega. Atribuída sob bloqueio do cidadão e preservada nas correções.';
 COMMENT ON COLUMN point_calculation.revision IS
 'Revisão do cálculo, inclusive por correção de evento anterior; não precisa coincidir com a revisão da coleta.';
 

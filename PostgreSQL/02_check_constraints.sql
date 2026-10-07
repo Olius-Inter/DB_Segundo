@@ -530,6 +530,12 @@ ALTER TABLE delivery_pev
     ADD CONSTRAINT ck_delivery_pev_dates
     CHECK (isfinite(delivery_date) AND isfinite(created_at) AND delivery_date <= created_at);
 
+-- A ordem B2C é positiva e independente da data física da entrega.
+-- A atribuição e a preservação da ordem dependem das rotinas.
+ALTER TABLE delivery_pev
+    ADD CONSTRAINT ck_delivery_pev_order
+    CHECK (processing_order > 0);
+
 -- Correções de coleta e entrega seguem a mesma regra: revisão inicial sem
 -- metadados de correção; revisão posterior exige autor, instante e justificativa.
 -- Anulação exige revisão posterior. A FK verifica ADMIN; incrementar a revisão,

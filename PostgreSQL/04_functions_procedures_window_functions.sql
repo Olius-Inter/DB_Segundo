@@ -40,6 +40,12 @@ RETURNS TABLE (
 LANGUAGE plpgsql
 STABLE
 AS $$
+DECLARE
+    c_subscription_active CONSTANT public.subscription_status_t := 'ACTIVE';
+    c_request_pending CONSTANT public.request_status_t := 'PENDING';
+    c_request_approved CONSTANT public.request_status_t := 'APPROVED';
+    c_request_cancelled CONSTANT public.request_status_t := 'CANCELLED';
+    c_recorded CONSTANT public.record_status_t := 'RECORDED';
 BEGIN
     IF NOT EXISTS (
         SELECT 1
@@ -57,7 +63,7 @@ BEGIN
             sc.establishment_id,
             sc.volume_limit_liters,
             sc.collection_limit,
-            (es.status = 'ACTIVE'::public.subscription_status_t) AS is_subscription_active,
+            (es.status = c_subscription_active) AS is_subscription_active,
             (CURRENT_TIMESTAMP >= sc.starts_at AND CURRENT_TIMESTAMP < sc.ends_at) AS is_cycle_current
         FROM public.subscription_cycle AS sc
         JOIN public.establishment_subscription AS es
@@ -75,7 +81,7 @@ BEGIN
             COUNT(*)::BIGINT AS collection_slots
         FROM public.collection_request AS cr
         WHERE cr.subscription_cycle_id = p_subscription_cycle_id
-          AND cr.status IN ('PENDING'::public.request_status_t, 'APPROVED'::public.request_status_t)
+          AND cr.status IN (c_request_pending, c_request_approved)
           AND NOT EXISTS (
               SELECT 1
               FROM public.collection AS c
@@ -94,7 +100,7 @@ BEGIN
         JOIN public.collection_request AS cr
             ON cr.id = c.collection_request_id
         WHERE cr.subscription_cycle_id = p_subscription_cycle_id
-          AND c.record_status = 'RECORDED'::public.record_status_t
+          AND c.record_status = c_recorded
         GROUP BY cr.subscription_cycle_id
     ),
     forfeited AS (
@@ -106,7 +112,7 @@ BEGIN
             COALESCE(SUM(cr.forfeited_collection_slots), 0)::BIGINT AS collection_slots
         FROM public.collection_request AS cr
         WHERE cr.subscription_cycle_id = p_subscription_cycle_id
-          AND cr.status = 'CANCELLED'::public.request_status_t
+          AND cr.status = c_request_cancelled
         GROUP BY cr.subscription_cycle_id
     ),
     availability AS (
@@ -190,6 +196,14 @@ LANGUAGE plpgsql
 STABLE
 AS $$
 DECLARE
+    c_failure_penalty CONSTANT BIGINT := -50;
+    c_success_bonus CONSTANT BIGINT := 50;
+    c_recurrence_cap CONSTANT BIGINT := 100;
+    c_recurrence_interval CONSTANT BIGINT := 10;
+    c_unsuccessful CONSTANT public.collection_result_t := 'UNSUCCESSFUL';
+    c_successful CONSTANT public.collection_result_t := 'SUCCESSFUL';
+    c_annulled CONSTANT public.record_status_t := 'ANNULLED';
+    c_recorded CONSTANT public.record_status_t := 'RECORDED';
     v_collection public.collection%ROWTYPE;
     v_successful_collections_count BIGINT;
 BEGIN
@@ -211,8 +225,8 @@ BEGIN
     FROM public.collection AS c
     WHERE c.establishment_id = v_collection.establishment_id
       AND c.processing_order <= v_collection.processing_order
-      AND c.record_status = 'RECORDED'::public.record_status_t
-      AND c.result = 'SUCCESSFUL'::public.collection_result_t;
+      AND c.record_status = c_recorded
+      AND c.result = c_successful;
 
     RETURN QUERY
     SELECT
@@ -220,38 +234,38 @@ BEGIN
         v_collection.establishment_id,
         v_successful_collections_count,
         CASE
-            WHEN v_collection.record_status = 'RECORDED'::public.record_status_t
-             AND v_collection.result = 'SUCCESSFUL'::public.collection_result_t
+            WHEN v_collection.record_status = c_recorded
+             AND v_collection.result = c_successful
                 THEN FLOOR(v_collection.collected_volume_liters)::BIGINT
             ELSE 0::BIGINT
         END AS volume_points,
         CASE
-            WHEN v_collection.record_status = 'RECORDED'::public.record_status_t
-             AND v_collection.result = 'SUCCESSFUL'::public.collection_result_t
-                THEN 50::BIGINT
+            WHEN v_collection.record_status = c_recorded
+             AND v_collection.result = c_successful
+                THEN c_success_bonus
             ELSE 0::BIGINT
         END AS success_bonus_points,
         CASE
-            WHEN v_collection.record_status = 'RECORDED'::public.record_status_t
-             AND v_collection.result = 'SUCCESSFUL'::public.collection_result_t
-             AND v_successful_collections_count % 10 = 0
-                THEN LEAST(v_successful_collections_count, 100::BIGINT)
+            WHEN v_collection.record_status = c_recorded
+             AND v_collection.result = c_successful
+             AND v_successful_collections_count % c_recurrence_interval = 0
+                THEN LEAST(v_successful_collections_count, c_recurrence_cap)
             ELSE 0::BIGINT
         END AS recurrence_bonus_points,
         CASE
-            WHEN v_collection.record_status = 'RECORDED'::public.record_status_t
-             AND v_collection.result = 'UNSUCCESSFUL'::public.collection_result_t
-                THEN -50::BIGINT
+            WHEN v_collection.record_status = c_recorded
+             AND v_collection.result = c_unsuccessful
+                THEN c_failure_penalty
             ELSE 0::BIGINT
         END AS failure_penalty_points,
         CASE
-            WHEN v_collection.record_status = 'ANNULLED'::public.record_status_t THEN 0::BIGINT
-            WHEN v_collection.result = 'UNSUCCESSFUL'::public.collection_result_t THEN -50::BIGINT
+            WHEN v_collection.record_status = c_annulled THEN 0::BIGINT
+            WHEN v_collection.result = c_unsuccessful THEN c_failure_penalty
             ELSE FLOOR(v_collection.collected_volume_liters)::BIGINT
-                + 50::BIGINT
+                + c_success_bonus
                 + CASE
-                    WHEN v_successful_collections_count % 10 = 0
-                        THEN LEAST(v_successful_collections_count, 100::BIGINT)
+                    WHEN v_successful_collections_count % c_recurrence_interval = 0
+                        THEN LEAST(v_successful_collections_count, c_recurrence_cap)
                     ELSE 0::BIGINT
                 END
         END AS nominal_points_total;
@@ -284,6 +298,7 @@ LANGUAGE plpgsql
 STABLE
 AS $$
 DECLARE
+    c_recorded CONSTANT public.record_status_t := 'RECORDED';
     v_eligible_volume_liters NUMERIC;
 BEGIN
     IF NOT EXISTS (
@@ -302,7 +317,7 @@ BEGIN
     INTO v_eligible_volume_liters
     FROM public.collection AS c
     WHERE c.establishment_id = p_establishment_id
-      AND c.record_status = 'RECORDED'::public.record_status_t;
+      AND c.record_status = c_recorded;
 
     -- Sem certificate_level cadastrado, o SELECT retorna zero linhas: não é
     -- criado um nível artificial apenas para sinalizar falta de configuração.
