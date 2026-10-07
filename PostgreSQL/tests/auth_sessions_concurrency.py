@@ -132,5 +132,3 @@ pair('login seguido de inativação não deixa sessão ativa',
      "UPDATE public.users SET status='INACTIVE' WHERE id='"+uid+"';")
 assert_db("(SELECT COUNT(*)=2 AND bool_and(revoked_at IS NOT NULL) FROM public.auth_session WHERE user_id='"+uid+"')")
 print('PASS: sete disputas concorrentes; revogação confirmada após COMMIT')
-
-
