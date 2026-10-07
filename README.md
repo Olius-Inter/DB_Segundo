@@ -9,6 +9,17 @@ O projeto utiliza diferentes tecnologias de armazenamento, cada uma destinada a 
 * **Redis** — Armazenamento em memória para dados temporários e operações de alta velocidade.
 * **Neo4j** — Banco de dados orientado a grafos.
 
+## Data Mart e BI
+
+O recorte analítico de coletas, entregas e solicitações usa views materializadas
+em star schema no PostgreSQL e ingestão por lote no Databricks. Ranking é uma
+tarefa separada.
+
+* **PostgreSQL/07_materialized_views.sql** — instalação das fatos e dimensões.
+* **PostgreSQL/08_refresh_materialized_views.sql** — refresh manual coordenado.
+* **Databricks/** — estrutura Delta, ingestão Python, views de dashboards e verificações.
+* [Guia do Data Mart](Databricks/documents/README.md) — conexão, sequência de execução, modelo e atualização.
+
 ---
 
 # 📌 Boas Práticas
