@@ -1934,3 +1934,298 @@ COMMENT ON PROCEDURE public.correct_pev_delivery(UUID, INTEGER, UUID, public.rec
 'Corrige entrega B2C com revisão esperada, auditoria administrativa e reconstrução do saldo do cidadão.';
 
 COMMIT;
+
+
+/* SESSÕES — executar 01..05 antes de liberar a Core.
+   Funções de escrita retornam resultados controlados, sem COMMIT interno.
+   REFRESH_REUSED exige COMMIT antes do erro HTTP; rollback desfaz a revogação.
+   Política estrita: reenvio após resposta perdida pode exigir novo login.
+   Somente a Core autenticadora recebe EXECUTE; UUID informado não autentica.
+   SET de contexto nas funções restaura o contexto anterior ao sair, inclusive
+   em exceções. set_config(..., true) nunca deixa contexto no pool após COMMIT.
+*/
+BEGIN;
+
+CREATE OR REPLACE FUNCTION public.auth_idle_duration(p_user_type public.user_type_t)
+RETURNS INTERVAL LANGUAGE sql IMMUTABLE STRICT
+SET search_path = pg_catalog, pg_temp
+AS $$
+    SELECT CASE p_user_type
+        WHEN 'ADMIN'::public.user_type_t THEN INTERVAL '168 hours'
+        WHEN 'CITIZENS'::public.user_type_t THEN INTERVAL '360 hours'
+        WHEN 'ESTABLISHMENT'::public.user_type_t THEN INTERVAL '360 hours'
+    END;
+$$;
+COMMENT ON FUNCTION public.auth_idle_duration(public.user_type_t) IS
+'Fonte única da inatividade por perfil: duração decorrida em horas, sem dias de calendário/DST.';
+
+CREATE OR REPLACE FUNCTION public.open_auth_session(p_user_id UUID, p_token_hash BYTEA)
+RETURNS TABLE (result_code TEXT, session_id UUID, expires_at TIMESTAMPTZ)
+LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = pg_catalog, pg_temp
+SET app.audit_actor = 'SYSTEM'
+SET app.current_user_id = ''
+SET app.operational_driver_id = ''
+SET app.audit_reason = ''
+AS $$
+DECLARE v_user RECORD; v_now TIMESTAMPTZ; v_expiry TIMESTAMPTZ; v_id UUID;
+BEGIN
+    IF p_token_hash IS NULL OR octet_length(p_token_hash) <> 32 THEN
+        RETURN QUERY SELECT 'INVALID_INPUT'::TEXT, NULL::UUID, NULL::TIMESTAMPTZ; RETURN;
+    END IF;
+    SELECT u.id, u.status, u.user_type INTO v_user FROM public.users u
+    WHERE u.id = p_user_id FOR UPDATE;
+    IF NOT FOUND OR v_user.status <> 'ACTIVE'::public.active_status_t THEN
+        RETURN QUERY SELECT 'USER_UNAVAILABLE'::TEXT, NULL::UUID, NULL::TIMESTAMPTZ; RETURN;
+    END IF;
+    v_now := clock_timestamp();
+    v_expiry := v_now + public.auth_idle_duration(v_user.user_type);
+    PERFORM set_config('app.audit_actor', 'USER', true);
+    PERFORM set_config('app.current_user_id', p_user_id::TEXT, true);
+    PERFORM set_config('app.audit_reason', 'Login autenticado pela Core', true);
+    INSERT INTO public.auth_session(user_id, created_at, last_renewed_at, idle_expires_at, updated_at)
+    VALUES(p_user_id, v_now, v_now, v_expiry, v_now) RETURNING id INTO v_id;
+    INSERT INTO public.auth_refresh_token(session_id, token_hash, generation, issued_at, expires_at)
+    VALUES(v_id, p_token_hash, 1, v_now, v_expiry);
+    RETURN QUERY SELECT 'OK'::TEXT, v_id, v_expiry;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.rotate_auth_refresh_token(p_token_hash BYTEA, p_next_token_hash BYTEA)
+RETURNS TABLE (result_code TEXT, session_id UUID, user_id UUID, expires_at TIMESTAMPTZ)
+LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = pg_catalog, pg_temp
+SET app.audit_actor = 'SYSTEM'
+SET app.current_user_id = ''
+SET app.operational_driver_id = ''
+SET app.audit_reason = ''
+AS $$
+DECLARE v_uid UUID; v_sid UUID; v_tid UUID; v_user RECORD;
+        v_session public.auth_session%ROWTYPE; v_token public.auth_refresh_token%ROWTYPE;
+        v_now TIMESTAMPTZ; v_expiry TIMESTAMPTZ;
+BEGIN
+    IF p_token_hash IS NULL OR octet_length(p_token_hash) <> 32 THEN
+        RETURN QUERY SELECT 'INVALID_INPUT'::TEXT, NULL::UUID, NULL::UUID, NULL::TIMESTAMPTZ; RETURN;
+    END IF;
+    SELECT s.user_id, s.id, t.id INTO v_uid, v_sid, v_tid
+    FROM public.auth_refresh_token t JOIN public.auth_session s ON s.id = t.session_id
+    WHERE t.token_hash = p_token_hash;
+    IF NOT FOUND THEN
+        RETURN QUERY SELECT 'INVALID_TOKEN'::TEXT, NULL::UUID, NULL::UUID, NULL::TIMESTAMPTZ; RETURN;
+    END IF;
+    -- Mesma hierarquia de login, logout e UPDATE de inativação: usuário → sessão → token.
+    SELECT u.id, u.status, u.user_type INTO v_user FROM public.users u WHERE u.id = v_uid FOR UPDATE;
+    IF NOT FOUND THEN
+        RETURN QUERY SELECT 'INVALID_TOKEN'::TEXT, NULL::UUID, NULL::UUID, NULL::TIMESTAMPTZ; RETURN;
+    END IF;
+    SELECT s.* INTO v_session FROM public.auth_session s
+    WHERE s.id = v_sid AND s.user_id = v_uid FOR UPDATE;
+    IF NOT FOUND THEN
+        RETURN QUERY SELECT 'INVALID_TOKEN'::TEXT, NULL::UUID, NULL::UUID, NULL::TIMESTAMPTZ; RETURN;
+    END IF;
+    SELECT t.* INTO v_token FROM public.auth_refresh_token t
+    WHERE t.id = v_tid AND t.session_id = v_sid AND t.token_hash = p_token_hash FOR UPDATE;
+    IF NOT FOUND THEN
+        RETURN QUERY SELECT 'INVALID_TOKEN'::TEXT, NULL::UUID, NULL::UUID, NULL::TIMESTAMPTZ; RETURN;
+    END IF;
+    v_now := clock_timestamp();
+    IF v_user.status <> 'ACTIVE'::public.active_status_t THEN
+        RETURN QUERY SELECT 'USER_INACTIVE'::TEXT, NULL::UUID, NULL::UUID, NULL::TIMESTAMPTZ; RETURN;
+    ELSIF v_session.revoked_at IS NOT NULL THEN
+        RETURN QUERY SELECT 'SESSION_REVOKED'::TEXT, NULL::UUID, NULL::UUID, NULL::TIMESTAMPTZ; RETURN;
+    ELSIF v_now >= v_session.idle_expires_at THEN
+        RETURN QUERY SELECT 'SESSION_EXPIRED'::TEXT, NULL::UUID, NULL::UUID, NULL::TIMESTAMPTZ; RETURN;
+    ELSIF v_token.consumed_at IS NOT NULL THEN
+        -- Posse de segredo já consumido não comprova autoria do titular.
+        PERFORM set_config('app.audit_reason', 'Reutilização de refresh token consumido', true);
+        UPDATE public.auth_session SET revoked_at = v_now, revocation_reason = 'REFRESH_REUSE'
+        WHERE id = v_sid;
+        RETURN QUERY SELECT 'REFRESH_REUSED'::TEXT, NULL::UUID, NULL::UUID, NULL::TIMESTAMPTZ; RETURN;
+    ELSIF v_now >= v_token.expires_at THEN
+        RETURN QUERY SELECT 'TOKEN_EXPIRED'::TEXT, NULL::UUID, NULL::UUID, NULL::TIMESTAMPTZ; RETURN;
+    END IF;
+    -- Mesmo sucessor inválido não pode mascarar reutilização de token consumido.
+    IF p_next_token_hash IS NULL OR octet_length(p_next_token_hash) <> 32
+       OR p_token_hash = p_next_token_hash THEN
+        RETURN QUERY SELECT 'INVALID_INPUT'::TEXT, NULL::UUID, NULL::UUID, NULL::TIMESTAMPTZ; RETURN;
+    END IF;
+    v_expiry := v_now + public.auth_idle_duration(v_user.user_type);
+    PERFORM set_config('app.audit_actor', 'USER', true);
+    PERFORM set_config('app.current_user_id', v_uid::TEXT, true);
+    PERFORM set_config('app.audit_reason', 'Rotação válida de refresh token', true);
+    UPDATE public.auth_refresh_token SET consumed_at = v_now WHERE id = v_tid;
+    INSERT INTO public.auth_refresh_token(session_id, token_hash, generation, issued_at, expires_at)
+    VALUES(v_sid, p_next_token_hash, v_token.generation + 1, v_now, v_expiry);
+    UPDATE public.auth_session SET last_renewed_at = v_now, idle_expires_at = v_expiry WHERE id = v_sid;
+    RETURN QUERY SELECT 'OK'::TEXT, v_sid, v_uid, v_expiry;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.revoke_auth_session(p_user_id UUID, p_session_id UUID)
+RETURNS TEXT
+LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = pg_catalog, pg_temp
+SET app.audit_actor = 'SYSTEM'
+SET app.current_user_id = ''
+SET app.operational_driver_id = ''
+SET app.audit_reason = ''
+AS $$
+DECLARE v_session public.auth_session%ROWTYPE;
+BEGIN
+    PERFORM 1 FROM public.users u WHERE u.id = p_user_id FOR UPDATE;
+    IF NOT FOUND THEN RETURN 'INVALID_SESSION'; END IF;
+    SELECT s.* INTO v_session FROM public.auth_session s
+    WHERE s.id = p_session_id AND s.user_id = p_user_id FOR UPDATE;
+    IF NOT FOUND THEN RETURN 'INVALID_SESSION'; END IF;
+    IF v_session.revoked_at IS NOT NULL THEN RETURN 'ALREADY_REVOKED'; END IF;
+    PERFORM set_config('app.audit_actor', 'USER', true);
+    PERFORM set_config('app.current_user_id', p_user_id::TEXT, true);
+    PERFORM set_config('app.audit_reason', 'Logout autenticado pela Core', true);
+    UPDATE public.auth_session SET revoked_at = clock_timestamp(), revocation_reason = 'LOGOUT'
+    WHERE id = p_session_id;
+    RETURN 'OK';
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.revoke_user_auth_sessions(p_user_id UUID)
+RETURNS TABLE (result_code TEXT, revoked_count BIGINT)
+LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = pg_catalog, pg_temp
+SET app.audit_actor = 'SYSTEM'
+SET app.current_user_id = ''
+SET app.operational_driver_id = ''
+SET app.audit_reason = ''
+AS $$
+DECLARE v_count BIGINT;
+BEGIN
+    PERFORM 1 FROM public.users u WHERE u.id = p_user_id FOR UPDATE;
+    IF NOT FOUND THEN RETURN QUERY SELECT 'USER_UNAVAILABLE'::TEXT, 0::BIGINT; RETURN; END IF;
+    PERFORM set_config('app.audit_actor', 'USER', true);
+    PERFORM set_config('app.current_user_id', p_user_id::TEXT, true);
+    PERFORM set_config('app.audit_reason', 'Logout das sessões do titular autenticado', true);
+    UPDATE public.auth_session SET revoked_at = clock_timestamp(), revocation_reason = 'LOGOUT'
+    WHERE user_id = p_user_id AND revoked_at IS NULL;
+    GET DIAGNOSTICS v_count = ROW_COUNT;
+    RETURN QUERY SELECT 'OK'::TEXT, v_count;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.get_auth_session_status(p_user_id UUID, p_session_id UUID)
+RETURNS TABLE (is_valid BOOLEAN, user_status public.active_status_t,
+              user_type public.user_type_t, idle_expires_at TIMESTAMPTZ)
+LANGUAGE sql SECURITY DEFINER
+SET search_path = pg_catalog, pg_temp
+AS $$
+    SELECT COALESCE(u.status = 'ACTIVE'::public.active_status_t
+           AND s.revoked_at IS NULL AND s.idle_expires_at > clock_timestamp(), FALSE),
+           u.status, u.user_type, s.idle_expires_at
+    FROM (VALUES (1)) AS singleton(n)
+    LEFT JOIN public.auth_session s ON s.id = p_session_id AND s.user_id = p_user_id
+    LEFT JOIN public.users u ON u.id = s.user_id;
+$$;
+COMMENT ON FUNCTION public.get_auth_session_status(UUID, UUID) IS
+'Core verifica sub/sid do JWT. Consulta não renova prazo; segunda API consulta a Core, não estas tabelas.';
+
+-- Bloqueio público na criação; ownership e acessos: access_control/01_roles.sql.
+REVOKE ALL ON FUNCTION public.auth_idle_duration(public.user_type_t) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.open_auth_session(UUID, BYTEA) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.rotate_auth_refresh_token(BYTEA, BYTEA) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.revoke_auth_session(UUID, UUID) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.revoke_user_auth_sessions(UUID) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.get_auth_session_status(UUID, UUID) FROM PUBLIC;
+-- Entradas estreitas para fatos operacionais. Horários são do servidor;
+-- ler o QR não comprova presença nem identidade: essas verificações são da Core.
+CREATE OR REPLACE FUNCTION public.record_collection_arrival(p_request_id uuid, p_driver_id uuid)
+RETURNS timestamptz LANGUAGE plpgsql SECURITY INVOKER
+SET search_path = pg_catalog, public, pg_temp AS $$
+DECLARE r public.collection_request%ROWTYPE; t timestamptz;
+BEGIN
+    PERFORM 1 FROM public.driver WHERE id=p_driver_id AND status='ACTIVE' FOR SHARE;
+    IF NOT FOUND THEN RAISE EXCEPTION 'Motorista inexistente ou inativo.' USING ERRCODE='22023'; END IF;
+    SELECT * INTO r FROM public.collection_request WHERE id=p_request_id FOR UPDATE;
+    IF NOT FOUND THEN RAISE EXCEPTION 'Solicitação inexistente.' USING ERRCODE='22023'; END IF;
+    IF r.status <> 'APPROVED' OR r.scheduled_at IS NULL THEN
+        RAISE EXCEPTION 'Chegada exige pedido aprovado e agendado.' USING ERRCODE='22023';
+    END IF;
+    IF r.arrived_at IS NOT NULL THEN
+        IF r.arrival_driver_id=p_driver_id THEN RETURN r.arrived_at; END IF;
+        RAISE EXCEPTION 'Chegada já registrada por outro motorista.' USING ERRCODE='22023';
+    END IF;
+    IF EXISTS(SELECT 1 FROM public.collection WHERE collection_request_id=p_request_id) THEN
+        RAISE EXCEPTION 'Coleta já registrada.' USING ERRCODE='22023';
+    END IF;
+    t:=clock_timestamp();
+    UPDATE public.collection_request SET arrived_at=t,arrival_recorded_at=t,arrival_driver_id=p_driver_id WHERE id=p_request_id;
+    RETURN t;
+END $$;
+
+CREATE OR REPLACE FUNCTION public.accept_collection_service(p_request_id uuid, p_establishment_id uuid)
+RETURNS timestamptz LANGUAGE plpgsql SECURITY INVOKER
+SET search_path = pg_catalog, public, pg_temp AS $$
+DECLARE r public.collection_request%ROWTYPE; t timestamptz;
+BEGIN
+    PERFORM 1 FROM public.users WHERE id=p_establishment_id AND user_type='ESTABLISHMENT' AND status='ACTIVE' FOR SHARE;
+    IF NOT FOUND THEN RAISE EXCEPTION 'Estabelecimento inexistente ou inativo.' USING ERRCODE='22023'; END IF;
+    SELECT * INTO r FROM public.collection_request WHERE id=p_request_id FOR UPDATE;
+    IF NOT FOUND OR r.establishment_id IS DISTINCT FROM p_establishment_id THEN
+        RAISE EXCEPTION 'Solicitação não pertence ao estabelecimento.' USING ERRCODE='22023';
+    END IF;
+    IF r.status <> 'APPROVED' OR r.arrived_at IS NULL THEN
+        RAISE EXCEPTION 'Aceite exige aprovação e chegada registrada.' USING ERRCODE='22023';
+    END IF;
+    IF r.service_accepted_at IS NOT NULL THEN RETURN r.service_accepted_at; END IF;
+    IF EXISTS(SELECT 1 FROM public.collection WHERE collection_request_id=p_request_id) THEN
+        RAISE EXCEPTION 'Coleta já registrada.' USING ERRCODE='22023';
+    END IF;
+    t:=clock_timestamp();
+    UPDATE public.collection_request SET service_accepted_at=t,service_acceptance_recorded_at=t,service_accepted_by=p_establishment_id WHERE id=p_request_id;
+    RETURN t;
+END $$;
+
+-- Contrato aprovado: rejeitar somente PENDING; aprovados usam cancelamento.
+-- Não há coluna de motivo de rejeição: preservá-lo no contexto da auditoria.
+CREATE OR REPLACE FUNCTION public.reject_collection_request(p_request_id uuid, p_admin_id uuid, p_reason text)
+RETURNS void LANGUAGE plpgsql SECURITY INVOKER
+SET search_path = pg_catalog, public, pg_temp AS $$
+DECLARE r public.collection_request%ROWTYPE; previous_reason text;
+BEGIN
+    IF p_reason IS NULL OR btrim(p_reason)='' THEN RAISE EXCEPTION 'Informe motivo de rejeição.' USING ERRCODE='22023'; END IF;
+    PERFORM 1 FROM public.users WHERE id=p_admin_id AND user_type='ADMIN' AND status='ACTIVE' FOR SHARE;
+    IF NOT FOUND THEN RAISE EXCEPTION 'Administrador inexistente ou inativo.' USING ERRCODE='22023'; END IF;
+    SELECT * INTO r FROM public.collection_request WHERE id=p_request_id FOR UPDATE;
+    IF NOT FOUND THEN RAISE EXCEPTION 'Solicitação inexistente.' USING ERRCODE='22023'; END IF;
+    IF r.status <> 'PENDING' OR r.arrived_at IS NOT NULL OR r.service_accepted_at IS NOT NULL
+        OR EXISTS(SELECT 1 FROM public.collection WHERE collection_request_id=p_request_id) THEN
+        RAISE EXCEPTION 'Rejeição exige pedido pendente sem atendimento.' USING ERRCODE='22023';
+    END IF;
+    previous_reason:=current_setting('app.audit_reason',true);
+    PERFORM set_config('app.audit_reason',p_reason,true);
+    UPDATE public.collection_request SET status='REJECTED' WHERE id=p_request_id;
+    PERFORM set_config('app.audit_reason',coalesce(previous_reason,''),true);
+END $$;
+
+-- A Core sincroniza estes estados após confirmação externa. PAID pertence
+-- exclusivamente à aplicação do pagamento; não liberar UPDATE(status) à API.
+CREATE OR REPLACE FUNCTION public.set_billing_charge_external_status(p_charge_id uuid, p_status public.charge_status_t)
+RETURNS void LANGUAGE plpgsql SECURITY INVOKER
+SET search_path = pg_catalog, public, pg_temp AS $$
+DECLARE r public.billing_charge%ROWTYPE;
+BEGIN
+    IF p_status IS NULL OR p_status NOT IN ('CANCELLATION_PENDING','CANCELLED','EXPIRED') THEN
+        RAISE EXCEPTION 'Estado externo não permitido.' USING ERRCODE='22023';
+    END IF;
+    SELECT * INTO r FROM public.billing_charge WHERE id=p_charge_id FOR UPDATE;
+    IF NOT FOUND THEN RAISE EXCEPTION 'Cobrança inexistente.' USING ERRCODE='22023'; END IF;
+    IF r.status=p_status THEN RETURN; END IF;
+    IF r.status NOT IN ('OPEN','CANCELLATION_PENDING') THEN
+        RAISE EXCEPTION 'Cobrança encerrada não pode ter estado sobrescrito.' USING ERRCODE='22023';
+    END IF;
+    UPDATE public.billing_charge SET status=p_status,
+        closed_at=CASE WHEN p_status='CANCELLATION_PENDING' THEN NULL ELSE clock_timestamp() END WHERE id=p_charge_id;
+END $$;
+
+REVOKE ALL ON FUNCTION public.record_collection_arrival(uuid,uuid) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.accept_collection_service(uuid,uuid) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.reject_collection_request(uuid,uuid,text) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.set_billing_charge_external_status(uuid,public.charge_status_t) FROM PUBLIC;
+COMMIT;
