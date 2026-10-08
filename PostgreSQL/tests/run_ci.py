@@ -53,8 +53,17 @@ def main():
     if query("empty-database", "SELECT count(*) FROM pg_tables WHERE schemaname='public';").strip() != "0":
         raise RuntimeError("A base de teste deve estar vazia; nenhum objeto será apagado pelo runner.")
     for name in ("01_structure.sql", "02_check_constraints.sql", "03_indexes.sql",
-                 "04_functions_procedures_window_functions.sql", "05_triggers.sql"):
+                 "04_functions_procedures.sql", "05_triggers.sql",
+                 "06_ctes.sql"):
         sql_file("PostgreSQL/" + name)
+    # Script 07 é o SELECT final da CTE do 06: validar no mesmo escopo WITH.
+    ctes = (ROOT / "PostgreSQL/06_ctes.sql").read_text(encoding="utf-8")
+    ranking = (ROOT / "PostgreSQL/07_window_functions.sql").read_text(encoding="utf-8")
+    final_select = "SELECT profile, ranking_year, participant_id, annual_points"
+    cte_body, separator, _ = ctes.rpartition(final_select)
+    if not separator:
+        raise RuntimeError("SELECT final do Script 06 não encontrado para validar o Script 07.")
+    query("annual-ranking", cte_body + ranking)
     query("profiler-init", "CREATE SCHEMA ci_metrics; CREATE EXTENSION plpgsql_check WITH SCHEMA ci_metrics;")
     enabled = query("profiler-enabled", "SELECT current_setting('plpgsql_check.profiler')='on' "
                     "AND current_setting('plpgsql_check.use_shared_stats_when_it_possible')='on' "
