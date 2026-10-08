@@ -1,0 +1,4 @@
+# Relatórios e arquivos temporários dos testes.
+/coverage/
+__pycache__/
+*.pyc
