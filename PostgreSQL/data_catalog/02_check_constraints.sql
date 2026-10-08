@@ -13,8 +13,8 @@ ALTER TABLE data_catalog_column
     ADD CONSTRAINT ck_data_catalog_column_text CHECK (
         btrim(column_name) <> '' AND btrim(description) <> ''
         AND btrim(source_reference) <> ''
-        AND COALESCE(length(btrim(business_rules)), 1) > 0
-        AND COALESCE(length(btrim(access_policy)), 1) > 0),
+        AND (business_rules IS NULL OR btrim(business_rules) <> '')
+        AND (access_policy IS NULL OR btrim(access_policy) <> '')),
     ADD CONSTRAINT ck_data_catalog_column_status CHECK (
         documentation_status IN ('DOCUMENTED', 'PENDING'));
 
