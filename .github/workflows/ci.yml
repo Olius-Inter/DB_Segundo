@@ -21,6 +21,7 @@ jobs:
       PGPASSWORD: postgres
       PGDATABASE: olius_test
       OLIUS_CI_DISPOSABLE: '1'
+      OLIUS_TEST_DOCKER_CONTAINER: olius-ci-db
 
     steps:
       - name: Checkout
@@ -28,18 +29,14 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Instalar cliente PostgreSQL
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y postgresql-client
-
       - name: Preparar PostgreSQL com medição de cobertura
         run: |
           docker build -t olius-postgres-coverage -f PostgreSQL/tests/Dockerfile.coverage .
           docker run -d --name olius-ci-db -p 127.0.0.1:5432:5432 \
+            -v "$GITHUB_WORKSPACE:/workspace" \
             -e POSTGRES_PASSWORD="$PGPASSWORD" -e POSTGRES_DB="$PGDATABASE" olius-postgres-coverage
           for attempt in $(seq 1 60); do
-            if pg_isready -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d "$PGDATABASE"; then
+            if docker exec olius-ci-db pg_isready -U "$PGUSER" -d "$PGDATABASE"; then
               exit 0
             fi
             sleep 1
