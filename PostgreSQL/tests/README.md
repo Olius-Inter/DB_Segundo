@@ -1,6 +1,6 @@
 # Testes PostgreSQL e cobertura
 
-O CI instala os scripts principais 01–05 em PostgreSQL 16.15 descartável e
+O CI instala os scripts principais 01–07 em PostgreSQL 16.15 descartável e
 executa regressões e disputas entre duas conexões. Qualquer erro interrompe a
 execução antes da análise do Sonar. Nenhum teste deve ser executado no Aiven.
 
@@ -12,6 +12,7 @@ Usa as variáveis `PGHOST`, `PGPORT`, `PGUSER`, `PGPASSWORD` e `PGDATABASE`.
 | Entrega presente no checkout | Testes executados |
 | --- | --- |
 | Scripts principais | `procedures_regression.sql` e `procedures_concurrency.py` |
+| Views de pontuação e ranking | `annual_views_regression.sql`, após instalação de 06 e 07 |
 | Sessões e tokens | `auth_sessions_regression.sql`, `auth_sessions_edges.sql`, `operational_regression.sql` e `auth_sessions_concurrency.py` |
 | Catálogo | Instalação 01–04 e verificação `05_validate.sql` |
 | Controle de acesso, catálogo e sessões | Também `catalog_access_regression.sql` e `api_access_regression.sql` |
@@ -22,6 +23,16 @@ funções de autenticação com `olius_api`. Ela não é uma entrega de controle
 acesso de produção. Quando os scripts oficiais estão presentes, o CI utiliza
 exclusivamente esses scripts e testa as contas reais do projeto. Uma branch
 com controle de acesso, mas sem catálogo ou sessões, falha por dependência.
+
+## Views normais de pontuação e ranking
+
+Os scripts 06 e 07 criam as views normais `public.vw_annual_scores` e
+`public.vw_annual_ranking`, respectivamente. O 07 consulta a view do 06,
+sem concatenar arquivos nem repetir CTEs. O contrato atual considera o ano
+corrente em São Paulo. `annual_views_regression.sql` usa as procedures e
+consulta as views para validar tipos, empates, piso zero, reenvios, correções,
+anulações, recorrência, revisões e fronteira anual. Termina com `ROLLBACK`.
+O Data Mart, Redis e Databricks não são dependências desses testes.
 
 ## Medição de cobertura
 

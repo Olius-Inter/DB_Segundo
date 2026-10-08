@@ -54,16 +54,8 @@ def main():
         raise RuntimeError("A base de teste deve estar vazia; nenhum objeto será apagado pelo runner.")
     for name in ("01_structure.sql", "02_check_constraints.sql", "03_indexes.sql",
                  "04_functions_procedures.sql", "05_triggers.sql",
-                 "06_ctes.sql"):
+                 "06_ctes.sql", "07_window_functions.sql"):
         sql_file("PostgreSQL/" + name)
-    # Script 07 é o SELECT final da CTE do 06: validar no mesmo escopo WITH.
-    ctes = (ROOT / "PostgreSQL/06_ctes.sql").read_text(encoding="utf-8")
-    ranking = (ROOT / "PostgreSQL/07_window_functions.sql").read_text(encoding="utf-8")
-    final_select = "SELECT profile, ranking_year, participant_id, annual_points"
-    cte_body, separator, _ = ctes.rpartition(final_select)
-    if not separator:
-        raise RuntimeError("SELECT final do Script 06 não encontrado para validar o Script 07.")
-    query("annual-ranking", cte_body + ranking)
     query("profiler-init", "CREATE SCHEMA ci_metrics; CREATE EXTENSION plpgsql_check WITH SCHEMA ci_metrics;")
     enabled = query("profiler-enabled", "SELECT current_setting('plpgsql_check.profiler')='on' "
                     "AND current_setting('plpgsql_check.use_shared_stats_when_it_possible')='on' "
@@ -98,6 +90,7 @@ def main():
     (REPORTS / "routine-inventory.json").write_text(inventory.strip(), encoding="utf-8")
     query("profiler-reset", "SELECT ci_metrics.plpgsql_profiler_reset_all();")
     sql_file("PostgreSQL/tests/procedures_regression.sql")
+    sql_file("PostgreSQL/tests/annual_views_regression.sql")
     if has_auth:
         sql_file("PostgreSQL/tests/auth_sessions_regression.sql")
         sql_file("PostgreSQL/tests/auth_sessions_edges.sql")

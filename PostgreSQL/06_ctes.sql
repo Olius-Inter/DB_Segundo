@@ -5,14 +5,17 @@ BANCO DE DADOS......: PostgreSQL 16.15 (alvo)
 SCRIPT..............: 06 - CTEs de Pontuação Anual
 ===============================================================================
 
-Consultas de leitura: não criam tabelas, functions ou procedures, não alteram
-saldos e não publicam no Redis. Dependem dos cálculos vigentes mantidos pelas
-rotinas do Script 04. Validar a integração após a aprovação dessas rotinas.
+Cria public.vw_annual_scores, uma view normal de pontuação do ano corrente.
+Executar após os scripts 01 a 05. As CTEs são compartilhadas por ambos os
+perfis e ficam dentro da definição da view, sem duplicar o cálculo no 07.
+Consultar a view executa o cálculo sobre os dados visíveis na transação;
+não armazena resultados, não exige REFRESH e não publica no Redis.
+Não altera o saldo geral, os certificados ou as revisões de pontuação.
 
-Cada instrução WITH tem seu próprio escopo. As CTEs comuns são repetidas nas
-consultas B2B/B2C para permitir executar cada consulta independentemente.
-Para consultar outro ano, substituir a expressão ranking_year em parameters
-por um inteiro, por exemplo: 2026::INTEGER AS ranking_year.
+O ano corrente é determinado no fuso America/Sao_Paulo, independentemente
+do TimeZone da sessão. A ampliação para todos os anos não faz parte deste
+script. Correções e anulações são refletidas na próxima consulta conforme
+o isolamento da transação e os cálculos vigentes mantidos pelo Script 04.
 
 Participação: pelo menos uma operação RECORDED no ano consultado, com cálculo
 vigente. B2B considera collection; B2C considera delivery_pev. Solicitações
@@ -23,19 +26,20 @@ válida. Operações de outros anos não habilitam participação no ano consult
 Os Sorted Sets do Redis recebem participant_id e annual_points, separados
 por perfil e ano. A publicação e a remoção de membros que deixem de ser
 elegíveis após anulações cabem à integração, após o commit no PostgreSQL.
-A exibição de posições empatadas (1, 1, 2) será tratada na leitura do ranking.
+O Script 07 consulta esta view para calcular posições empatadas (1, 1, 2).
 */
 
 -- =============================================================================
 -- 1. AMBOS OS PERFIS — parâmetros e limites anuais
 -- =============================================================================
--- parameters e year_context são comuns às consultas abaixo.
+-- parameters e year_context são compartilhados pelos dois perfis.
 -- current_calculations também é comum: somente a revisão vigente de cada
 -- evento. Não relacionar point_transaction aqui: os componentes poderiam
 -- multiplicar points_total. balance_after representa saldo geral, não anual.
 -- O ano usa o fuso oficial, independentemente do TimeZone da sessão.
 -- Intervalo [year_start, next_year_start): inclui o início, exclui o fim.
 
+CREATE OR REPLACE VIEW public.vw_annual_scores AS
 WITH parameters AS (
     SELECT
         EXTRACT(YEAR FROM CURRENT_TIMESTAMP AT TIME ZONE 'America/Sao_Paulo')::INTEGER AS ranking_year,
@@ -155,7 +159,7 @@ b2c_annual_scores AS (
 ),
 
 -- =============================================================================
--- 4. AMBOS OS PERFIS - resultafo para publicação nos Sorted Sets separados
+-- 4. AMBOS OS PERFIS — resultado para publicação nos Sorted Sets separados
 -- =============================================================================
 
 annual_scores AS (
@@ -166,6 +170,10 @@ annual_scores AS (
     FROM b2c_annual_scores AS c
 )
 SELECT profile, ranking_year, participant_id, annual_points
-FROM annual_scores
--- Para consultar apenas um perfil, acrescenter WHERE profile = 'B2B' ou 'B2C'.
-ORDER BY profile, annual_points DESC, participant_id;
+FROM annual_scores;
+
+COMMENT ON VIEW public.vw_annual_scores IS
+'Pontuação do ano corrente em America/Sao_Paulo: cálculos vigentes, operações RECORDED, piso zero sequencial B2B e soma B2C.';
+
+-- A ordenação pertence à consulta consumidora, não ao contrato da view.
+-- SELECT * FROM public.vw_annual_scores ORDER BY profile, annual_points DESC, participant_id;
