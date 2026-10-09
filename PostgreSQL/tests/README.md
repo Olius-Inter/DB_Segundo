@@ -11,7 +11,7 @@ Usa as variáveis `PGHOST`, `PGPORT`, `PGUSER`, `PGPASSWORD` e `PGDATABASE`.
 
 | Entrega presente no checkout | Testes executados |
 | --- | --- |
-| Scripts principais | `procedures_regression.sql` e `procedures_concurrency.py` |
+| Scripts principais | `procedures_regression.sql`, `functions_negative.sql`, `procedures_negative.sql` e `procedures_concurrency.py` |
 | Views de pontuação e ranking | `annual_views_regression.sql`, após instalação de 06 e 07 |
 | Sessões e tokens | `auth_sessions_regression.sql`, `auth_sessions_edges.sql`, `operational_regression.sql` e `auth_sessions_concurrency.py` |
 | Catálogo | Instalação 01–04 e verificação `05_validate.sql` |
@@ -35,6 +35,15 @@ anulações, recorrência, revisões e fronteira anual. Termina com `ROLLBACK`.
 O Data Mart, Redis e Databricks não são dependências desses testes.
 
 ## Medição de cobertura
+
+`functions_negative.sql` e `procedures_negative.sql` exercitam exceções das
+rotinas do Script 04: registros inexistentes, parâmetros inválidos, autorização,
+limite do ciclo e ausência de assinatura ativa. Usam `expect_error` para exigir
+o SQLSTATE esperado; sucesso inesperado ou outro erro reprova o teste. Também
+verificam ausência de efeitos indevidos em pontos, pedidos, entregas e benefícios.
+Cada arquivo cria suas próprias fixtures dentro de uma transação e termina com
+`ROLLBACK`. O runner os executa depois do reset do profiler, incluindo esses
+caminhos na medição de cobertura sem alterar código de produção.
 
 `Dockerfile.coverage` instala `plpgsql_check` somente na imagem de teste.
 O servidor inicia com o profiler ativo e armazenamento compartilhado para

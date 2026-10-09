@@ -90,6 +90,8 @@ def main():
     (REPORTS / "routine-inventory.json").write_text(inventory.strip(), encoding="utf-8")
     query("profiler-reset", "SELECT ci_metrics.plpgsql_profiler_reset_all();")
     sql_file("PostgreSQL/tests/procedures_regression.sql")
+    sql_file("PostgreSQL/tests/functions_negative.sql")
+    sql_file("PostgreSQL/tests/procedures_negative.sql")
     sql_file("PostgreSQL/tests/annual_views_regression.sql")
     if has_auth:
         sql_file("PostgreSQL/tests/auth_sessions_regression.sql")
