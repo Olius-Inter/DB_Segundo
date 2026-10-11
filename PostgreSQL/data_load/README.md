@@ -88,3 +88,9 @@ python -m unittest discover -s PostgreSQL/data_load -p test_runner.py
 A validação das views, quando presentes, ocorre administrativamente. O acesso das integrações às novas views continua sujeito ao ajuste apontado na PR #21; carregar dados não corrige permissões nem publica pontos no Redis.
 
 A carga não foi executada no Aiven. O runner aceita somente containers identificados como descartáveis; execução futura em banco compartilhado exige revisão do destino e da política de reexecução. Massa inicial não substitui a integração RPA/ETL exigida em outra etapa da disciplina.
+
+## Integração ao CI
+
+O workflow executa os testes do runner com `coverage.py`, exige pelo menos 80% de cobertura e exporta `coverage/data-load-python.xml` para o Sonar. Os testes Python são classificados como testes, não como código de produção.
+
+A carga completa roda em outro container, isolado dos testes de regressão. Logs e manifesto ficam em `coverage/data-load/`, publicados junto dos relatórios existentes. O runner valida os identificadores externos e cria seus arquivos em um diretório exclusivo com `mktemp -d`, sob `/var/lib/postgresql`, com permissões restritas. Esse diretório é removido ao terminar.

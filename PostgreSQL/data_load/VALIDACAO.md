@@ -44,5 +44,13 @@ Também foi executada uma carga de compatibilidade com a versão da PR #21 (`51e
 - Os três planos usam valores oficiais dos documentos. Pagamentos são simulados, sem chamadas a provedores.
 - Nomes e metas de certificados permanecem pendentes; nenhuma meta fictícia ou certificado foi criado.
 - Esta massa não demonstra a décima coleta bem-sucedida de um mesmo estabelecimento: o maior plano permite oito solicitações por ciclo. Esse cenário exige massa histórica específica.
-- Os testes foram executados localmente em containers; esta entrega não altera o CI.
+- A execução original foi validada localmente em containers. Na revisão DevOps, o CI passou a executar os testes do runner com cobertura Python e a carga completa em outro container.
 - O runner gera logs e um manifesto JSON com hashes dos scripts em `reports/`, pasta ignorada pelo Git.
+
+## Revisão DevOps
+
+Ampliada a suíte para 11 testes, incluindo argumentos inválidos, erros de comandos, configuração, instalação, manifesto, recusa de banco populado e validação dos caminhos temporários. Os 11 testes passaram localmente, com cobertura de 94% do runner (142 de 151 instruções). A cobertura também será medida pelo workflow.
+
+A aprovação do Quality Gate depende da nova análise remota após o push. Os alertas de complexidade do runner foram tratados separando validação de plano, instalação e execução das etapas; as regras SQL e a distribuição da massa foram preservadas.
+
+Nesta revisão, o Docker local não respondeu à inicialização, impedindo repetir a carga completa com o runner alterado. A execução real original continua registrada acima; os testes de orquestração usam comandos simulados. O novo CI inclui a repetição real em container independente.
