@@ -53,7 +53,8 @@ def main():
     if query("empty-database", "SELECT count(*) FROM pg_tables WHERE schemaname='public';").strip() != "0":
         raise RuntimeError("A base de teste deve estar vazia; nenhum objeto será apagado pelo runner.")
     for name in ("01_structure.sql", "02_check_constraints.sql", "03_indexes.sql",
-                 "04_functions_procedures_window_functions.sql", "05_triggers.sql"):
+                 "04_functions_procedures.sql", "05_triggers.sql",
+                 "06_ctes.sql", "07_window_functions.sql"):
         sql_file("PostgreSQL/" + name)
     query("profiler-init", "CREATE SCHEMA ci_metrics; CREATE EXTENSION plpgsql_check WITH SCHEMA ci_metrics;")
     enabled = query("profiler-enabled", "SELECT current_setting('plpgsql_check.profiler')='on' "
@@ -89,6 +90,9 @@ def main():
     (REPORTS / "routine-inventory.json").write_text(inventory.strip(), encoding="utf-8")
     query("profiler-reset", "SELECT ci_metrics.plpgsql_profiler_reset_all();")
     sql_file("PostgreSQL/tests/procedures_regression.sql")
+    sql_file("PostgreSQL/tests/functions_negative.sql")
+    sql_file("PostgreSQL/tests/procedures_negative.sql")
+    sql_file("PostgreSQL/tests/annual_views_regression.sql")
     if has_auth:
         sql_file("PostgreSQL/tests/auth_sessions_regression.sql")
         sql_file("PostgreSQL/tests/auth_sessions_edges.sql")
