@@ -2,7 +2,85 @@
 
 Serviço da disciplina de Banco de Dados 2. Responsável pelo ranking em tempo
 real e pela gamificação do Olius. Não contém login, cadastro nem CRUD de
-usuário — isso vive no backend principal.
+usuário — isso vive no backend principal. O app mobile fala só HTTP com esta
+API; quem conversa com o Redis é o servidor.
+
+```
+App Kotlin  --HTTPS-->  esta API  --RESP-->  Redis Cloud
+                            |
+                            +--> Postgres (verdade dos dados, no repo principal)
+```
+
+---
+
+## O que cada arquivo faz
+
+### `app/config.py`
+Lê as variáveis de ambiente e expõe o objeto `settings`. Nenhuma credencial
+aparece no código: host, porta, senha, TLS, TTL das chaves mensais e o teto do
+pool de conexões vêm todos do `.env` (local) ou do painel do Render
+(produção). É o arquivo que atende ao requisito de ENVs.
+
+### `app/redis_client.py`
+Cria o cliente assíncrono único (`redis_client`) que todo o resto importa.
+Também limita o pool a 10 conexões, porque o plano gratuito do Redis Cloud
+corta em 30, e define timeout e health check. A função `ping()` alimenta o
+endpoint `/health`.
+
+### `app/schemas.py`
+Contratos de entrada e saída, em Pydantic. Define os dois enums que espelham os
+toggles da tela — `Publico` (Estabelecimento/Cidadão) e `Periodo`
+(Mês/Ano/Geral) — e os modelos de resposta (`RankingResponse`,
+`ConquistasResponse`, `NivelSustentabilidade`). Os campos usam alias em
+camelCase para o Kotlin desserializar direto, sem anotação extra.
+
+### `app/ranking.py`
+Coração do requisito de ranking em tempo real. Monta as chaves dos seis ZSETs,
+soma as coletas nos três períodos de uma vez via pipeline (`registrar`), e lê o
+top N junto com a posição individual do usuário (`montar`). É aqui que mora o
+`ZREVRANK`, que dá a posição em O(log n) sem varrer a lista, e a correção do
+índice (o Redis conta do zero, a tela mostra #3). Também guarda o perfil em
+HASH e gera as iniciais do avatar quando ninguém preencheu.
+
+### `app/conquistas.py`
+Gamificação. Guarda o catálogo estático de conquistas (`CATALOGO`), calcula o
+nível de sustentabilidade a partir do total acumulado (`calcular_nivel`),
+avalia o que foi desbloqueado após cada coleta (`avaliar`) e lista tudo com as
+bloqueadas marcadas (`listar`). Usa ZSET com score de timestamp para saber
+*quando* cada conquista caiu, e HyperLogLog para calcular raridade sem guardar
+a lista de portadores.
+
+### `app/routers.py`
+As rotas HTTP. Traduz query string em enums, chama os serviços e devolve o
+JSON. Nenhuma regra de negócio mora aqui. Inclui o stub do
+`POST /api/ranking/rebuild`.
+
+### `app/main.py`
+Monta o FastAPI, liga o CORS, registra as rotas, expõe `/health` e fecha a
+conexão com o Redis no shutdown.
+
+### `app/__init__.py` e `scripts/__init__.py`
+Arquivos **vazios**. Existem só para marcar as pastas como pacotes Python, o
+que faz os imports relativos (`from .config import settings`) funcionarem.
+
+### `scripts/seed.py`
+Popula o banco com os dados do protótipo (ToKonFome, Dogão do Adriano,
+Reuters...). Rode uma vez depois de configurar o `.env`, senão o app abre com
+ranking vazio. Com `--limpar` apaga antes, usando `SCAN` por padrão de chave —
+nunca `FLUSHALL`.
+
+### `scripts/carga.py`
+Teste de carga. Dispara N requisições com C em paralelo e mostra latência
+média, p50, p95 e p99. Serve para medir os dois limites do plano gratuito:
+100 ops/sec e 30 conexões.
+
+### `tests/test_servicos.py`
+Treze testes rodando contra um Redis falso em memória. Não tocam na nuvem, não
+gastam cota e não sujam o banco. Cobrem a ordem do ranking, o `+1` da posição,
+o nível exato do card do Figma, a idempotência das conquistas e o isolamento
+entre públicos e períodos.
+
+---
 
 ## Modelagem no Redis
 
@@ -17,78 +95,3 @@ usuário — isso vive no backend principal.
 | `coletas:{publico}:{id}` | STRING | contador de coletas (INCR) |
 
 São seis ZSETs de ranking: dois públicos × três períodos.
-
-### Decisões que valem explicar na apresentação
-
-- **ZSET em vez de `ORDER BY`**: `ZINCRBY` e `ZREVRANK` são O(log n). A posição
-  individual do usuário (`Sua posição: #3 - 274.2L`) sai sem varrer a lista.
-- **`ZREVRANK` conta do zero**, por isso somamos 1 antes de exibir.
-- **ZSET para conquistas, não SET**: o score guarda *quando* a conquista foi
-  desbloqueada, o que permite listar as mais recentes sem estrutura extra.
-  O `ZADD` usa `nx=True` para nunca sobrescrever a data original.
-- **HyperLogLog para raridade**: conta portadores distintos em ~12KB fixos,
-  com erro de ~0,81%. Não serve para listar quem tem, só para contar.
-- **O nível não é armazenado.** É função pura do total acumulado, que já está
-  no ZSET geral. Guardar duplicaria estado e poderia divergir.
-- **O Redis é volátil**: a verdade mora no Postgres do backend principal.
-  O endpoint `POST /api/ranking/rebuild` existe para reconstruir os ZSETs.
-
-## Endpoints
-
-```
-GET  /api/ranking?publico=estabelecimento&periodo=mes&limite=10&meuId=e-01
-GET  /api/conquistas/{entidadeId}?publico=estabelecimento
-POST /api/coletas
-PUT  /api/perfis/{entidadeId}?publico=estabelecimento
-POST /api/ranking/rebuild
-GET  /health
-```
-
-Documentação interativa em `/docs` (Swagger gerado pelo FastAPI).
-
-Em produção, `meuId` deve vir do token de autenticação, não da query string —
-senão qualquer um consulta a posição alheia.
-
-## Rodando local
-
-```bash
-docker compose up --build
-# API em http://localhost:8081  •  Redis em localhost:6379
-```
-
-Sem Docker:
-
-```bash
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-cp .env.example .env
-uvicorn app.main:app --reload --port 8081
-```
-
-## Publicando
-
-1. **Redis** — Redis Cloud (tier gratuito de 30MB). Anote host, porta e senha.
-2. **API** — Render ou Railway apontando para o `Dockerfile`. Cadastre
-   `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD` e `REDIS_SSL=true` no painel.
-
-Nenhuma credencial é versionada: tudo passa por variáveis de ambiente, e o
-`.env` está no `.gitignore`.
-
-> No plano gratuito do Render o serviço hiberna após 15 minutos parado e a
-> primeira requisição depois disso pode levar quase um minuto. Abra `/health`
-> alguns minutos antes de apresentar.
-
-## Teste rápido
-
-```bash
-curl -X PUT "http://localhost:8081/api/perfis/e-01?publico=estabelecimento" \
-  -H "Content-Type: application/json" \
-  -d '{"nome":"ToKonFome","cidade":"Itaquaquecetuba","iniciais":"TK"}'
-
-curl -X POST http://localhost:8081/api/coletas \
-  -H "Content-Type: application/json" \
-  -d '{"publico":"estabelecimento","entidadeId":"e-01","litros":120}'
-
-curl "http://localhost:8081/api/ranking?publico=estabelecimento&periodo=mes&meuId=e-01"
-curl "http://localhost:8081/api/conquistas/e-01?publico=estabelecimento"
-```
