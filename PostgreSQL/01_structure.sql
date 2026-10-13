@@ -1308,3 +1308,62 @@ ALTER TABLE certificate_level_log
 
 ALTER TABLE certificate_log
     ADD CONSTRAINT uq_certificate_log_snapshot UNIQUE (audit_event_id, id, snapshot_kind);
+
+-- SESSÕES DE AUTENTICAÇÃO. Papéis e permissões: entrega data_catalog.
+
+CREATE TYPE auth_revocation_reason_t AS ENUM ('LOGOUT', 'ACCOUNT_INACTIVE', 'REFRESH_REUSE');
+
+CREATE TABLE auth_session (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL,
+    last_renewed_at TIMESTAMPTZ NOT NULL,
+    idle_expires_at TIMESTAMPTZ NOT NULL,
+    revoked_at TIMESTAMPTZ,
+    revocation_reason auth_revocation_reason_t,
+    updated_at TIMESTAMPTZ NOT NULL,
+    CONSTRAINT fk_auth_session_user FOREIGN KEY (user_id)
+        REFERENCES users (id) ON UPDATE RESTRICT ON DELETE RESTRICT
+);
+COMMENT ON TABLE auth_session IS 'Login independente por dispositivo. Validade deriva do usuário ativo, prazo e revogação; não armazena JWT.';
+COMMENT ON COLUMN auth_session.last_renewed_at IS 'Login inicial ou última rotação bem-sucedida; consultas comuns não prorrogam a sessão.';
+
+CREATE TABLE auth_refresh_token (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    session_id UUID NOT NULL,
+    token_hash BYTEA NOT NULL,
+    generation BIGINT NOT NULL,
+    issued_at TIMESTAMPTZ NOT NULL,
+    expires_at TIMESTAMPTZ NOT NULL,
+    consumed_at TIMESTAMPTZ,
+    CONSTRAINT uq_auth_refresh_hash UNIQUE (token_hash),
+    CONSTRAINT uq_auth_refresh_generation UNIQUE (session_id, generation),
+    CONSTRAINT fk_auth_refresh_session FOREIGN KEY (session_id)
+        REFERENCES auth_session (id) ON UPDATE RESTRICT ON DELETE RESTRICT
+);
+COMMENT ON TABLE auth_refresh_token IS 'Histórico operacional imutável de hashes SHA-256; o segredo aleatório é gerado e entregue somente pela Core.';
+COMMENT ON COLUMN auth_refresh_token.expires_at IS 'Prazo congelado na emissão. Preservar tokens consumidos para detectar reutilização.';
+-- Garante no máximo um não consumido, não a validade atual desse token.
+CREATE UNIQUE INDEX uq_auth_refresh_unconsumed
+    ON auth_refresh_token (session_id) WHERE consumed_at IS NULL;
+
+CREATE TABLE auth_session_log (
+    LIKE auth_session,
+    log_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    audit_event_id UUID NOT NULL,
+    snapshot_kind audit_snapshot_t NOT NULL,
+    operation operation_status_t NOT NULL,
+    performed_at TIMESTAMPTZ NOT NULL,
+    performed_by UUID,
+    actor_kind audit_actor_t NOT NULL,
+    operational_driver_id UUID,
+    audit_reason TEXT,
+    changed_columns TEXT[] NOT NULL,
+    CONSTRAINT fk_auth_session_log_user FOREIGN KEY (performed_by)
+        REFERENCES users (id) ON DELETE RESTRICT,
+    CONSTRAINT uq_auth_session_log_snapshot UNIQUE (audit_event_id, id, snapshot_kind)
+);
+COMMENT ON TABLE auth_session_log IS 'Snapshots de sessão sem tokens/hashes. user_id é o titular; performed_by é o autor autenticado, quando houver.';
+
+-- Acesso público bloqueado; perfis são configurados na entrega data_catalog.
+REVOKE ALL ON auth_session, auth_refresh_token, auth_session_log FROM PUBLIC;

@@ -2,12 +2,9 @@ name: CI
 
 on:
   pull_request:
-    branches:
-      - main
-
+    branches: [main]
   push:
-    branches:
-      - main
+    branches: [main]
 
 permissions:
   contents: read
@@ -16,21 +13,15 @@ jobs:
   database-validation:
     name: Validate PostgreSQL and Sonar
     runs-on: ubuntu-latest
-
-    services:
-      postgres:
-        image: postgres:16
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: olius_test
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U postgres -d olius_test"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
+    timeout-minutes: 20
+    env:
+      PGHOST: localhost
+      PGPORT: '5432'
+      PGUSER: postgres
+      PGPASSWORD: postgres
+      PGDATABASE: olius_test
+      OLIUS_CI_DISPOSABLE: '1'
+      OLIUS_TEST_DOCKER_CONTAINER: olius-ci-db
 
     steps:
       - name: Checkout
@@ -38,45 +29,43 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Instalar PostgreSQL Client
+      - name: Preparar PostgreSQL com medição de cobertura
         run: |
-          sudo apt-get update
-          sudo apt-get install -y postgresql-client
+          docker build -t olius-postgres-coverage -f PostgreSQL/tests/Dockerfile.coverage .
+          docker run -d --name olius-ci-db -p 127.0.0.1:5432:5432 \
+            -v "$GITHUB_WORKSPACE:/workspace" \
+            -e POSTGRES_PASSWORD="$PGPASSWORD" -e POSTGRES_DB="$PGDATABASE" olius-postgres-coverage
+          for attempt in $(seq 1 60); do
+            if docker exec olius-ci-db pg_isready -U "$PGUSER" -d "$PGDATABASE"; then
+              exit 0
+            fi
+            sleep 1
+          done
+          docker logs olius-ci-db
+          exit 1
 
-      - name: Executar estrutura do banco
-        env:
-          PGPASSWORD: postgres
-        run: |
-          psql \
-            -h localhost \
-            -U postgres \
-            -d olius_test \
-            -v ON_ERROR_STOP=1 \
-            -f PostgreSQL/01_structure.sql
+      - name: Validar conversão do relatório de cobertura
+        run: python3 -m unittest discover -s PostgreSQL/tests -p 'test_export_coverage.py' -v
 
-      - name: Executar constraints
-        env:
-          PGPASSWORD: postgres
-        run: |
-          psql \
-            -h localhost \
-            -U postgres \
-            -d olius_test \
-            -v ON_ERROR_STOP=1 \
-            -f PostgreSQL/02_check_constraints.sql
+      - name: Instalar scripts, executar regressões e concorrência e gerar cobertura
+        run: python3 PostgreSQL/tests/run_ci.py
 
-      - name: Executar índices
-        env:
-          PGPASSWORD: postgres
-        run: |
-          psql \
-            -h localhost \
-            -U postgres \
-            -d olius_test \
-            -v ON_ERROR_STOP=1 \
-            -f PostgreSQL/03_indexes.sql
+      - name: Publicar relatório e logs dos testes
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: postgresql-tests-and-coverage
+          path: coverage/
+          if-no-files-found: warn
+          retention-days: 14
 
       - name: SonarQube Scan
         uses: SonarSource/sonarqube-scan-action@7006c4492b2e0ee0f816d36501671557c97f5995 # v8.1.0
+        with:
+          args: -Dsonar.qualitygate.wait=true
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+
+      - name: Remover banco descartável
+        if: always()
+        run: docker rm -f -v olius-ci-db

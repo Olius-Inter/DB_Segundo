@@ -2,7 +2,7 @@
 
 ## Arquivos
 
-- `04_functions_procedures_window_functions.sql`: código completo atualizado, com três functions e dez procedures na ordem de dependência existente. Não copiar fragmentos por cima de uma procedure: usar o arquivo integrado.
+- `04_functions_procedures.sql`: código completo atualizado, com três functions e dez procedures na ordem de dependência existente. Não copiar fragmentos por cima de uma procedure: usar o arquivo integrado.
 - `tests/fixtures_procedures.sql`: dados artificiais de testes, separados da população do projeto.
 - `tests/procedures_regression.sql`: testes funcionais com ROLLBACK ao final.
 - `tests/procedures_concurrency.py`: sete cenários com duas sessões reais e confirmação de espera de lock.
@@ -46,7 +46,7 @@ Somente em **banco descartável vazio**, nunca no banco de trabalho. Com PGHOST,
 psql -X -v ON_ERROR_STOP=1 -f PostgreSQL/01_structure.sql
 psql -X -v ON_ERROR_STOP=1 -f PostgreSQL/02_check_constraints.sql
 psql -X -v ON_ERROR_STOP=1 -f PostgreSQL/03_indexes.sql
-psql -X -v ON_ERROR_STOP=1 -f PostgreSQL/04_functions_procedures_window_functions.sql
+psql -X -v ON_ERROR_STOP=1 -f PostgreSQL/04_functions_procedures.sql
 psql -X -v ON_ERROR_STOP=1 -f PostgreSQL/05_triggers.sql
 psql -X -v ON_ERROR_STOP=1 -f PostgreSQL/tests/procedures_regression.sql
 python3 PostgreSQL/tests/procedures_concurrency.py
