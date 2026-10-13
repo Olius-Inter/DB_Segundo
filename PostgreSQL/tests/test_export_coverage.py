@@ -12,7 +12,7 @@ class CoverageMappingTests(unittest.TestCase):
         self.root = Path(self.temp.name)
         (self.root / "PostgreSQL").mkdir()
         self.body = "\nBEGIN\n IF true THEN RETURN 1; END IF;\n RETURN 2;\nEND;\n"
-        self.file = self.root / "PostgreSQL/04_functions_procedures_window_functions.sql"
+        self.file = self.root / "PostgreSQL/04_functions_procedures.sql"
         self.file.write_text("-- heading\nCREATE FUNCTION f() RETURNS int LANGUAGE plpgsql AS $$" + self.body + "$$;\n", encoding="utf-8", newline="\n")
 
     def routine(self, statements):
