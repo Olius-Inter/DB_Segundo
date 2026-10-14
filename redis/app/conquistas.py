@@ -1,196 +1,244 @@
-"""Conquistas e nivel de sustentabilidade.
+"""Niveis de sustentabilidade e conquistas (certificados).
 
-Modelagem no Redis
-------------------
-conquistas:{publico}:{id}        ZSET  member = id da conquista
-                                       score  = timestamp do desbloqueio
-conquista:{id}:portadores        HLL   quantos usuarios distintos tem a conquista
-coletas:{publico}:{id}           STR   contador simples de coletas registradas
+Alinhamento com o 01_structure.sql
+----------------------------------
+O catalogo de niveis e a tabela `certificate_level` (name, description,
+required_liters, badge_image_url). Ela nao e definida aqui: sua descricao
+avisa que metas e nomes definitivos estao pendentes e que niveis ficticios
+nao devem ser inseridos. O backend principal carrega o catalogo via
+PUT /api/niveis e a API apenas o reflete.
 
-Por que ZSET e nao SET: o score guarda QUANDO a conquista foi desbloqueada,
-entao da pra listar "conquistas recentes" com um ZRANGE sem estrutura extra.
-O ZADD usa nx=True para nunca sobrescrever a data original.
+Uma conquista desbloqueada e a tabela `certificate`: uma concessao por
+estabelecimento e nivel. A FK e fk_certificate_establishment e a regra 11 diz
+que B2C nao recebe certificados destinados a estabelecimentos, entao
+conquistas existem somente para o publico B2B.
 
-O nivel NAO e armazenado. Ele e funcao pura do total acumulado, que ja esta
-no ZSET do ranking geral. Guardar o nivel seria duplicar estado e criar a
-chance de ele divergir do total.
+Chaves no Redis
+---------------
+niveis:catalogo              STRING  JSON do certificate_level, ordenado
+conquistas:estab:{id}        ZSET    nivel desbloqueado -> timestamp
+conquista:{nivel}:portadores HLL     portadores distintos, para raridade
+coletas:sucesso:estab:{id}   STRING  contador de coletas bem-sucedidas
+
+O nivel NAO e armazenado: e funcao pura do total acumulado, que ja esta no
+ZSET do ranking geral. Guardar criaria estado duplicado.
 """
+import json
 import time
-from dataclasses import dataclass
 from datetime import datetime
 
 from .redis_client import redis_client
-from .schemas import ConquistaItem, NivelSustentabilidade, Publico
-
-# Limiares de nivel, em litros acumulados. Indice 0 = entrada do nivel 1.
-NIVEIS: tuple[float, ...] = (0, 100, 250, 500, 1000, 2000, 5000)
-
-
-@dataclass(frozen=True)
-class Conquista:
-    id: str
-    titulo: str
-    descricao: str
-    icone: str
-    meta_litros: float | None = None
-    meta_coletas: int | None = None
-
-
-# Catalogo estatico. Mora no codigo porque e regra de negocio, nao dado de
-# usuario; o Redis guarda apenas quem desbloqueou o que.
-CATALOGO: tuple[Conquista, ...] = (
-    Conquista("primeira-coleta", "Primeira Coleta",
-              "Voce registrou sua primeira coleta de oleo.", "gota",
-              meta_litros=0.1),
-    Conquista("50-litros", "Meio Caminho",
-              "50 litros de oleo desviados do ralo.", "balde",
-              meta_litros=50),
-    Conquista("100-litros", "Cem Litros",
-              "100 litros coletados. Nivel 2 desbloqueado.", "tambor",
-              meta_litros=100),
-    Conquista("500-litros", "Guardiao da Agua",
-              "500 litros: cerca de 10 milhoes de litros de agua poupados.",
-              "escudo", meta_litros=500),
-    Conquista("1000-litros", "Mil Litros",
-              "Uma tonelada liquida de impacto positivo.", "coroa",
-              meta_litros=1000),
-    Conquista("constancia-10", "Constancia",
-              "10 coletas registradas.", "calendario",
-              meta_coletas=10),
-    Conquista("constancia-50", "Parceiro Olius",
-              "50 coletas registradas.", "selo",
-              meta_coletas=50),
+from .schemas import (
+    ConquistaItem,
+    NivelCatalogo,
+    NivelSustentabilidade,
+    Publico,
 )
 
-CATALOGO_POR_ID = {c.id: c for c in CATALOGO}
+CHAVE_CATALOGO = "niveis:catalogo"
 
 
-# --------------------------------------------------------------- niveis
+class PublicoSemConquistas(Exception):
+    """Levantada quando se pede conquistas para o publico B2C."""
 
 
-def calcular_nivel(total_litros: float) -> NivelSustentabilidade:
-    """Deriva o nivel a partir do total acumulado.
+# =================== catalogo ===================
 
-    O card do Figma mostra 'lv. 1', '64L coletados', a barra com '100L' na
-    ponta e o texto '100L para o proximo nivel'. Devolvemos meta_nivel (o
-    limiar) e faltam (o que resta) para a tela poder usar qualquer um dos dois.
+
+async def salvar_catalogo(niveis: list[NivelCatalogo]) -> int:
+    """Grava o catalogo vindo de certificate_level, ordenado por litros."""
+    ordenados = sorted(niveis, key=lambda n: n.litros_requeridos)
+    await redis_client.set(
+        CHAVE_CATALOGO,
+        json.dumps([n.model_dump(by_alias=False) for n in ordenados]),
+    )
+    return len(ordenados)
+
+
+async def carregar_catalogo() -> list[NivelCatalogo]:
+    """Devolve o catalogo vigente, ou lista vazia se nunca foi carregado."""
+    bruto = await redis_client.get(CHAVE_CATALOGO)
+    if not bruto:
+        return []
+    return [NivelCatalogo(**linha) for linha in json.loads(bruto)]
+
+
+# =================== niveis ===================
+
+
+def calcular_nivel(
+    total_litros: float, catalogo: list[NivelCatalogo]
+) -> NivelSustentabilidade:
+    """Deriva o nivel a partir do total acumulado e do catalogo real.
+
+    Sem catalogo carregado, devolve configurado=False em vez de inventar
+    limiares: a tabela proibe niveis ficticios.
     """
-    nivel = 1
-    for indice, limiar in enumerate(NIVEIS):
-        if total_litros >= limiar:
-            nivel = indice + 1
+    total = round(total_litros, 1)
 
-    e_maximo = nivel >= len(NIVEIS)
-    if e_maximo:
-        base = NIVEIS[-1]
+    if not catalogo:
         return NivelSustentabilidade(
-            nivel=nivel, total_litros=round(total_litros, 1),
-            meta_nivel=base, faltam=0.0, progresso=1.0, e_maximo=True,
+            nivel=0, nome=None, total_litros=total, meta_nivel=None,
+            faltam=None, progresso=0.0, e_maximo=False, configurado=False,
         )
 
-    base = NIVEIS[nivel - 1]
-    meta = NIVEIS[nivel]
-    progresso = (total_litros - base) / (meta - base) if meta > base else 0.0
+    atingidos = [n for n in catalogo if total >= n.litros_requeridos]
+    nivel = len(atingidos)
+    nome = atingidos[-1].nome if atingidos else None
+
+    if nivel >= len(catalogo):
+        return NivelSustentabilidade(
+            nivel=nivel, nome=nome, total_litros=total,
+            meta_nivel=catalogo[-1].litros_requeridos, faltam=0.0,
+            progresso=1.0, e_maximo=True,
+        )
+
+    base = atingidos[-1].litros_requeridos if atingidos else 0.0
+    meta = catalogo[nivel].litros_requeridos
+    progresso = (total - base) / (meta - base) if meta > base else 0.0
 
     return NivelSustentabilidade(
         nivel=nivel,
-        total_litros=round(total_litros, 1),
+        nome=nome,
+        total_litros=total,
         meta_nivel=meta,
-        faltam=round(meta - total_litros, 1),
+        faltam=round(meta - total, 1),
         progresso=round(min(max(progresso, 0.0), 1.0), 4),
         e_maximo=False,
     )
 
 
-# ----------------------------------------------------------- desbloqueio
+# =================== desbloqueio ===================
 
 
-def _atende(conquista: Conquista, total_litros: float, total_coletas: int) -> bool:
-    if conquista.meta_litros is not None and total_litros >= conquista.meta_litros:
-        return True
-    if conquista.meta_coletas is not None and total_coletas >= conquista.meta_coletas:
-        return True
-    return False
+def _exige_b2b(publico: Publico) -> None:
+    if publico is not Publico.ESTABELECIMENTO:
+        raise PublicoSemConquistas(
+            "Certificados sao concedidos apenas a estabelecimentos "
+            "(fk_certificate_establishment; regra 11)."
+        )
 
 
 async def avaliar(
-    publico: Publico, entidade_id: str, total_litros: float, total_coletas: int
+    publico: Publico, entidade_id: str, total_litros: float
 ) -> list[ConquistaItem]:
-    """Chamado apos cada coleta. Devolve apenas as conquistas NOVAS."""
+    """Chamado apos cada coleta. Devolve apenas as conquistas NOVAS.
+
+    Para o publico B2C devolve lista vazia em vez de erro: o fluxo de
+    registro de entrega continua valido, so nao gera certificado.
+    """
+    if publico is not Publico.ESTABELECIMENTO:
+        return []
+
+    catalogo = await carregar_catalogo()
+    if not catalogo:
+        return []
+
     chave = f"conquistas:{publico.chave}:{entidade_id}"
     ja_tem = set(await redis_client.zrange(chave, 0, -1))
     agora = int(time.time())
 
     pendentes = [
-        c for c in CATALOGO
-        if c.id not in ja_tem and _atende(c, total_litros, total_coletas)
+        n for n in catalogo
+        if n.id not in ja_tem and total_litros >= n.litros_requeridos
     ]
     if not pendentes:
         return []
 
     async with redis_client.pipeline(transaction=True) as pipe:
-        for c in pendentes:
-            # nx=True: se por algum motivo ja existir, preserva a data original.
-            pipe.zadd(chave, {c.id: agora}, nx=True)
-            # HyperLogLog conta portadores distintos com ~12KB fixos,
-            # sem guardar a lista de ids.
-            pipe.pfadd(f"conquista:{c.id}:portadores", entidade_id)
+        for n in pendentes:
+            # nx=True preserva a data original de uma eventual reavaliacao.
+            pipe.zadd(chave, {n.id: agora}, nx=True)
+            # HyperLogLog conta portadores distintos com ~12KB fixos.
+            pipe.pfadd(f"conquista:{n.id}:portadores", entidade_id)
         await pipe.execute()
 
     carimbo = datetime.fromtimestamp(agora).strftime("%Y-%m-%d")
     return [
         ConquistaItem(
-            id=c.id, titulo=c.titulo, descricao=c.descricao, icone=c.icone,
+            id=n.id, titulo=n.nome, descricao=n.descricao,
+            badge_image_url=n.badge_image_url,
+            litros_requeridos=n.litros_requeridos,
             desbloqueada=True, desbloqueada_em=carimbo,
         )
-        for c in pendentes
+        for n in pendentes
     ]
 
 
-# -------------------------------------------------------------- listagem
+async def revogar_acima_de(
+    publico: Publico, entidade_id: str, total_litros: float
+) -> list[str]:
+    """Remove conquistas que o total corrigido nao sustenta mais.
+
+    certificate tem status ACTIVE/REVOKED justamente porque uma correcao
+    pode derrubar o volume abaixo da meta. Sem isto, um ajuste negativo
+    deixaria o certificado pendurado.
+    """
+    if publico is not Publico.ESTABELECIMENTO:
+        return []
+
+    catalogo = {n.id: n for n in await carregar_catalogo()}
+    chave = f"conquistas:{publico.chave}:{entidade_id}"
+    atuais = await redis_client.zrange(chave, 0, -1)
+
+    revogar = [
+        i for i in atuais
+        if i in catalogo and total_litros < catalogo[i].litros_requeridos
+    ]
+    if revogar:
+        await redis_client.zrem(chave, *revogar)
+    return revogar
+
+
+# =================== listagem ===================
 
 
 async def listar(
     publico: Publico, entidade_id: str, total_litros: float, total_usuarios: int
 ) -> list[ConquistaItem]:
     """Catalogo inteiro, com as bloqueadas marcadas para o estado cinza."""
+    _exige_b2b(publico)
+
+    catalogo = await carregar_catalogo()
+    if not catalogo:
+        return []
+
     chave = f"conquistas:{publico.chave}:{entidade_id}"
-    desbloqueadas = dict(
-        await redis_client.zrange(chave, 0, -1, withscores=True)
-    )
+    desbloqueadas = dict(await redis_client.zrange(chave, 0, -1, withscores=True))
 
     async with redis_client.pipeline(transaction=False) as pipe:
-        for c in CATALOGO:
-            pipe.pfcount(f"conquista:{c.id}:portadores")
+        for n in catalogo:
+            pipe.pfcount(f"conquista:{n.id}:portadores")
         portadores = await pipe.execute()
 
     itens: list[ConquistaItem] = []
-    for c, qtd in zip(CATALOGO, portadores):
-        ts = desbloqueadas.get(c.id)
+    for n, qtd in zip(catalogo, portadores):
+        ts = desbloqueadas.get(n.id)
         itens.append(
             ConquistaItem(
-                id=c.id,
-                titulo=c.titulo,
-                descricao=c.descricao,
-                icone=c.icone,
+                id=n.id,
+                titulo=n.nome,
+                descricao=n.descricao,
+                badge_image_url=n.badge_image_url,
+                litros_requeridos=n.litros_requeridos,
                 desbloqueada=ts is not None,
                 desbloqueada_em=(
                     datetime.fromtimestamp(ts).strftime("%Y-%m-%d") if ts else None
                 ),
-                raridade=(
-                    round(qtd / total_usuarios, 4) if total_usuarios else None
-                ),
+                raridade=(round(qtd / total_usuarios, 4) if total_usuarios else None),
             )
         )
-    # Desbloqueadas primeiro, na ordem em que foram conquistadas.
-    itens.sort(key=lambda i: (not i.desbloqueada, i.desbloqueada_em or ""))
     return itens
 
 
-async def incrementar_coletas(publico: Publico, entidade_id: str) -> int:
-    return await redis_client.incr(f"coletas:{publico.chave}:{entidade_id}")
+# ======= contador de coletas (B2B) =============
 
 
-async def total_coletas(publico: Publico, entidade_id: str) -> int:
-    valor = await redis_client.get(f"coletas:{publico.chave}:{entidade_id}")
+async def incrementar_sucesso(publico: Publico, entidade_id: str) -> int:
+    """Espelha point_calculation.successful_collections_count."""
+    return await redis_client.incr(f"coletas:sucesso:{publico.chave}:{entidade_id}")
+
+
+async def total_sucesso(publico: Publico, entidade_id: str) -> int:
+    valor = await redis_client.get(f"coletas:sucesso:{publico.chave}:{entidade_id}")
     return int(valor) if valor else 0

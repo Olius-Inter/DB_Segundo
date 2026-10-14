@@ -8,7 +8,8 @@ ranking:{publico}:{sufixo}   ZSET  member = id da entidade, score = litros
     ranking:estab:geral      -> toggle "Geral"
     (o mesmo para cidadao -> 6 chaves no total)
 
-perfil:{publico}:{id}        HASH  nome, cidade, iniciais
+perfil:{publico}:{id}        HASH  nome, iniciais e, so para B2B, cidade
+                                   (addresses.owner_kind nao admite cidadao)
 
 ZINCRBY e ZREVRANK sao O(log n): a posicao individual sai sem varrer a lista,
 que e justamente o motivo de usar ZSET em vez de ORDER BY no Postgres.
@@ -54,7 +55,7 @@ def rotulo(periodo: Periodo, hoje: date | None = None) -> str:
     return "Desde o inicio"
 
 
-# ----------------------------------------------------------- escrita
+# =================== escrita ===================
 
 
 async def registrar(publico: Publico, entidade_id: str, litros: float) -> float:
@@ -74,16 +75,53 @@ async def registrar(publico: Publico, entidade_id: str, litros: float) -> float:
     return float(resultados[2])  # score novo da chave geral
 
 
+async def ajustar(publico: Publico, entidade_id: str, delta: float) -> float:
+    """Aplica uma correcao, que pode ser negativa.
+
+    collection e delivery_pev sao corrigiveis (record_status, revision,
+    corrected_at): um volume pode ser reduzido ou anulado. O ZINCRBY aceita
+    delta negativo; o piso em zero evita score negativo quando o ajuste e
+    maior que o acumulado do periodo.
+    """
+    hoje = date.today()
+    chaves = [
+        chave(publico, Periodo.MES, hoje),
+        chave(publico, Periodo.ANO, hoje),
+        chave(publico, Periodo.GERAL, hoje),
+    ]
+
+    async with redis_client.pipeline(transaction=True) as pipe:
+        for k in chaves:
+            pipe.zincrby(k, delta, entidade_id)
+        resultados = await pipe.execute()
+
+    # Piso zero por chave, como as rotinas de pontos fazem por evento.
+    for k, score in zip(chaves, resultados):
+        if score < 0:
+            await redis_client.zadd(k, {entidade_id: 0})
+
+    return max(float(resultados[2]), 0.0)
+
+
 async def salvar_perfil(
-    publico: Publico, entidade_id: str, nome: str, cidade: str, iniciais: str
+    publico: Publico,
+    entidade_id: str,
+    nome: str,
+    iniciais: str,
+    cidade: str | None = None,
 ) -> None:
-    await redis_client.hset(
-        f"perfil:{publico.chave}:{entidade_id}",
-        mapping={"nome": nome, "cidade": cidade, "iniciais": iniciais},
-    )
+    """Grava o perfil exibido no podio.
+
+    cidade vem de addresses via establishment.address_id e so existe para o
+    B2B: addresses.owner_kind admite apenas ESTABLISHMENT ou PEV.
+    """
+    dados = {"nome": nome, "iniciais": iniciais}
+    if cidade:
+        dados["cidade"] = cidade
+    await redis_client.hset(f"perfil:{publico.chave}:{entidade_id}", mapping=dados)
 
 
-# ------------------------------------------------------------ leitura
+# =================== leitura ===================
 
 
 async def montar(
@@ -109,7 +147,7 @@ async def montar(
             id=entidade_id,
             posicao=posicao,
             nome=meta.get("nome", entidade_id),
-            cidade=meta.get("cidade", ""),
+            cidade=meta.get("cidade") or None,
             iniciais=meta.get("iniciais") or _iniciais(meta.get("nome", entidade_id)),
             litros=round(float(score), 1),
             voce=(entidade_id == meu_id),
