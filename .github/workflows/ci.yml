@@ -36,7 +36,7 @@ jobs:
             -v "$GITHUB_WORKSPACE:/workspace" \
             -e POSTGRES_PASSWORD="$PGPASSWORD" -e POSTGRES_DB="$PGDATABASE" olius-postgres-coverage
           for attempt in $(seq 1 60); do
-            if docker exec olius-ci-db pg_isready -U "$PGUSER" -d "$PGDATABASE"; then
+            if docker exec -e PGPASSWORD="$PGPASSWORD" olius-ci-db psql -h 127.0.0.1 -U "$PGUSER" -d "$PGDATABASE" -X -v ON_ERROR_STOP=1 -qAt -c 'SELECT 1;' > /dev/null 2>&1; then
               exit 0
             fi
             sleep 1
@@ -67,12 +67,18 @@ jobs:
           docker run -d --name olius-ci-data-load --network none \
             --label org.olius.data_load.disposable=true \
             -e POSTGRES_HOST_AUTH_METHOD=trust -e POSTGRES_DB=olius_data_load olius-postgres-coverage
+          database_ready=false
           for attempt in $(seq 1 60); do
-            if docker exec olius-ci-data-load pg_isready -U postgres -d olius_data_load; then
+            if docker exec olius-ci-data-load psql -h 127.0.0.1 -U postgres -d olius_data_load -X -v ON_ERROR_STOP=1 -qAt -c 'SELECT 1;' > /dev/null 2>&1; then
+              database_ready=true
               break
             fi
             sleep 1
           done
+          if [ "$database_ready" != true ]; then
+            docker logs olius-ci-data-load
+            exit 1
+          fi
           python3 PostgreSQL/data_load/run.py --container olius-ci-data-load --install --install-access-control --report-dir coverage/data-load
 
       - name: Publicar relatório e logs dos testes
