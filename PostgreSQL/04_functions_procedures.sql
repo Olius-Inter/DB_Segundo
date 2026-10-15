@@ -2,7 +2,7 @@
 ===============================================================================
 PROJETO.............: ÓLEO AMIGO — OLIUS
 BANCO DE DADOS......: PostgreSQL 16.15 (alvo)
-SCRIPT..............: 04 - Functions, Procedures e Window Functions de Negócio
+SCRIPT..............: 04 - Functions e Procedures de Negócio
 SEÇÃO................: 01 - Functions
 ===============================================================================
 
@@ -350,7 +350,7 @@ COMMIT;
 ===============================================================================
 PROJETO.............: ÓLEO AMIGO — OLIUS
 BANCO DE DADOS......: PostgreSQL 16.15 (alvo)
-SCRIPT..............: 04 - Functions e Procedures e Window Functions de Negócio
+SCRIPT..............: 04 - Functions e Procedures de Negócio
 SEÇÃO................: 02 - Procedures
 ===============================================================================
 

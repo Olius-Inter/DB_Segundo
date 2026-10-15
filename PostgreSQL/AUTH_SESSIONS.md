@@ -141,7 +141,7 @@ O índice de expiração não encerra sessões nem exige manutenção periódica
 
 Não foram duplicados os índices de hash e de sessão/geração: os UNIQUEs do script 01 já fornecem esses acessos. Cada índice aumenta armazenamento e custo de escrita, por isso sua inclusão precisa de finalidade concreta.
 
-## 4. `04_functions_procedures_window_functions.sql` — rotinas
+## 4. `04_functions_procedures.sql` — rotinas
 
 Foram acrescentadas cinco funções de integração e uma interna. Funções PostgreSQL podem realizar escritas. A escolha permite retornar resultados controlados, IDs e prazos; a Core controla a transação. Não são necessárias Window Functions para esse mecanismo.
 
