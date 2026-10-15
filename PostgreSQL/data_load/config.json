@@ -1,0 +1,9 @@
+{
+  "source": "Contexto do Projeto - OLIUS.docx / Regras de Negocio - OLIUS.docx, pasta 01_Sobre/Técnico",
+  "plans": [
+    {"name": "Plano Básico", "monthly_price": "19.90", "volume_limit_liters": "50.00", "collection_limit": 2},
+    {"name": "Plano Profissional", "monthly_price": "39.90", "volume_limit_liters": "220.00", "collection_limit": 4},
+    {"name": "Plano Empresa", "monthly_price": "79.90", "volume_limit_liters": "500.00", "collection_limit": 8}
+  ],
+  "certificate_levels": []
+}

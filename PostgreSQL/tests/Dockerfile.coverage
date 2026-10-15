@@ -1,0 +1,6 @@
+FROM postgres:16.15-bookworm
+# A extensão existe exclusivamente no ambiente de testes, nunca no Aiven.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends postgresql-16-plpgsql-check \
+    && rm -rf /var/lib/apt/lists/*
+CMD ["postgres", "-c", "shared_preload_libraries=plpgsql,plpgsql_check", "-c", "plpgsql_check.profiler=on"]
