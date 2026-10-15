@@ -54,3 +54,11 @@ Ampliada a suíte para 11 testes, incluindo argumentos inválidos, erros de coma
 A aprovação do Quality Gate depende da nova análise remota após o push. Os alertas de complexidade do runner foram tratados separando validação de plano, instalação e execução das etapas; as regras SQL e a distribuição da massa foram preservadas.
 
 Nesta revisão, o Docker local não respondeu à inicialização, impedindo repetir a carga completa com o runner alterado. A execução real original continua registrada acima; os testes de orquestração usam comandos simulados. O novo CI inclui a repetição real em container independente.
+
+## Modo de desenvolvimento
+
+O runner também aceita `--development` e `--user`, mediante confirmação exata de `container/banco` em `OLIUS_DATA_LOAD_DEVELOPMENT_TARGET`. Esse modo bloqueia instalação de estrutura/permissões e mantém a recusa de tabelas populadas, além de conferir a presença das tabelas principais.
+
+Na adaptação, os 11 testes existentes passaram e verificações adicionais com comandos simulados confirmaram a recusa sem confirmação do destino e o bloqueio de instalação. Esses resultados não comprovam conexão ou privilégios da conta `olius_dev_admin` no ambiente da API.
+
+Não foi executada carga real no destino informado (`olius-local` / `postgres-dev`). Os nomes, a autenticação, a estrutura completa e as permissões devem ser confirmados na execução. O CI continua utilizando exclusivamente o modo descartável.

@@ -1,4 +1,4 @@
-"""Carga artificial exclusivamente em container PostgreSQL descartável identificado."""
+"""Carga artificial em container descartável ou desenvolvimento explicitamente autorizado."""
 import argparse
 import hashlib
 import json
@@ -104,6 +104,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--container", required=True, type=identifier)
     parser.add_argument("--database", default="olius_data_load", type=identifier)
+    parser.add_argument("--user", default="postgres", type=identifier)
+    parser.add_argument("--development", action="store_true", help="Carregar banco de desenvolvimento existente e vazio; exige confirmação do destino por variável de ambiente.")
     parser.add_argument("--source-root", type=Path, default=Path(__file__).resolve().parents[1])
     parser.add_argument("--config", type=Path, default=Path(__file__).with_name("config.json"))
     parser.add_argument("--install", action="store_true", help="Instalar scripts principais em banco vazio.")
@@ -112,15 +114,20 @@ def main():
     args = parser.parse_args()
     args.container = identifier(args.container)
     args.database = identifier(args.database)
+    args.user = identifier(args.user)
     if args.install_access_control and not args.install:
         raise ValueError("--install-access-control requer --install em uma base vazia.")
-    if os.environ.get("OLIUS_DATA_LOAD_DISPOSABLE") != "1":
+    if args.development and (args.install or args.install_access_control):
+        raise ValueError("Modo desenvolvimento não permite reinstalar estrutura ou permissões.")
+    if args.development and os.environ.get("OLIUS_DATA_LOAD_DEVELOPMENT_TARGET") != args.container + "/" + args.database:
+        raise ValueError("Confirme exatamente container/banco em OLIUS_DATA_LOAD_DEVELOPMENT_TARGET.")
+    if not args.development and os.environ.get("OLIUS_DATA_LOAD_DISPOSABLE") != "1":
         raise ValueError("Defina OLIUS_DATA_LOAD_DISPOSABLE=1 apenas para um ambiente descartável.")
     config = load_config(args.config)
     labels = json.loads(command(["docker", "inspect", "--format", "{{json .Config.Labels}}", args.container])) or {}
-    if labels.get("org.olius.data_load.disposable") != "true":
+    if not args.development and labels.get("org.olius.data_load.disposable") != "true":
         raise ValueError("Container sem identificação de ambiente descartável; carga recusada.")
-    psql = ["docker", "exec", "-i", args.container, "psql", "-U", "postgres", "-d", args.database,
+    psql = ["docker", "exec", "-i", args.container, "psql", "-U", args.user, "-d", args.database,
             "-X", "-v", "ON_ERROR_STOP=1"]
     source = args.source_root.resolve()
     report_dir = args.report_dir.resolve()
@@ -139,6 +146,10 @@ def main():
         if not version.startswith("16.15"):
             raise ValueError("Validação direcionada ao PostgreSQL 16.15; versão encontrada: " + version)
         manifest["postgresql_version"] = version
+        if args.development:
+            structure = execute("existing-structure", "SELECT to_regclass('public.users') IS NOT NULL AND to_regclass('public.citizens') IS NOT NULL AND to_regclass('public.establishment') IS NOT NULL AND to_regclass('public.delivery_pev') IS NOT NULL AND to_regclass('public.collection') IS NOT NULL;").strip()
+            if structure != "t":
+                raise ValueError("Banco de desenvolvimento sem as tabelas principais esperadas; carga recusada.")
         install_scripts(args, source, manifest, execute)
         # Um banco parcialmente carregado também é recusado. Recriar só o container de teste.
         guard = "DO $$ DECLARE t RECORD; n BIGINT; BEGIN FOR t IN SELECT tablename FROM pg_tables WHERE schemaname='public' AND tablename NOT IN ('data_catalog_table','data_catalog_column','data_catalog_role') LOOP EXECUTE format('SELECT count(*) FROM public.%I',t.tablename) INTO n; IF n<>0 THEN RAISE EXCEPTION 'Tabela % não vazia; carga recusada.',t.tablename; END IF; END LOOP; END $$;"
@@ -154,7 +165,7 @@ def main():
         psql.extend(["-v", "load_config=" + json.dumps(config, ensure_ascii=False)])
         has_api = execute("api-role", "SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname='olius_api');").strip() == "t"
         psql.extend(["-v", "use_api=" + ("true" if has_api else "false")])
-        manifest["journeys_role"] = "olius_api" if has_api else "postgres"
+        manifest["journeys_role"] = "olius_api" if has_api else args.user
         run_stages(temporary_dir, manifest, execute)
         manifest["status"] = "validated"
     except Exception as exc:

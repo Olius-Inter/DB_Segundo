@@ -13,7 +13,7 @@ Carga artificial para o requisito de Modelagem de Dados do segundo ano: pelo men
 | `03_journeys.sql` | 200 coletas, 400 entregas, 40 pedidos adicionais, reenvios, correções e anulações. |
 | `04_validate.sql` | Quantidades, saldos calculados de forma independente, componentes, limites dos ciclos, vínculos PEV/validador, revisões e auditoria. |
 | `run.py` | Pré-condições, instalação opcional, execução em etapas, logs e relatório JSON. |
-| `test_runner.py` | Validação das configurações e da recusa de destinos não identificados como descartáveis. |
+| `test_runner.py` | Validação de configurações, execução e proteções do runner. |
 | `VALIDACAO.md` | Resultado dos testes realizados nesta entrega. |
 
 ## Configurações oficiais
@@ -87,7 +87,37 @@ python -m unittest discover -s PostgreSQL/data_load -p test_runner.py
 
 A validação das views, quando presentes, ocorre administrativamente. O acesso das integrações às novas views continua sujeito ao ajuste apontado na PR #21; carregar dados não corrige permissões nem publica pontos no Redis.
 
-A carga não foi executada no Aiven. O runner aceita somente containers identificados como descartáveis; execução futura em banco compartilhado exige revisão do destino e da política de reexecução. Massa inicial não substitui a integração RPA/ETL exigida em outra etapa da disciplina.
+A carga não foi executada no Aiven. O modo padrão exige container identificado como descartável; o modo de desenvolvimento exige confirmação explícita do destino e estrutura existente. Massa inicial não substitui a integração RPA/ETL exigida em outra etapa da disciplina.
+
+## Executar no container de desenvolvimento da API
+
+Execute pelo terminal PowerShell na raiz do repositório. Os scripts usam variáveis e comandos do `psql`; não execute os arquivos isoladamente no editor SQL do pgAdmin ou DBeaver, nem pule o `00_helpers.sql`. O runner fornece a configuração e os recursos temporários necessários.
+
+O container deve estar iniciado, com PostgreSQL 16.15 e a estrutura atual já instalada. As tabelas operacionais e de auditoria devem estar vazias; somente os três metadados do catálogo são excluídos da verificação. Pause operações da API durante a carga para evitar gravações concorrentes.
+
+Exemplo com os nomes informados pelo responsável pelo projeto, que precisam corresponder ao destino real:
+
+```powershell
+$env:OLIUS_DATA_LOAD_DEVELOPMENT_TARGET = 'olius-local/postgres-dev'
+python PostgreSQL/data_load/run.py --container olius-local --database postgres-dev --user olius_dev_admin --development
+```
+
+- `--container`: nome do container Docker, não o nome do projeto Compose.
+- `--database`: nome do banco PostgreSQL dentro do container, não o nome do serviço Docker.
+- `--user`: usuário PostgreSQL com privilégios para preparar os cadastros e pagamentos; não é o usuário restrito da API. Se existir `olius_api`, as jornadas continuam usando esse papel e a conta de carga precisa poder assumi-lo.
+- `--development`: permite esse destino sem exigir o rótulo de container descartável. A variável deve corresponder exatamente a `container/banco`; ela confirma o destino, não é uma senha.
+
+Não use `--install` ou `--install-access-control` neste modo: o runner bloqueia essas opções para preservar estrutura e permissões existentes. A verificação inicial de tabelas principais não substitui a instalação completa dos scripts atuais.
+
+A conexão ocorre via `docker exec` e `psql`, usando a autenticação local configurada no container; `--user` não define senha nem concede permissões. O runner não solicita senha interativamente. Se houver erro de autenticação, conexão ou permissão, investigue a configuração antes de repetir.
+
+Cada etapa possui seu próprio commit. Uma falha pode deixar carga parcial e impedir nova tentativa; não apague o container da API nem limpe dados automaticamente. Consulte `reports/manifest.json`, identifique a etapa e revise a recuperação do banco de desenvolvimento. O comando de remoção do exemplo anterior é exclusivo do container descartável `olius-data-load`.
+
+Ao terminar, remova a confirmação desta sessão do PowerShell:
+
+```powershell
+Remove-Item Env:OLIUS_DATA_LOAD_DEVELOPMENT_TARGET
+```
 
 ## Integração ao CI
 
