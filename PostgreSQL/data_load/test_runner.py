@@ -2,6 +2,7 @@
 import json
 from pathlib import Path
 import tempfile
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 import run
@@ -140,6 +141,120 @@ class RunnerTests(unittest.TestCase):
         with patch('sys.argv', ['run.py', '--container', 'valid', '--install-access-control']):
             with self.assertRaisesRegex(ValueError, 'requer'):
                 run.main()
+
+    def direct_arguments(self, **overrides):
+        values = dict(container=None, host='database.example.com', port=26714,
+                      database='olius_dev', user='loader', development=True,
+                      install=False, install_access_control=False,
+                      ssl_mode='verify-full', ssl_root_cert=None)
+        return SimpleNamespace(**{**values, **overrides})
+
+    def test_direct_target_requires_exact_confirmation_and_existing_structure(self):
+        args = self.direct_arguments()
+        with patch.dict('os.environ', {}, clear=True):
+            with self.assertRaisesRegex(ValueError, 'Confirme'):
+                run.validate_target(args)
+        with patch.dict('os.environ', {'OLIUS_DATA_LOAD_DEVELOPMENT_TARGET': 'database.example.com:26714/olius_dev'}, clear=True):
+            run.validate_target(args)
+            with self.assertRaisesRegex(ValueError, 'reinstalar'):
+                run.validate_target(self.direct_arguments(install=True))
+        with self.assertRaisesRegex(ValueError, 'direta exige'):
+            run.validate_target(self.direct_arguments(development=False))
+
+    def test_direct_connection_keeps_credentials_out_of_arguments(self):
+        with tempfile.TemporaryDirectory() as directory:
+            ca = Path(directory) / 'ca.pem'
+            ca.write_text('certificate fixture')
+            args = self.direct_arguments(ssl_root_cert=ca)
+            with patch.dict('os.environ', {'PGPASSWORD': 'test-secret', 'PGHOSTADDR': 'unwanted'}, clear=True):
+                command, environment = run.connection(args)
+            self.assertEqual(command[0], 'psql')
+            self.assertIn('-w', command)
+            self.assertNotIn('test-secret', str(command))
+            self.assertEqual(environment['PGPASSWORD'], 'test-secret')
+            self.assertEqual(environment['PGSSLMODE'], 'verify-full')
+            self.assertEqual(environment['PGSSLROOTCERT'], str(ca.resolve()))
+            self.assertEqual(environment['PGHOSTADDR'], '')
+            self.assertEqual(environment['PGSERVICE'], '')
+        with self.assertRaises(FileNotFoundError):
+            run.connection(self.direct_arguments(ssl_root_cert=Path(directory) / 'absent.pem'))
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaises(ValueError):
+                run.connection(self.direct_arguments(ssl_root_cert=Path(directory)))
+
+    def test_host_and_port_validation(self):
+        for value in ('https://server', '--host', 'host name', 'user:secret@host'):
+            with self.assertRaises(run.argparse.ArgumentTypeError):
+                run.hostname(value)
+        self.assertEqual(run.hostname('127.0.0.1'), '127.0.0.1')
+        self.assertEqual(run.port_number('5432'), 5432)
+        for value in ('0', '65536'):
+            with self.assertRaises(run.argparse.ArgumentTypeError):
+                run.port_number(value)
+
+    def test_direct_files_are_local_and_never_copied_or_removed(self):
+        with tempfile.TemporaryDirectory() as directory:
+            sql = Path(directory) / '00_helpers.sql'
+            sql.write_text('SELECT 1;')
+            manifest = {'scripts': {}}
+            with patch.object(run, 'command') as command:
+                path = run.prepare_files(self.direct_arguments(), Path(directory), manifest)
+                command.assert_not_called()
+            self.assertEqual(path, Path(directory).as_posix())
+            self.assertTrue(sql.exists())
+            self.assertIn('data_load/00_helpers.sql', manifest['scripts'])
+
+    def test_psql_subprocess_receives_ssl_environment_without_shell(self):
+        with patch.object(run.shutil, 'which', return_value='/usr/bin/psql'), \
+             patch.object(run.subprocess, 'run') as process:
+            process.return_value = run.subprocess.CompletedProcess([], 0, 'ok', '')
+            self.assertEqual(run.command(['psql', '-X'], environment={'PGSSLMODE': 'verify-full'}), 'ok')
+            self.assertEqual(process.call_args.kwargs['env']['PGSSLMODE'], 'verify-full')
+            self.assertNotIn('shell', process.call_args.kwargs)
+
+    def test_direct_orchestration_preserves_local_files_and_manifest_has_no_password(self):
+        for fault in (None, 'structure', 'populated'):
+            with tempfile.TemporaryDirectory() as directory:
+                argv = ['run.py', '--host', 'database.example.com', '--port', '26714',
+                        '--database', 'olius_dev', '--user', 'loader', '--development',
+                        '--report-dir', directory]
+
+                def psql(arguments, input_text=None, timeout=180, environment=None):
+                    self.assertEqual(arguments[0], 'psql')
+                    self.assertEqual(environment['PGSSLMODE'], 'verify-full')
+                    self.assertNotIn('secret-fixture', str(arguments))
+                    if input_text and 'server_version' in input_text:
+                        return '16.15'
+                    if input_text and 'to_regclass' in input_text:
+                        return 'f' if fault == 'structure' else 't'
+                    if input_text and 'Tabela %' in input_text and fault == 'populated':
+                        raise RuntimeError('Tabela users não vazia')
+                    if input_text and 'pg_roles' in input_text:
+                        return 'f'
+                    if '-f' in arguments:
+                        self.assertTrue(Path(arguments[-1]).is_file())
+                        if arguments[-1].endswith('04_validate.sql'):
+                            return '{"valid_operations":598}'
+                    return ''
+
+                with patch('sys.argv', argv), patch.dict('os.environ', {
+                    'OLIUS_DATA_LOAD_DEVELOPMENT_TARGET': 'database.example.com:26714/olius_dev',
+                    'PGPASSWORD': 'secret-fixture'}, clear=True), patch.object(run, 'command', side_effect=psql):
+                    if fault:
+                        with self.assertRaises((ValueError, RuntimeError)):
+                            run.main()
+                    else:
+                        run.main()
+                manifest_text = (Path(directory) / 'manifest.json').read_text(encoding='utf-8')
+                manifest = json.loads(manifest_text)
+                self.assertNotIn('secret-fixture', manifest_text)
+                self.assertEqual(manifest['target']['transport'], 'postgresql')
+                self.assertEqual(manifest['status'], 'failed' if fault else 'validated')
+                if fault:
+                    self.assertEqual(manifest['completed'], [])
+                else:
+                    self.assertEqual(manifest['journeys_role'], 'loader')
+                    self.assertEqual(len(manifest['completed']), 4)
 
 
 if __name__ == "__main__":
