@@ -81,6 +81,8 @@ Depois repita a criação e a execução. IDs de cadastros/chaves de reenvio sã
 
 O runner grava `reports/manifest.json` e logs por etapa. O manifesto inclui versão do PostgreSQL, hashes dos scripts, configuração, papel das jornadas, etapas concluídas e contagens finais. `reports/` é ignorada pelo Git; `VALIDACAO.md` resume a evidência publicável.
 
+`--report-dir` aceita somente caminhos dentro de `PostgreSQL/data_load/reports/` ou `coverage/`, na raiz deste repositório. Caminhos externos, escapes com `..` e links simbólicos que saiam dessas pastas são recusados. Arquivos de relatório não podem ser links simbólicos. O padrão e o destino `coverage/data-load` usado pelo CI permanecem válidos.
+
 ```powershell
 python -m unittest discover -s PostgreSQL/data_load -p test_runner.py
 ```

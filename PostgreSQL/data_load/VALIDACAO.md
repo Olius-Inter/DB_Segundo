@@ -74,3 +74,11 @@ TLS usa `verify-full` por padrão, com opção para arquivo CA. Credenciais são
 A suíte foi ampliada para 17 testes, todos aprovados localmente, com cobertura de 96% do runner (200 de 209 instruções). Cobre a montagem da conexão direta, confirmação de destino, validação de host/porta, certificado ausente ou inválido, ambiente de autenticação/TLS, arquivos locais preservados, execução das etapas com comandos simulados e recusa de estrutura ausente ou dados existentes.
 
 Não foi realizada carga no Aiven nem no banco da API nesta adaptação. O Docker local não respondeu após sua inicialização, impedindo a repetição integrada. A suíte com comandos simulados não comprova handshake TLS, conectividade ou permissões de uma conta remota. O cliente psql instalado localmente foi identificado como 18.2; a restrição 16.15 do runner refere-se ao servidor PostgreSQL.
+
+## Correção dos apontamentos da PR #24
+
+Na execução remota `38924733620`, regressões, cobertura e a carga completa passaram. O job foi reprovado na etapa Sonar pelo Security Rating C: o caminho de `--report-dir` podia direcionar a escrita do manifesto para fora das pastas de saída do projeto (`pythonsecurity:S8707`). Também foram apontados quatro testes com mais de uma chamada dentro da verificação de exceção (`python:S5778`).
+
+Os relatórios agora ficam restritos a `PostgreSQL/data_load/reports/` e `coverage/`, incluindo subpastas. A validação resolve caminhos antes da conferência, rejeita escapes e links para fora dessas raízes e recusa arquivos de relatório simbólicos. O destino atual do CI permanece aceito. Os argumentos dos quatro testes foram preparados antes dos blocos de exceção.
+
+A suíte passou a ter 20 testes: 19 passaram localmente e um teste com symlink real foi ignorado por falta de permissão no Windows; ele permanece na suíte para execução no CI Linux. O bloqueio de arquivos simbólicos também foi verificado com simulação. Cobertura local do runner: 96% (216 de 225 instruções). Não houve carga em banco nem alteração de SQL, permissões ou configuração do Sonar nesta correção. A aprovação remota exige novo push e nova execução da análise.

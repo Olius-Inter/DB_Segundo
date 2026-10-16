@@ -10,6 +10,28 @@ import re
 import shutil
 from decimal import Decimal
 
+REPORT_ROOT = Path(__file__).resolve().parents[2]
+
+
+def report_directory(value):
+    root = REPORT_ROOT.resolve()
+    candidate = value.resolve()
+    for relative in ('PostgreSQL/data_load/reports', 'coverage'):
+        allowed = root / relative
+        if candidate.is_relative_to(allowed):
+            candidate.mkdir(parents=True, exist_ok=True)
+            return candidate
+    raise ValueError("Relatórios devem ficar em PostgreSQL/data_load/reports ou coverage, dentro do projeto.")
+
+
+def report_file(directory, name):
+    if re.fullmatch(r'[A-Za-z0-9_.-]+', name) is None:
+        raise ValueError('Nome de relatório inválido.')
+    file = directory / name
+    if file.is_symlink() or file.resolve().parent != directory:
+        raise ValueError('Links simbólicos ou caminhos externos não são aceitos para relatórios.')
+    return file
+
 
 def command(args, input_text=None, timeout=180, environment=None):
     options = {"creationflags": subprocess.CREATE_NO_WINDOW} if os.name == "nt" else {}
@@ -191,8 +213,7 @@ def main():
     config = load_config(args.config)
     psql, environment = connection(args)
     source = args.source_root.resolve()
-    report_dir = args.report_dir.resolve()
-    report_dir.mkdir(parents=True, exist_ok=True)
+    report_dir = report_directory(args.report_dir)
     manifest = {"source_root": str(source), "config": config, "scripts": {}, "completed": []}
     manifest["target"] = {"transport": "docker" if args.container else "postgresql",
                           "container": args.container, "host": args.host, "port": args.port if args.host else None,
@@ -202,7 +223,7 @@ def main():
     def execute(label, sql=None, path=None):
         parameters = {"environment": environment} if environment is not None else {}
         output = command(psql + (["-qAt", "-f", path] if path else ["-qAt"]), sql, timeout=240, **parameters)
-        (report_dir / (label + ".log")).write_text(output, encoding="utf-8")
+        report_file(report_dir, label + ".log").write_text(output, encoding="utf-8")
         print("PASS:", label, flush=True)
         return output
 
@@ -240,7 +261,7 @@ def main():
             except (RuntimeError, subprocess.TimeoutExpired) as cleanup_error:
                 manifest["cleanup_error"] = str(cleanup_error)
                 print("Falha ao limpar os arquivos temporários:", cleanup_error, file=sys.stderr)
-        (report_dir / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+        report_file(report_dir, "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
     print("Relatório:", report_dir / "manifest.json")
 
 
