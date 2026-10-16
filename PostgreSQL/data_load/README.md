@@ -12,7 +12,7 @@ Carga artificial para o requisito de Modelagem de Dados do segundo ano: pelo men
 | `02_contracts.sql` | 30 assinaturas e seus pagamentos simulados; aplicação pelas procedures, 2 upgrades e 1 pagamento duplicado que pede reembolso. |
 | `03_journeys.sql` | 200 coletas, 400 entregas, 40 pedidos adicionais, reenvios, correções e anulações. |
 | `04_validate.sql` | Quantidades, saldos calculados de forma independente, componentes, limites dos ciclos, vínculos PEV/validador, revisões e auditoria. |
-| `run.py` | Pré-condições, instalação opcional, execução em etapas, logs e relatório JSON. |
+| `run.py` | Conexão Docker ou direta via psql, pré-condições, instalação opcional em container descartável, execução em etapas e relatórios. |
 | `test_runner.py` | Validação de configurações, execução e proteções do runner. |
 | `VALIDACAO.md` | Resultado dos testes realizados nesta entrega. |
 
@@ -56,7 +56,7 @@ docker run -d --name olius-data-load --label org.olius.data_load.disposable=true
 docker exec olius-data-load pg_isready -U postgres -d olius_data_load
 ```
 
-Espere `pg_isready` indicar que aceita conexões. Este container não expõe portas e usa autenticação sem senha somente nesse ambiente isolado, acessado via `docker exec`.
+Para confirmar o servidor definitivo, execute `docker exec olius-data-load psql -h 127.0.0.1 -U postgres -d olius_data_load -X -w -v ON_ERROR_STOP=1 -At -c "SELECT 1;"` e aguarde retornar `1`. O `pg_isready` via socket pode detectar o servidor temporário da inicialização. Este container não expõe portas e usa autenticação sem senha somente nesse ambiente isolado, acessado via `docker exec`.
 
 ```powershell
 $env:OLIUS_DATA_LOAD_DISPOSABLE='1'
@@ -87,7 +87,7 @@ python -m unittest discover -s PostgreSQL/data_load -p test_runner.py
 
 A validação das views, quando presentes, ocorre administrativamente. O acesso das integrações às novas views continua sujeito ao ajuste apontado na PR #21; carregar dados não corrige permissões nem publica pontos no Redis.
 
-A carga não foi executada no Aiven. O modo padrão exige container identificado como descartável; o modo de desenvolvimento exige confirmação explícita do destino e estrutura existente. Massa inicial não substitui a integração RPA/ETL exigida em outra etapa da disciplina.
+A carga não foi executada no Aiven. O modo padrão exige container identificado como descartável; o modo de desenvolvimento aceita Docker ou conexão direta, exige confirmação explícita do destino e estrutura existente. Massa inicial não substitui a integração RPA/ETL exigida em outra etapa da disciplina.
 
 ## Executar no container de desenvolvimento da API
 
@@ -98,8 +98,8 @@ O container deve estar iniciado, com PostgreSQL 16.15 e a estrutura atual já in
 Exemplo com os nomes informados pelo responsável pelo projeto, que precisam corresponder ao destino real:
 
 ```powershell
-$env:OLIUS_DATA_LOAD_DEVELOPMENT_TARGET = 'olius-local/postgres-dev'
-python PostgreSQL/data_load/run.py --container olius-local --database postgres-dev --user olius_dev_admin --development
+$env:OLIUS_DATA_LOAD_DEVELOPMENT_TARGET = 'olius-local-postgres-dev-1/olius_dev'
+python PostgreSQL/data_load/run.py --container olius-local-postgres-dev-1 --database olius_dev --user olius_dev_admin --development
 ```
 
 - `--container`: nome do container Docker, não o nome do projeto Compose.
@@ -118,6 +118,40 @@ Ao terminar, remova a confirmação desta sessão do PowerShell:
 ```powershell
 Remove-Item Env:OLIUS_DATA_LOAD_DEVELOPMENT_TARGET
 ```
+
+## Conexão direta: PostgreSQL local, Aiven ou outro provedor
+
+Use `--host` no lugar de `--container`. Docker não é necessário nesse modo, mas o cliente **psql** precisa estar instalado e disponível no PATH. Confira com `psql --version`; se não for localizado, adicione ao PATH da sessão a pasta `bin` da instalação PostgreSQL. O runner continua exigindo servidor PostgreSQL 16.15, estrutura completa atual, privilégios de carga e tabelas operacionais/de auditoria vazias. Não há instalação automática de estrutura ou papéis em conexão direta.
+
+A confirmação tem o formato exato `host:porta/banco`. Não use URLs JDBC, URLs com senha ou credenciais dentro de `--host`. Atualmente são aceitos nomes DNS e IPv4.
+
+### Aiven e servidores com TLS
+
+Obtenha host, porta e certificado CA do serviço. A opção padrão é `--ssl-mode verify-full`, que valida o certificado e o nome do servidor. O certificado pode ser informado com `--ssl-root-cert` ou configurado pelo libpq. No Aiven, utilize a CA do projeto, conforme a [documentação oficial](https://aiven.io/docs/platform/concepts/tls-ssl-certificates).
+
+Exemplo ilustrativo: substitua os valores pelo banco de desenvolvimento escolhido antes de executar.
+
+```powershell
+$env:OLIUS_DATA_LOAD_DEVELOPMENT_TARGET = 'HOST_DO_SERVICO:26714/BANCO_DE_DESENVOLVIMENTO'
+python PostgreSQL/data_load/run.py --host HOST_DO_SERVICO --port 26714 --database BANCO_DE_DESENVOLVIMENTO --user USUARIO_DE_CARGA --development --ssl-root-cert 'C:\certificados\ca.pem'
+```
+
+A autenticação usa os mecanismos do cliente PostgreSQL, como um arquivo de senhas protegido indicado por `PGPASSFILE`, ou `PGPASSWORD` definido apenas no ambiente do processo. O runner não recebe senha na linha de comando nem a grava no manifesto. Não versione arquivos de senha. Não há prompt interativo: uma credencial ausente ou incorreta interrompe a execução. As variáveis TLS são aplicadas ao processo psql sem alterar o ambiente da sessão do terminal.
+
+Use a conexão PostgreSQL direta do serviço, sem pool em modo transacional: os scripts dependem de estado de sessão e tabelas temporárias. A conta deve possuir os privilégios atuais de implantação/carga e poder assumir `olius_api` quando esse papel existir. A presença do papel não concede esses direitos automaticamente.
+
+### PostgreSQL local sem TLS
+
+Somente para um servidor local configurado sem TLS, selecione explicitamente `--ssl-mode disable`:
+
+```powershell
+$env:OLIUS_DATA_LOAD_DEVELOPMENT_TARGET = '127.0.0.1:5432/olius_dev'
+python PostgreSQL/data_load/run.py --host 127.0.0.1 --port 5432 --database olius_dev --user olius_dev_admin --development --ssl-mode disable
+```
+
+Em ambos os exemplos, as regras de carga parcial e recuperação da seção anterior continuam válidas. O runner não limpa nem recria o banco. Não direcione esta massa a produção. Cada etapa SQL é executada pelo psql local com seus includes locais; nenhum SQL foi adaptado ou enviado como arquivo ao filesystem do servidor remoto.
+
+O manifesto passa a registrar transporte, destino, usuário e modo TLS, sem incluir a senha. Ao terminar, remova `OLIUS_DATA_LOAD_DEVELOPMENT_TARGET` e qualquer variável de credencial temporária configurada por você.
 
 ## Integração ao CI
 

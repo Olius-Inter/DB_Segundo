@@ -62,3 +62,15 @@ O runner também aceita `--development` e `--user`, mediante confirmação exata
 Na adaptação, os 11 testes existentes passaram e verificações adicionais com comandos simulados confirmaram a recusa sem confirmação do destino e o bloqueio de instalação. Esses resultados não comprovam conexão ou privilégios da conta `olius_dev_admin` no ambiente da API.
 
 Não foi executada carga real no destino informado (`olius-local` / `postgres-dev`). Os nomes, a autenticação, a estrutura completa e as permissões devem ser confirmados na execução. O CI continua utilizando exclusivamente o modo descartável.
+
+## Adaptação para conexão direta
+
+O runner passou a aceitar `--host`/`--port` como alternativa a `--container`. Usa o cliente psql local, conserva variáveis/includes dos scripts e não copia nem remove arquivos no servidor remoto. Os comandos Docker existentes permanecem compatíveis.
+
+A conexão direta exige modo de desenvolvimento, confirmação exata de `host:porta/banco`, estrutura existente e tabelas vazias. Instalação de estrutura e permissões continua restrita ao modo Docker descartável. PostgreSQL 16.15 permanece sendo a versão admitida.
+
+TLS usa `verify-full` por padrão, com opção para arquivo CA. Credenciais são lidas pelo cliente PostgreSQL, sem senha em argumentos do runner ou no manifesto. O modo sem TLS exige escolha explícita.
+
+A suíte foi ampliada para 17 testes, todos aprovados localmente, com cobertura de 96% do runner (200 de 209 instruções). Cobre a montagem da conexão direta, confirmação de destino, validação de host/porta, certificado ausente ou inválido, ambiente de autenticação/TLS, arquivos locais preservados, execução das etapas com comandos simulados e recusa de estrutura ausente ou dados existentes.
+
+Não foi realizada carga no Aiven nem no banco da API nesta adaptação. O Docker local não respondeu após sua inicialização, impedindo a repetição integrada. A suíte com comandos simulados não comprova handshake TLS, conectividade ou permissões de uma conta remota. O cliente psql instalado localmente foi identificado como 18.2; a restrição 16.15 do runner refere-se ao servidor PostgreSQL.
