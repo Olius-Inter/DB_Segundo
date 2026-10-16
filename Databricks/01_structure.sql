@@ -11,6 +11,7 @@ As tabelas landing guardam snapshots por lote; os dashboards usam olius_bi.
 USE CATALOG IDENTIFIER(:catalog);
 CREATE SCHEMA IF NOT EXISTS olius_bi_landing;
 CREATE SCHEMA IF NOT EXISTS olius_bi;
+CREATE VOLUME IF NOT EXISTS olius_bi_landing.snapshots;
 
 CREATE TABLE IF NOT EXISTS olius_bi_landing.publicacao (
     mart STRING,
@@ -20,6 +21,8 @@ CREATE TABLE IF NOT EXISTS olius_bi_landing.publicacao (
     publicado_em TIMESTAMP,
     contagens_json STRING
 ) USING DELTA;
+
+-- Fonte do upload para a Free Edition: /Volumes/<catalog>/olius_bi_landing/snapshots.
 
 -- Um único registro controla a publicação de todas as fatos e dimensões.
 MERGE INTO olius_bi_landing.publicacao t
@@ -149,6 +152,15 @@ CREATE TABLE IF NOT EXISTS olius_bi_landing.fato_solicitacao (
 CREATE TABLE IF NOT EXISTS olius_bi_landing.ponte_coleta_motivo (
     coleta_id STRING,
     motivo_id STRING,
+    _lote_id STRING
+) USING DELTA;
+
+CREATE TABLE IF NOT EXISTS olius_bi_landing.ranking_anual (
+    perfil STRING,
+    ano INT,
+    participante_id STRING,
+    pontos_anuais DECIMAL(38,0),
+    posicao BIGINT,
     _lote_id STRING
 ) USING DELTA;
 

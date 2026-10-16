@@ -38,7 +38,7 @@ class IngestionContractTests(unittest.TestCase):
                 ingestion.identifier(value)
 
     def test_every_dataset_has_source_target_and_published_view(self):
-        source = (ROOT / "PostgreSQL/07_materialized_views.sql").read_text(encoding="utf-8")
+        source = (ROOT / "PostgreSQL/08_materialized_views.sql").read_text(encoding="utf-8")
         target = (ROOT / "Databricks/01_structure.sql").read_text(encoding="utf-8")
         views = (ROOT / "Databricks/03_views.sql").read_text(encoding="utf-8")
         for name, keys in ingestion.DATASETS.items():
@@ -60,9 +60,49 @@ class IngestionContractTests(unittest.TestCase):
             self.assertIn(child, ingestion.DATASETS)
             self.assertIn(parent, ingestion.DATASETS)
 
-    def test_ranking_not_implemented(self):
+    def test_ranking_reuses_approved_source_without_new_window_function(self):
         views = (ROOT / "Databricks/03_views.sql").read_text(encoding="utf-8")
         self.assertNotRegex(views, r"(?i)\b(?:DENSE_RANK|ROW_NUMBER|RANK)\s*\(")
+        source = (ROOT / "PostgreSQL/08_materialized_views.sql").read_text(encoding="utf-8")
+        self.assertIn("FROM public.vw_annual_ranking", source)
+        self.assertIn("ranking_anual", ingestion.DATASETS)
+
+    def test_json_contract_matches_delta_column_types(self):
+        target = (ROOT / "Databricks/01_structure.sql").read_text(encoding="utf-8")
+        for name, spec in ingestion.CONTRACT["datasets"].items():
+            match = re.search(rf"CREATE TABLE IF NOT EXISTS olius_bi_landing\.{name} \((.*?)\) USING DELTA;", target, re.S)
+            actual = dict(re.findall(r"^\s*(\w+)\s+([A-Z]+(?:\(\d+,\d+\))?)", match.group(1), re.M))
+            actual.pop("_lote_id")
+            self.assertEqual(spec["columns"], actual)
+
+    def test_manifest_rejects_incomplete_and_tampered_upload(self):
+        import tempfile
+        import uuid
+        import json
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = {"contract_version": ingestion.CONTRACT["version"],
+                        "snapshot_id": str(uuid.uuid4()), "export_id": str(uuid.uuid4()),
+                        "refreshed_at": "2026-10-14T12:00:00+00:00", "datasets": {}}
+            for name in ingestion.DATASETS:
+                (root / name).mkdir()
+                path = root / name / "part-00000.parquet"
+                path.write_bytes(b"test-bytes-for-hash-only")
+                manifest["datasets"][name] = {
+                    "fingerprint": {k: "0" for k in ["rows"] + ingestion.MEASURES.get(name, [])},
+                    "files": [{"name": path.name, "bytes": path.stat().st_size, "sha256": ingestion.sha256(path)}]}
+            ingestion.validate_manifest(root, manifest)
+            first = next(iter(ingestion.DATASETS))
+            path = root / first / "part-00000.parquet"
+            path.write_bytes(b"changed")
+            with self.assertRaises(ValueError):
+                ingestion.validate_manifest(root, manifest)
+            path.unlink()
+            with self.assertRaises(ValueError):
+                ingestion.validate_manifest(root, manifest)
+            manifest["datasets"].pop(first)
+            with self.assertRaises(ValueError):
+                ingestion.validate_manifest(root, manifest)
 
 
 if __name__ == "__main__":

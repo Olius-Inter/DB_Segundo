@@ -1,5 +1,6 @@
 /* OLIUS — Roles técnicas e contrato de acesso da Core API — PostgreSQL 16.15
-   Executar DEPOIS de 01–05 do catálogo, no banco do OLIUS e schema public.
+   Executar DEPOIS dos scripts principais 01–08 e 01–05 do catálogo,
+   no banco do OLIUS e schema public.
    Executar o arquivo completo, fora de outra transação. Em erro: ROLLBACK.
    Requer CREATEROLE e propriedade (direta/herdada) sobre schema/objetos,
    além de autoridade para conceder CONNECT no banco selecionado.
@@ -81,7 +82,9 @@ INSERT INTO olius_permission_scope VALUES
     ('data_catalog_table'),
     ('data_catalog_column'),
     ('data_catalog_role'),
-    ('vw_data_catalog');
+    ('vw_data_catalog'),
+    ('vw_annual_scores'),
+    ('vw_annual_ranking');
 
 -- PAPÉIS GERAIS E RECONCILIAÇÃO
 -- Valida os grupos e retira concessões anteriores dos objetos listados.
@@ -524,6 +527,131 @@ BEGIN
 END $business_routines$;
 REVOKE CREATE ON SCHEMA public FROM olius_business_owner;
 ALTER DEFAULT PRIVILEGES FOR ROLE olius_business_owner REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC;
+
+-- DATA MART — grupos NOLOGIN; os logins são provisionados em 02_users.sql.
+-- Lista fechada. Não conceder fontes operacionais aos usuários de integração.
+DO $data_mart_access$
+DECLARE
+    name TEXT;
+    r RECORD;
+    obj RECORD;
+    col RECORD;
+    mart_objects CONSTANT TEXT[] := ARRAY[
+        'dim_tempo','dim_estabelecimento','dim_cidadao','dim_motorista','dim_pev',
+        'dim_classificacao_coleta','dim_status_solicitacao','dim_motivo_falha',
+        'fato_coleta','fato_entrega_pev','fato_solicitacao','ponte_coleta_motivo',
+        'ranking_anual','refresh_state'];
+BEGIN
+    IF to_regprocedure('dm.refresh_data_mart()') IS NULL THEN
+        RAISE EXCEPTION 'Instale 08_materialized_views.sql antes do controle de acesso.';
+    END IF;
+    FOREACH name IN ARRAY ARRAY['olius_dm_owner','olius_bi_reader_role','olius_bi_refresh_role'] LOOP
+        SELECT * INTO r FROM pg_roles WHERE rolname = name;
+        IF NOT FOUND THEN
+            EXECUTE format('CREATE ROLE %I NOLOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS',name);
+        ELSIF r.rolcanlogin OR r.rolsuper OR r.rolcreatedb OR r.rolcreaterole
+            OR r.rolreplication OR r.rolbypassrls OR r.rolinherit THEN
+            RAISE EXCEPTION 'Role % possui atributos incompatíveis; revisar.',name;
+        END IF;
+        IF EXISTS (SELECT 1 FROM pg_auth_members m WHERE m.member = (SELECT oid FROM pg_roles WHERE rolname=name)) THEN
+            RAISE EXCEPTION 'Role % herda outro grupo; revisar.',name;
+        END IF;
+    END LOOP;
+    IF NOT pg_has_role(current_user,'olius_dm_owner','SET') THEN
+        RAISE EXCEPTION 'Implantador precisa poder SET ROLE olius_dm_owner para configurar propriedade.';
+    END IF;
+    IF NOT (SELECT rolsuper FROM pg_roles WHERE rolname=current_user)
+       AND NOT EXISTS (SELECT 1 FROM pg_namespace n WHERE n.nspname='dm'
+           AND pg_has_role(current_user,n.nspowner,'USAGE')) THEN
+        RAISE EXCEPTION 'Implantador precisa administrar o schema dm.';
+    END IF;
+
+    FOREACH name IN ARRAY mart_objects LOOP
+        SELECT c.relkind,c.relowner INTO obj FROM pg_class c
+        WHERE c.oid=to_regclass(format('dm.%I',name));
+        IF NOT FOUND OR obj.relkind <> (CASE WHEN name='refresh_state' THEN 'r'::"char" ELSE 'm'::"char" END) THEN
+            RAISE EXCEPTION 'Objeto dm.% ausente ou com tipo incompatível.',name;
+        END IF;
+        IF EXISTS (SELECT 1 FROM pg_depend WHERE classid='pg_class'::regclass
+                   AND objid=to_regclass(format('dm.%I',name)) AND deptype='e') THEN
+            RAISE EXCEPTION 'Objeto dm.% pertence a extensão.',name;
+        END IF;
+        IF NOT (SELECT rolsuper FROM pg_roles WHERE rolname=current_user)
+           AND NOT pg_has_role(current_user,obj.relowner,'USAGE') THEN
+            RAISE EXCEPTION 'Sem autoridade sobre dm.%.',name;
+        END IF;
+        IF obj.relowner IN ('olius_bi_reader_role'::regrole,'olius_bi_refresh_role'::regrole) THEN
+            RAISE EXCEPTION 'Papel operacional é proprietário de dm.%; revisar.',name;
+        END IF;
+    END LOOP;
+    SELECT * INTO r FROM pg_proc WHERE oid='dm.refresh_data_mart()'::regprocedure;
+    IF r.prokind <> 'p' OR NOT r.prosecdef THEN
+        RAISE EXCEPTION 'Refresh precisa ser PROCEDURE SECURITY DEFINER.';
+    END IF;
+    IF NOT (SELECT rolsuper FROM pg_roles WHERE rolname=current_user)
+       AND NOT pg_has_role(current_user,r.proowner,'USAGE') THEN
+        RAISE EXCEPTION 'Sem autoridade de proprietário sobre o refresh.';
+    END IF;
+    IF EXISTS (SELECT 1 FROM aclexplode(COALESCE(r.proacl,acldefault('f',r.proowner))) a
+        WHERE a.privilege_type='EXECUTE' AND a.grantee NOT IN
+            (0,r.proowner,'olius_owner'::regrole,'olius_bi_refresh_role'::regrole,'olius_dm_owner'::regrole)) THEN
+        RAISE EXCEPTION 'Refresh possui EXECUTE externo; revisar antes de configurar proprietário.';
+    END IF;
+
+    EXECUTE format('GRANT CONNECT ON DATABASE %I TO olius_dm_owner, olius_bi_reader_role, olius_bi_refresh_role',current_database());
+    REVOKE ALL ON SCHEMA dm FROM PUBLIC, olius_bi_reader_role, olius_bi_refresh_role;
+    GRANT USAGE, CREATE ON SCHEMA dm TO olius_dm_owner;
+    GRANT USAGE ON SCHEMA dm TO olius_owner, olius_bi_reader_role, olius_bi_refresh_role;
+    GRANT USAGE ON SCHEMA public TO olius_dm_owner;
+
+    -- Reconcilia também concessões antigas dos grupos BI nas fontes public.
+    FOR obj IN SELECT object_name FROM olius_permission_scope LOOP
+        EXECUTE format('REVOKE ALL ON TABLE public.%I FROM olius_bi_reader_role, olius_bi_refresh_role RESTRICT',obj.object_name);
+        FOR col IN SELECT attname FROM pg_attribute WHERE attrelid=to_regclass(format('public.%I',obj.object_name))
+            AND attnum>0 AND NOT attisdropped AND attacl IS NOT NULL LOOP
+            EXECUTE format('REVOKE SELECT (%1$I), INSERT (%1$I), UPDATE (%1$I), REFERENCES (%1$I) ON TABLE public.%2$I FROM olius_bi_reader_role, olius_bi_refresh_role RESTRICT',col.attname,obj.object_name);
+        END LOOP;
+    END LOOP;
+
+    -- Owner interno lê apenas as fontes necessárias, não recebe olius_owner.
+    GRANT SELECT (id,name,status) ON public.users TO olius_dm_owner;
+    GRANT SELECT (id,type_id,address_id,is_pev) ON public.establishment TO olius_dm_owner;
+    GRANT SELECT (id,name) ON public.establishment_type TO olius_dm_owner;
+    GRANT SELECT (id,state,city,neighborhood,latitude,longitude) ON public.addresses TO olius_dm_owner;
+    GRANT SELECT (id) ON public.citizens TO olius_dm_owner;
+    GRANT SELECT (id,name,status) ON public.driver TO olius_dm_owner;
+    GRANT SELECT (id,status,address_id) ON public.pev TO olius_dm_owner;
+    GRANT SELECT ON public.collection, public.collection_request,
+        public.collection_schedule_history, public.delivery_pev,
+        public.point_calculation, public.collection_failure,
+        public.collection_failure_reason, public.vw_annual_ranking TO olius_dm_owner;
+
+    FOREACH name IN ARRAY mart_objects LOOP
+        EXECUTE format('REVOKE ALL ON TABLE dm.%I FROM PUBLIC, olius_bi_reader_role, olius_bi_refresh_role RESTRICT',name);
+        FOR col IN SELECT attname FROM pg_attribute WHERE attrelid=to_regclass(format('dm.%I',name))
+            AND attnum>0 AND NOT attisdropped AND attacl IS NOT NULL LOOP
+            EXECUTE format('REVOKE SELECT (%1$I), INSERT (%1$I), UPDATE (%1$I), REFERENCES (%1$I) ON TABLE dm.%2$I FROM PUBLIC, olius_bi_reader_role, olius_bi_refresh_role RESTRICT',col.attname,name);
+        END LOOP;
+        EXECUTE format('ALTER %s dm.%I OWNER TO olius_dm_owner',
+            CASE WHEN name='refresh_state' THEN 'TABLE' ELSE 'MATERIALIZED VIEW' END,name);
+        EXECUTE format('GRANT SELECT ON TABLE dm.%I TO olius_bi_reader_role, olius_owner',name);
+    END LOOP;
+    GRANT SELECT ON dm.refresh_state TO olius_bi_refresh_role;
+    ALTER PROCEDURE dm.refresh_data_mart() OWNER TO olius_dm_owner;
+    ALTER PROCEDURE dm.refresh_data_mart() SET search_path = pg_catalog, dm, pg_temp;
+    REVOKE ALL ON PROCEDURE dm.refresh_data_mart() FROM PUBLIC, olius_bi_reader_role, olius_bi_refresh_role, olius_owner;
+    GRANT EXECUTE ON PROCEDURE dm.refresh_data_mart() TO olius_bi_refresh_role, olius_owner;
+    ALTER SCHEMA dm OWNER TO olius_dm_owner;
+    -- As contas BI não recebem esse grupo proprietário. Permissão interna de
+    -- acesso às fontes não equivale à concessão de acesso aos seus logins.
+END $data_mart_access$;
+ALTER DEFAULT PRIVILEGES FOR ROLE olius_dm_owner REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC;
+
+INSERT INTO public.data_catalog_role(role_name,description) VALUES
+('olius_dm_owner','Proprietário interno NOLOGIN do Data Mart e refresh; sem membership de contas de integração.'),
+('olius_bi_reader_role','Grupo NOLOGIN: SELECT somente nos 13 conjuntos materializados e refresh_state em dm.'),
+('olius_bi_refresh_role','Grupo NOLOGIN: EXECUTE no refresh coordenado e SELECT em refresh_state; sem DML direto.')
+ON CONFLICT (role_name) DO UPDATE SET description=EXCLUDED.description;
 
 COMMIT;
 

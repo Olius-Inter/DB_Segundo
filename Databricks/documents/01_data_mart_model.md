@@ -62,6 +62,15 @@ atual, não o status que ela tinha em cada dia passado.
 | vw_falhas_dashboard | Contar incidências por motivo |
 | vw_volume_operacoes_dashboard | Evolução ambiental B2B/B2C em um dataset comum |
 | vw_atualizacao_dashboard | Mostrar última atualização da origem e publicação |
+| vw_ranking_dashboard | Pontuação e posição anuais aprovadas, por perfil |
+
+## Ranking aprovado
+
+dm.ranking_anual materializa public.vw_annual_ranking, que já utiliza a window
+function aprovada. O Data Mart não repete esse cálculo. O contrato considera
+somente o ano corrente em America/Sao_Paulo, com empate 1,1,2 e perfis separados.
+Ordenar o dataset explicitamente por perfil, ano, posicao e participante_id.
+Os lotes técnicos não substituem uma política de histórico anual do ranking.
 
 Manter as linhas individuais possibilita histograma de litros, boxplot por
 categoria/PEV e distribuição dos tempos. Agregar apenas na consulta do gráfico.
@@ -85,8 +94,8 @@ categoria/PEV e distribuição dos tempos. Agregar apenas na consulta do gráfic
 - Filtros: período, perfil, cidade, categoria, motorista, PEV, resultado e
   status, conforme os campos disponíveis em cada dataset.
 
-Datas dos fatos usam America/Sao_Paulo. Instantes TIMESTAMP via JDBC são
-processados em UTC; datas locais de solicitação/agendamento podem ser obtidas
+Datas dos fatos usam America/Sao_Paulo. Instantes TIMESTAMP exportados em Parquet
+preservam UTC; datas locais de solicitação/agendamento podem ser obtidas
 com from_utc_timestamp no Databricks. A análise de solicitações usa a data
 do pedido, e a de coletas usa a data física da visita.
 
@@ -103,6 +112,6 @@ saldo geral nem ranking anual B2B com piso zero sequencial.
 
 Franquia perdida por cancelamento não entra no volume ambiental. Entregas
 B2C não contribuem para certificados de estabelecimentos. Financeiro,
-assinaturas, certificados, componentes dos pontos e ranking estão fora deste
+assinaturas, certificados e componentes dos pontos estão fora deste
 recorte. Nomes de pessoas são incluídos para identificação: restringir acesso
 às views de cidadãos e motoristas conforme o público dos dashboards.

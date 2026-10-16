@@ -1,6 +1,6 @@
 /*
-PROJETO: OLIUS | AMBIENTE: POSTGRESQL | 08 - Refresh do Data Mart
-Uso manual; o Job Python também executa este procedimento antes da extração.
+PROJETO: OLIUS | AMBIENTE: POSTGRESQL | 09 - Refresh do Data Mart
+Uso manual; o exportador externo também executa antes de extrair os arquivos.
 Não executar em paralelo com outro refresh/extração. Lock ocupado gera erro.
 */
 BEGIN ISOLATION LEVEL REPEATABLE READ;

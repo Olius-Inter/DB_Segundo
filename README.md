@@ -12,11 +12,12 @@ O projeto utiliza diferentes tecnologias de armazenamento, cada uma destinada a 
 ## Data Mart e BI
 
 O recorte analítico de coletas, entregas e solicitações usa views materializadas
-em star schema no PostgreSQL e ingestão por lote no Databricks. Ranking é uma
-tarefa separada.
+em star schema no PostgreSQL. O ranking aprovado também é materializado.
+Na Free Edition, um exportador externo gera Parquets, que são enviados a um
+Volume e ingeridos por lote no Databricks.
 
-* **PostgreSQL/07_materialized_views.sql** — instalação das fatos e dimensões.
-* **PostgreSQL/08_refresh_materialized_views.sql** — refresh manual coordenado.
+* **PostgreSQL/08_materialized_views.sql** — instalação das fatos, dimensões e ranking.
+* **PostgreSQL/09_refresh_materialized_views.sql** — refresh manual coordenado.
 * **Databricks/** — estrutura Delta, ingestão Python, views de dashboards e verificações.
 * [Guia do Data Mart](Databricks/documents/README.md) — conexão, sequência de execução, modelo e atualização.
 

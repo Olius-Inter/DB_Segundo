@@ -148,3 +148,20 @@ CREATE OR REPLACE VIEW olius_bi.vw_atualizacao_dashboard AS
 SELECT lote_id, origem_atualizada_em, publicado_em, contagens_json
 FROM olius_bi_landing.publicacao WHERE mart = 'operacoes';
 
+CREATE OR REPLACE VIEW olius_bi.ranking_anual AS
+SELECT d.perfil, d.ano, d.participante_id, d.pontos_anuais, d.posicao
+FROM olius_bi_landing.ranking_anual d
+JOIN olius_bi_landing.publicacao p ON p.mart = 'operacoes' AND d._lote_id = p.lote_id;
+
+CREATE OR REPLACE VIEW olius_bi.vw_ranking_dashboard AS
+SELECT r.perfil, r.ano, r.participante_id,
+       CASE WHEN r.perfil = 'B2B' THEN e.nome ELSE c.nome END AS participante,
+       e.tipo_estabelecimento, e.estado, e.cidade,
+       r.pontos_anuais, r.posicao
+FROM olius_bi.ranking_anual r
+LEFT JOIN olius_bi.dim_estabelecimento e
+    ON r.perfil = 'B2B' AND e.estabelecimento_id = r.participante_id
+LEFT JOIN olius_bi.dim_cidadao c
+    ON r.perfil = 'B2C' AND c.cidadao_id = r.participante_id;
+-- Ordenar na consulta do dataset: ORDER BY perfil, ano, posicao, participante_id.
+

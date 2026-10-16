@@ -2,93 +2,88 @@
 
 ## Como uma carga acontece
 
-1. O Python verifica o controle do destino e gera um lote UUID novo.
-2. Abre uma conexão PostgreSQL direta e adquire advisory lock de sessão.
-3. Chama dm.refresh_data_mart em REPEATABLE READ: todas as views recebem a
-   mesma fotografia da aplicação, e o snapshot_id muda no mesmo commit.
-4. Mantém o lock enquanto lê as views via JDBC e grava cada conjunto no
-   destino com _lote_id. O banco operacional continua recebendo operações;
-   as views permanecem congeladas até o próximo refresh autorizado.
-5. Confere tipos, chaves únicas/não nulas, contagens, somas de medidas e
-   relacionamentos. Verifica que o snapshot_id não mudou na extração.
-6. Atualiza uma única linha da tabela publicacao, trocando o lote ativo.
-7. Libera a conexão/lock. As views de consumo passam a selecionar o novo lote.
+1. Fora do Databricks, 06_export_snapshot.py abre a conexão de refresh no Aiven
+   e adquire advisory lock de sessão.
+2. Chama dm.refresh_data_mart em REPEATABLE READ: as views materializadas
+   recebem uma fotografia consistente, com novo snapshot_id no mesmo commit.
+3. A conta leitora abre uma transação REPEATABLE READ READ ONLY. O exportador
+   mantém a conexão de controle/lock enquanto extrai todos os conjuntos.
+4. Produz Parquets e confere quantidades. O manifest.json é escrito por último,
+   com identificadores, horário, hashes e totais. A sessão/lock é liberada.
+5. Os arquivos são enviados ao Volume; o manifesto deve ser enviado por último.
+6. No Databricks, 02_ingestion.py verifica contrato, UUIDs, horário e hashes;
+   lê os Parquets, grava um lote Delta e valida tipos, chaves, totais e relações.
+7. Após validar todos os conjuntos, troca o ponteiro publicacao em uma única
+   escrita Delta. Somente o lote publicado aparece nas views de consumo.
 
-Novas operações após a fotografia entram na próxima execução. Correções e
-anulações são refletidas porque cada lote é uma fotografia completa: uma
-operação removida da origem não aparece no lote novo. Não usar append simples
-em uma única tabela de consumo para representar esse comportamento.
+Novas operações depois da fotografia entram no próximo export. Correções e
+anulações são refletidas porque cada lote é completo. O snapshot pode ser
+importado mesmo depois de outro refresh na origem: os arquivos já preservam
+sua fotografia. Um snapshot mais antigo que o ativo é recusado; o já ativo
+é reconhecido sem duplicação.
 
 ## Garantias e limites
 
-- Uma falha antes da publicação mantém o lote anterior nos dashboards.
-- Cada tentativa usa UUID próprio. Lotes parciais ficam isolados, sem misturar
-  dados publicados ou duplicar linhas do lote ativo.
-- Não há transação distribuída PostgreSQL/Databricks. Um refresh bem-sucedido
-  pode existir na origem mesmo se a transferência falhar; o destino mantém
-  o último lote validado e registra a defasagem pelo horário de publicação.
-- A troca do ponteiro é uma única transação Delta; não exige atualizar todas
-  as tabelas Delta em uma transação conjunta.
-- Todos os escritores devem usar este fluxo e o mesmo controle. Não executar
-  REFRESH individual, editar landing manualmente ou mudar publicacao fora dele.
-  O lock é cooperativo; não impede um administrador de ignorar o protocolo.
-- Uma conexão de controle perdida impede o Python de publicar. O token final
-  também detecta refresh concorrente pelo procedimento. Redução de bloqueios
-  ou extração paralela exigem preservar a fotografia de origem.
-- A publicação só aponta para conjuntos cuja carga já terminou. Isso não cria
-  uma transação de leitura entre todas as tabelas Delta: consultas já em execução
-  durante a troca, caches e gráficos separados podem observar momentos diferentes.
-  Atualizar os datasets após a carga, sem sobreposição com a próxima publicação,
-  e mostrar lote/horário de vw_atualizacao_dashboard. Para exigir uma fotografia
-  transacional entre tabelas em qualquer instante, avaliar transações multi-table
-  suportadas pelo ambiente ou datasets fixados a um lote/versões específicas.
-- Consistência não significa disponibilidade contínua ou latência zero: falha
-  de rede/Job pode atrasar os dados. Configurar alertas e acompanhar a última
-  atualização concluída. O refresh comum bloqueia leitura das views na origem.
+- Falha antes da publicação mantém o lote anterior nos dashboards.
+- Cada tentativa de ingestão usa UUID próprio. Lotes parciais ficam isolados.
+- Não há transação distribuída entre Aiven, arquivos e Databricks. Um refresh
+  bem-sucedido pode coexistir com falha posterior de exportação ou upload.
+- Perder a conexão de controle antes de concluir a extração impede gerar o
+  manifesto final. O exportador confere também o token da origem ao terminar.
+- Refresh e lock são cooperativos: todos devem usar o procedimento previsto,
+  sem REFRESH individual ou edição manual do controle.
+- A publicação aponta somente para conjuntos carregados, mas não transforma
+  leituras multi-table em uma transação global. Caches e gráficos separados
+  podem observar momentos diferentes; atualizar os datasets após o Job e
+  mostrar o lote/horário de vw_atualizacao_dashboard.
+- Usar um único escritor/uma execução por vez no destino. O lock do Aiven
+  protege a exportação, não serializa os Jobs que leem arquivos no Databricks.
+- Não há garantia de latência zero ou disponibilidade contínua. A atualização
+  periódica depende também de agendamento externo, upload, Job e quota Free.
+- O refresh comum bloqueia leitura das views na origem enquanto é executado.
 
 Referência: [garantias Delta](https://docs.databricks.com/aws/en/lakehouse/acid).
 
-## O que é validado automaticamente
+## Validações
 
-- Origem e destino têm os tipos declarados no contrato.
-- Cada linha contém todas as partes da chave; não há chaves repetidas.
-- Quantidade de linhas e somas de medidas coincidem com o snapshot da origem.
-- Datas, estabelecimentos, motoristas, PEVs, cidadãos, classificações, status
-  e motivos referenciados existem no mesmo lote.
-- Ponte refere-se apenas a coletas válidas carregadas.
-- Operações sem cálculo vigente são reportadas, permanecendo com pontos NULL.
+O importador confere contrato, integridade dos arquivos, chaves não nulas e
+únicas, contagens e somas, relacionamentos e participantes do ranking por perfil.
+Pontos ausentes permanecem NULL com calculo_vigente_disponivel=false; o SQL
+04_quality_checks.sql permite contar esses casos. Não transformar ausência de
+cálculo em zero.
 
-Contagens e totais conferem as métricas, mas não provam igualdade de todo campo
-descritivo. Na homologação, conferir amostras de chaves, nomes e datas também.
-Mudança de schema falha de forma explícita; não há evolução automática de colunas.
+Hashes detectam alterações na transferência, mas o manifesto não é assinado:
+o upload deve ser restrito a responsáveis autorizados. Totais não substituem
+conferência amostral de nomes, chaves e datas na homologação.
 
 ## Roteiro de homologação
 
 Em banco/workspace de teste:
 
-1. Publicar um conjunto conhecido e comparar totais no PostgreSQL e Databricks.
-2. Inserir uma operação e verificar sua entrada após nova carga.
-3. Corrigir volume/pontos de uma operação; confirmar atualização sem duplicação.
-4. Anular coleta e entrega; confirmar remoção das fatos e preservação do pedido.
-5. Usar coleta com dois motivos; conferir uma visita no dashboard e duas incidências.
-6. Conferir timestamps perto de meia-noite UTC com data local America/Sao_Paulo.
-7. Forçar falha antes de publicar, por exemplo retirando MODIFY de uma tabela
-   no ambiente de teste; confirmar que o lote ativo anterior permanece.
-8. Executar duas cargas; a segunda deve falhar no lock, sem corromper a primeira.
-9. Verificar que o SQL 04 não encontra perda/duplicação nos joins de consumo.
+1. Exportar, enviar e publicar um conjunto conhecido; comparar volumes e contagens.
+2. Inserir operação, gerar novo snapshot e confirmar entrada após nova carga.
+3. Corrigir/anular pelas procedures; confirmar atualização/remoção sem duplicar.
+4. Conferir ranking materializado contra public.vw_annual_ranking no snapshot.
+5. Testar coleta com dois motivos: uma visita e duas incidências.
+6. Conferir instantes perto de meia-noite UTC e a data local de São Paulo.
+7. Enviar arquivo incompleto/alterado e confirmar rejeição antes da publicação.
+8. Forçar falha de carga; confirmar que o lote anterior permanece ativo.
+9. Reimportar o snapshot ativo; confirmar que não duplica dados.
+10. Tentar exportações concorrentes: a segunda deve falhar no lock.
+11. Executar 04_quality_checks.sql e verificar joins dos dashboards.
 
-Os testes locais em Databricks/tests/test_ingestion_contract.py validam funções
-de comparação e o contrato entre arquivos. Não substituem esse roteiro real.
+Databricks/tests/test_ingestion_contract.py cobre funções de comparação,
+manifesto e contrato entre arquivos. A regressão PostgreSQL
+tests/data_mart_access_regression.sql cobre permissões, refresh, ranking e
+anulação com as procedures oficiais, em base descartável. Não substituem a
+homologação completa no workspace.
 
-## Retenção e crescimento
+## Retenção
 
-As tabelas landing preservam todos os lotes, inclusive tentativas incompletas.
-Isso facilita recuperar e auditar a carga, mas aumenta o armazenamento. Não há
-limpeza automática nesta versão. Antes de operação continuada, definir retenção
-e manutenção com a equipe: remover somente lotes antigos que não sejam o lote
-ativo nem uma execução em andamento. Nunca fazer limpeza concorrente com carga
-ou consultas que ainda dependam de snapshots antigos.
+Landing preserva lotes, inclusive tentativas incompletas; o Volume e a máquina
+externa preservam os arquivos exportados. Não há limpeza automática nesta
+versão. Definir retenção antes da operação continuada; nunca remover lote ativo,
+arquivos em upload/ingestão ou snapshots ainda usados por consultas.
 
-Para volumes grandes, medir tempo e custo da carga integral antes de adotar
-incremental/CDC. Incremental precisa tratar atualizações, exclusões e mudanças
-dimensionais; filtrar somente created_at não atende às correções do projeto.
+Para grandes volumes, medir custo/tempo da carga integral antes de adotar
+incremental/CDC, que também precisa refletir correções, anulações e dimensões.

@@ -1,17 +1,17 @@
 # Controle de acesso — OLIUS
 
-Esta pasta centraliza os papéis PostgreSQL, as permissões sobre os objetos do banco e as contas da equipe e da Core API. A configuração corresponde aos scripts atuais e tem como alvo PostgreSQL 16.15.
+Esta pasta centraliza os papéis PostgreSQL, as permissões sobre os objetos do banco e as contas da equipe, Core API e integração BI. A configuração corresponde aos scripts atuais e tem como alvo PostgreSQL 16.15.
 
 ## Arquivos e ordem de execução
 
 | Arquivo | Responsabilidade |
 |---|---|
 | `01_roles.sql` | Cria e valida os papéis, aplica permissões, transfere a propriedade dos objetos previstos e configura os acessos de autenticação. |
-| `02_users.sql` | Cria as sete contas aprovadas e atribui seus papéis, sem definir senhas. |
+| `02_users.sql` | Cria as nove contas aprovadas e atribui seus papéis, sem definir senhas. |
 
 Executar nesta ordem, no banco do OLIUS do segundo ano:
 
-1. Os cinco scripts principais do banco, de `01_structure.sql` a `05_triggers.sql`.
+1. Scripts principais 01–07 e `08_materialized_views.sql`.
 2. Os scripts de estrutura, constraints, view e carga da pasta `data_catalog`.
 3. `access_control/01_roles.sql`.
 4. `access_control/02_users.sql`, quando for provisionar as contas.
@@ -22,7 +22,7 @@ Executar cada arquivo completo, fora de outra transação. Ambos utilizam BEGIN/
 
 ## Papéis e contas
 
-Os **sete papéis** abaixo são `NOLOGIN`: representam permissões ou propriedade técnica e não iniciam uma conexão. As contas da equipe e da API são `LOGIN` e recebem participação nesses papéis.
+Os **dez papéis** abaixo são `NOLOGIN`: representam permissões ou propriedade técnica e não iniciam uma conexão. As contas da equipe, API e integração BI são `LOGIN` e recebem participação nos grupos previstos.
 
 Os perfis ADMIN, CITIZENS e ESTABLISHMENT da aplicação são registros do sistema e não equivalem automaticamente a esses papéis PostgreSQL.
 
@@ -35,6 +35,9 @@ Os perfis ADMIN, CITIZENS e ESTABLISHMENT da aplicação são registros do siste
 | `olius_api` | Consultas de negócio, escrita cadastral/financeira por coluna e EXECUTE nas operações públicas. Sem escrita livre em fatos derivados, saldos, sessões ou logs; contrato completo em API_DATABASE_CONTRACT.md. |
 | `olius_auth_owner` | Proprietário interno das funções de autenticação, com os privilégios restritos necessários à sua execução. Não é um perfil atribuído às contas da equipe ou da API. |
 | `olius_business_owner` | Proprietário interno das procedures de negócio, entradas operacionais e triggers de auditoria/sincronização de PEV. Sem login, sem propriedade de tabelas e sem participação atribuída à Core ou à equipe. |
+| `olius_dm_owner` | Proprietário interno do schema dm, das 13 views materializadas, refresh_state e procedure de refresh; acessos às fontes necessários ao refresh. |
+| `olius_bi_reader_role` | SELECT somente nos 13 conjuntos materializados e dm.refresh_state. |
+| `olius_bi_refresh_role` | EXECUTE em dm.refresh_data_mart() e SELECT em dm.refresh_state; sem DML direto. |
 
 Os cinco perfis gerais recebem CONNECT no banco selecionado e USAGE no schema public. O proprietário interno recebe USAGE e os acessos necessários às suas funções. Nenhum desses grupos recebe SUPERUSER, CREATEDB, CREATEROLE, REPLICATION ou BYPASSRLS.
 
@@ -42,7 +45,7 @@ Os cinco perfis gerais recebem CONNECT no banco selecionado e USAGE no schema pu
 
 Recebe ALL PRIVILEGES WITH GRANT OPTION sobre os objetos da lista fechada do script. Além dos privilégios, o script transfere a propriedade de:
 
-- 55 tabelas da aplicação/auditoria, três tabelas documentais e `vw_data_catalog`;
+- 55 tabelas da aplicação/auditoria, três tabelas documentais, `vw_data_catalog`, `vw_annual_scores` e `vw_annual_ranking`;
 - 22 tipos enum do projeto;
 - 11 funções comuns explicitamente listadas. As dez procedures e duas funções de trigger de negócio passam ao proprietário interno.
 
@@ -120,6 +123,12 @@ Nenhuma conta definida em `02_users.sql` recebe participação nesse papel. A Co
 
 ## Contas configuradas
 
+Os acessos BI abaixo refletem o código atual. A autorização de implantação
+SET ROLE e a decisão final de propriedade do Data Mart permanecem pendentes
+com os responsáveis; não são ampliadas por esta atualização documental.
+Atualmente olius_owner recebe consulta e execução do refresh em dm, mas
+não herda olius_dm_owner nem recebe propriedade dos objetos desse schema.
+
 | Conta LOGIN | Papel recebido | Uso |
 |---|---|---|
 | `pedro` | `olius_owner` | Administração e manutenção do banco OLIUS. |
@@ -129,8 +138,15 @@ Nenhuma conta definida em `02_users.sql` recebe participação nesse papel. A Co
 | `david` | `olius_reader` | Consulta aos dados autorizados e à documentação. |
 | `erick` | `olius_reader` | Consulta aos dados autorizados e à documentação. |
 | `olius_core_api` | `olius_api` | Conexão exclusiva do backend da Core API. |
+| `olius_bi_reader` | `olius_bi_reader_role` | Leitura das views materializadas pelo exportador externo. |
+| `olius_bi_refresh` | `olius_bi_refresh_role` | Chamada do refresh coordenado e leitura do identificador da atualização. |
 
-As sete contas são criadas com LOGIN/INHERIT e sem privilégios administrativos globais. Membership usa INHERIT TRUE, SET TRUE e ADMIN FALSE: recebem os acessos do grupo, podem assumir o grupo, mas não recebem autorização para delegá-lo a outras contas.
+As nove contas são criadas com LOGIN/INHERIT e sem privilégios administrativos globais. Membership usa INHERIT TRUE, SET TRUE e ADMIN FALSE: recebem os acessos do grupo, podem assumir o grupo, mas não recebem autorização para delegá-lo a outras contas.
+
+Na Free Edition, as contas BI são usadas fora do Databricks por
+06_export_snapshot.py. O workspace recebe arquivos e não precisa dessas
+credenciais. Não atribuir olius_dm_owner às contas BI. Senhas permanecem fora
+dos scripts; variáveis e execução estão no guia de Databricks/documents.
 
 Nenhuma conta é criada para o grupo auditor/editor nesta versão; esses papéis ficam disponíveis para atribuições futuras aprovadas. A segunda API também não tem uma conta definida nesta entrega.
 

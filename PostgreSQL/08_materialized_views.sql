@@ -2,9 +2,9 @@
 ===============================================================================
 PROJETO.............: ÓLEO AMIGO — OLIUS
 AMBIENTE............: POSTGRESQL 16 — NÃO EXECUTAR NO DATABRICKS
-SCRIPT..............: 07 - Views Materializadas do Data Mart
+SCRIPT..............: 08 - Views Materializadas do Data Mart
 ===============================================================================
-Instalação única após 01 a 05. Ranking e script 06 não são dependências.
+Instalação única após 01 a 07. Ranking reutiliza public.vw_annual_ranking.
 Dimensões tipo 1: cadastro atual, sem reconstrução histórica de endereços.
 UUIDs convertidos para TEXT para facilitar o transporte sem renumerar chaves.
 Não inclui CPF, CNPJ, contato, credenciais, QR ou textos livres de operações.
@@ -147,6 +147,13 @@ SELECT cf.collection_id::TEXT AS coleta_id, cf.failure_reason_id::TEXT AS motivo
 FROM public.collection_failure cf
 JOIN dm.fato_coleta f ON f.coleta_id = cf.collection_id::TEXT;
 
+-- Fotografia do ranking aprovado: somente ano corrente, sem recalcular janela.
+CREATE MATERIALIZED VIEW dm.ranking_anual AS
+SELECT profile AS perfil, ranking_year AS ano,
+       participant_id::TEXT AS participante_id, annual_points AS pontos_anuais,
+       ranking_position AS posicao
+FROM public.vw_annual_ranking;
+
 CREATE UNIQUE INDEX ux_dm_dim_tempo ON dm.dim_tempo (data_id);
 CREATE UNIQUE INDEX ux_dm_dim_estabelecimento ON dm.dim_estabelecimento (estabelecimento_id);
 CREATE UNIQUE INDEX ux_dm_dim_cidadao ON dm.dim_cidadao (cidadao_id);
@@ -159,6 +166,7 @@ CREATE UNIQUE INDEX ux_dm_fato_coleta ON dm.fato_coleta (coleta_id);
 CREATE UNIQUE INDEX ux_dm_fato_entrega_pev ON dm.fato_entrega_pev (entrega_id);
 CREATE UNIQUE INDEX ux_dm_fato_solicitacao ON dm.fato_solicitacao (solicitacao_id);
 CREATE UNIQUE INDEX ux_dm_ponte_coleta_motivo ON dm.ponte_coleta_motivo (coleta_id, motivo_id);
+CREATE UNIQUE INDEX ux_dm_ranking_anual ON dm.ranking_anual (perfil, ano, participante_id);
 
 -- Metadado operacional, não é uma dimensão do negócio.
 CREATE TABLE dm.refresh_state (
@@ -171,7 +179,7 @@ INSERT INTO dm.refresh_state VALUES (TRUE, gen_random_uuid(), clock_timestamp())
 CREATE OR REPLACE PROCEDURE dm.refresh_data_mart()
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = pg_catalog, dm
+SET search_path = pg_catalog, dm, pg_temp
 AS $$
 BEGIN
     IF current_setting('transaction_isolation') NOT IN ('repeatable read', 'serializable') THEN
@@ -193,6 +201,7 @@ BEGIN
     REFRESH MATERIALIZED VIEW dm.fato_entrega_pev;
     REFRESH MATERIALIZED VIEW dm.fato_solicitacao;
     REFRESH MATERIALIZED VIEW dm.ponte_coleta_motivo;
+    REFRESH MATERIALIZED VIEW dm.ranking_anual;
     UPDATE dm.refresh_state
     SET snapshot_id = pg_catalog.gen_random_uuid(), refreshed_at = clock_timestamp()
     WHERE singleton;

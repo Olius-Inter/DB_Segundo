@@ -1,135 +1,172 @@
-# Conexão, preparação e execução
+# Exportação do Aiven e ingestão na Free Edition
 
-## Ambiente adotado
+## Fluxo adotado
 
-O caminho implementado é Python/PySpark com leitura JDBC em **compute clássico
-dedicado**, com acesso ao PostgreSQL. Referência: Databricks Runtime 15.4 LTS
-ou superior, Unity Catalog e um catálogo com permissão de escrita.
-Instalar psycopg[binary] como biblioteca Python e disponibilizar o driver
-JDBC PostgreSQL org.postgresql.Driver. Escolher versões aprovadas pelo ambiente.
+O exportador 06_export_snapshot.py roda em um computador ou runner com rede
+para o Aiven. Usa duas contas PostgreSQL: uma para pedir refresh e outra para
+ler as views. Produz uma pasta com UUID, Parquets e manifest.json.
 
-Não assumimos que Free Edition, ambiente acadêmico ou serverless permita esse
-caminho de instalação/rede. Se o ambiente oferecer apenas serverless, avaliar
-conector nativo ou conexão JDBC do Unity Catalog e adaptar a leitura. O script
-atual também precisa de psycopg/rede no driver para refresh e lock.
+Os arquivos são enviados a um Volume. O Job no Databricks executa
+02_ingestion.py para validar e publicar o snapshot, sem conectar ao Aiven.
 
-Documentação oficial:
-- [Tarefas Python e bibliotecas](https://docs.databricks.com/aws/en/jobs/tasks/python-script).
-- [Conectores, driver JDBC e restrições de compute](https://docs.databricks.com/aws/en/connect/spark-data-sources).
-- [Execução de arquivos SQL](https://docs.databricks.com/aws/en/jobs/sql).
+Referências:
+- [Limitações da Free Edition](https://docs.databricks.com/aws/en/getting-started/free-edition-limitations).
+- [Arquivos em Volumes](https://docs.databricks.com/aws/en/volumes/volume-files).
+- [CLI para copiar arquivos](https://docs.databricks.com/aws/en/dev-tools/cli/reference/fs-commands).
+- [Tarefas Python](https://docs.databricks.com/aws/en/jobs/tasks/python-script).
 
-## 1. PostgreSQL
+## 1. Preparar o PostgreSQL
 
-Instalar 07_materialized_views.sql com o papel proprietário das views.
-O procedimento SECURITY DEFINER executa com as permissões do proprietário;
-ele só atualiza os objetos fixos de dm, não recebe nomes ou SQL arbitrário.
-EXECUTE é revogado de PUBLIC.
+Instalar os scripts principais 01–07, depois 08_materialized_views.sql.
+Instalar o catálogo e executar access_control/01_roles.sql e 02_users.sql.
 
-Criar dois papéis de login no provedor, com credenciais fora do Git:
-- olius_bi_reader: leitura das views via JDBC.
-- olius_bi_refresh: leitura e execução do procedimento, sem editar a aplicação.
+A configuração de permissões fica exclusivamente nos scripts de access_control.
+Não aplicar GRANT SELECT ON ALL TABLES a ambas as contas nem conceder acesso
+direto às fontes public para os logins BI.
 
-Exemplo de permissões, após criar os papéis, substituindo NOME_DO_BANCO:
-
-```sql
-GRANT CONNECT ON DATABASE NOME_DO_BANCO TO olius_bi_reader, olius_bi_refresh;
-GRANT USAGE ON SCHEMA dm TO olius_bi_reader, olius_bi_refresh;
-GRANT SELECT ON ALL TABLES IN SCHEMA dm TO olius_bi_reader, olius_bi_refresh;
-GRANT EXECUTE ON PROCEDURE dm.refresh_data_mart() TO olius_bi_refresh;
-```
-
-Não conceder CREATE em dm, propriedade das views ou edição das tabelas public
-a esses logins. Novos objetos de dm exigem revisar os grants.
-
-Liberar acesso de rede **do compute do Databricks**, não somente do computador
-do desenvolvedor. Conforme o provedor, usar regras de saída/entrada, endpoint
-privado e roteamento ou lista de IPs. Driver e executores Spark precisam alcançar
-o host e porta do banco. Evitar endpoint de pool transacional: o controlador
-usa advisory lock de sessão, portanto precisa de endpoint direto ou pool de
-sessão com semântica compatível.
-
-## 2. Secrets e TLS
-
-Criar secret scope, por exemplo postgres-bi, com quatro chaves:
-
-| Chave | Conteúdo |
+| Conta | Permissão prevista |
 | --- | --- |
-| read-user | Login de leitura |
-| read-password | Senha de leitura |
-| refresh-user | Login autorizado a chamar o refresh |
-| refresh-password | Senha de refresh |
+| olius_bi_reader | SELECT nos 13 conjuntos materializados e dm.refresh_state |
+| olius_bi_refresh | EXECUTE em dm.refresh_data_mart() e SELECT em dm.refresh_state |
 
-Permitir leitura desses secrets somente à identidade de execução do Job e
-aos administradores necessários. Não passar senhas em argumentos nem URLs.
+As contas são criadas sem senha. Configurar credenciais no ambiente, fora do
+Git. O proprietário interno é olius_dm_owner. O requisito de SET ROLE para a
+implantação permanece como está no código, aguardando definição com os
+responsáveis; este guia não concede nem modifica essa autorização.
 
-TLS usa verify-full para validar servidor e hostname. Se a cadeia CA não
-estiver disponível nos trust stores, fornecer --pg-sslrootcert com arquivo
-acessível ao driver Python e --jdbc-sslrootcert com arquivo acessível a cada
-executor JDBC. Esses caminhos podem ser diferentes. Conferir a cadeia exigida
-pelo provedor; não desativar a validação para contornar problemas de conexão.
+Se um ambiente antigo já tiver o schema dm dos rascunhos, não reaplicar CREATE
+como se fosse uma base vazia: avaliar uma migração antes. A instalação das
+views materializadas é única.
 
-## 3. Instalação no Databricks
+## 2. Preparar a máquina de exportação
 
-Importar os arquivos no Workspace ou conectar o repositório Git.
-No SQL editor, definir o parâmetro nomeado catalog com um catálogo existente.
-Executar 01_structure.sql e depois 03_views.sql. Usar o mesmo catálogo em todos
-os arquivos e no argumento Python. Os schemas fixos são olius_bi_landing
-(armazenamento técnico) e olius_bi (consumo).
-
-Não executar os SQLs do PostgreSQL no Databricks ou vice-versa. CREATE MATERIALIZED
-VIEW/REFRESH e permissões são específicos da origem; USING DELTA e IDENTIFIER
-são específicos do destino.
-
-## 4. Job de ingestão
-
-Criar um Job com tarefa Python script apontando para Databricks/02_ingestion.py.
-Se usar Git provider, esse é o caminho relativo no repositório. Selecionar
-compute com as dependências e configurar estes argumentos como lista:
+Instalar Python compatível com psycopg e PyArrow e estas dependências:
 
 ```text
---catalog SEU_CATALOGO
---pg-host SEU_HOST_POSTGRESQL
---pg-port 5432
---pg-database SEU_BANCO
---secret-scope postgres-bi
---query-timeout 600
+python -m pip install "psycopg[binary]" pyarrow
 ```
 
-Host/banco são exemplos a substituir, sem senha. O script aceita nomes de
-banco e catálogo formados por letras, números e underscore; para identificadores
-com hífen será necessário adaptar a validação/quoting. Configurar certificados
-com os argumentos TLS quando necessário.
+Disponibilizar 06_export_snapshot.py, 02_ingestion.py e 05_data_contract.json
+no mesmo diretório, preservando os nomes. O importador é usado como módulo
+de funções/contrato pelo exportador; não executa Spark nessa importação.
 
-Configurar uma execução concorrente no máximo, intervalo maior que o tempo
-normal de carga, timeout do Job compatível e tentativas limitadas em caso de
-falha. Para começar, executar manualmente com Run now antes de agendar.
+Configurar no processo externo, por um gestor de segredos ou ambiente local:
 
-A tarefa faz refresh, leitura, validação e publicação. Não exige uma pipeline
-adicional. Configurar alertas de falha/atraso no ambiente. Depois de um primeiro
-lote bem-sucedido, executar 04_quality_checks.sql e conferir as três views de
-dashboard. A seguir configurar atualização dos datasets do dashboard após
-o Job; a frequência e cache do dashboard são separados da ingestão.
+| Variável | Valor |
+| --- | --- |
+| OLIUS_BI_READ_USER | olius_bi_reader |
+| OLIUS_BI_READ_PASSWORD | Senha da conta de leitura |
+| OLIUS_BI_REFRESH_USER | olius_bi_refresh |
+| OLIUS_BI_REFRESH_PASSWORD | Senha da conta de refresh |
 
-## 5. Permissões no destino
+Não registrar senhas no repositório, manifesto ou parâmetros da linha de comando.
 
-A identidade do Job precisa de uso do catálogo/schema, leitura do destino e
-MODIFY nas tabelas landing. O instalador precisa criar schemas/tabelas/views.
-Usuários dos dashboards recebem acesso ao catálogo/schema e às views necessárias
-em olius_bi; não precisam de secrets, JDBC ou edição das tabelas landing.
-Verificar no workspace como o proprietário da view acessa suas dependências.
+No Aiven, obter host, porta real, banco e CA Certificate (ca.pem). O exportador
+usa verify-full e exige --sslrootcert. Liberar na rede o computador/runner
+externo, não os executores do Databricks. Usar endpoint direto, sem pool
+transacional, pois o controlador mantém advisory lock de sessão.
 
-## Problemas frequentes
+## 3. Preparar o Databricks
+
+Importar o repositório no Workspace/Git. No SQL editor, definir o parâmetro
+catalog com um catálogo existente e executar:
+
+1. 01_structure.sql: schemas, tabelas Delta, controle e Volume snapshots.
+2. 03_views.sql: star schema de consumo e views dos dashboards.
+
+As views estarão vazias antes do primeiro lote. Usar o mesmo catálogo em todos
+os arquivos. O código aceita nomes de catálogo com letras, números e underscore.
+
+A identidade de instalação precisa criar schemas/tabelas/Volume/views.
+O upload precisa USE CATALOG, USE SCHEMA e WRITE VOLUME no Volume snapshots.
+O Job precisa READ VOLUME, uso do catálogo/schema e leitura/MODIFY nas tabelas
+landing. Consumidores dos dashboards recebem acesso às views necessárias em
+olius_bi, sem credenciais do PostgreSQL.
+
+## 4. Exportar o snapshot
+
+Exemplo na máquina externa; substituir host, porta e banco:
+
+```text
+python Databricks/06_export_snapshot.py --pg-host HOST_AIVEN --pg-port PORTA_AIVEN --pg-database BANCO --sslrootcert "C:/certificados/ca.pem" --output-root "C:/OliusExports"
+```
+
+O exportador imprime a pasta criada: C:/OliusExports/EXPORT_ID, onde EXPORT_ID
+é um UUID real. Mantê-la fora do repositório, pois contém dados exportados.
+
+O refresh ocorre antes da leitura. Cada conjunto contém um ou mais Parquets,
+inclusive um arquivo com schema quando não há linhas. O manifesto final
+registra snapshot, horário, arquivos, hashes, contagens e somas de medidas.
+Pasta sem manifest.json indica exportação incompleta e não deve ser publicada.
+
+## 5. Enviar os arquivos ao Volume
+
+Autenticar a CLI Databricks no workspace por um perfil aprovado ou usar a
+interface de upload de Volumes. O destino deve preservar esta estrutura:
+
+```text
+/Volumes/CATALOGO/olius_bi_landing/snapshots/EXPORT_ID/
+    dim_tempo/part-00000.parquet
+    ... demais conjuntos, nos diretórios originais ...
+    manifest.json
+```
+
+Exemplo PowerShell, com a CLI autenticada e placeholders substituídos:
+
+```powershell
+$exportRoot = 'C:/OliusExports/EXPORT_ID'
+$volumeRoot = 'dbfs:/Volumes/CATALOGO/olius_bi_landing/snapshots/EXPORT_ID'
+databricks fs mkdir $volumeRoot
+if ($LASTEXITCODE -ne 0) { throw 'Não foi possível criar o diretório de upload' }
+foreach ($dataset in Get-ChildItem -LiteralPath $exportRoot -Directory) {
+    databricks fs cp $dataset.FullName "$volumeRoot/$($dataset.Name)" --recursive
+    if ($LASTEXITCODE -ne 0) { throw 'Upload interrompido; manifesto não enviado' }
+}
+databricks fs cp "$exportRoot/manifest.json" "$volumeRoot/manifest.json"
+if ($LASTEXITCODE -ne 0) { throw 'Falha no envio do manifesto' }
+```
+
+Enviar o manifesto por último e não modificar uma pasta publicada. O Job
+verifica hashes/tamanhos e não carrega um conjunto com upload incompleto.
+
+## 6. Executar o Job
+
+Criar uma tarefa Python script serverless para Databricks/02_ingestion.py.
+O arquivo 05_data_contract.json deve estar ao lado do Python no Workspace/Git.
+Configurar a lista de argumentos:
+
+```text
+--catalog CATALOGO
+--snapshot-path /Volumes/CATALOGO/olius_bi_landing/snapshots/EXPORT_ID
+```
+
+Não usar os argumentos antigos --pg-host, --secret-scope ou certificados nesse
+Job: eles não pertencem ao importador atual. Psycopg, PyArrow e credenciais de
+Aiven ficam na máquina externa; o Job usa Spark e bibliotecas padrão Python.
+
+Configurar no máximo uma ingestão simultânea para o mesmo Data Mart, inclusive
+entre Jobs diferentes. Executar Run now, verificar o lote publicado e rodar
+04_quality_checks.sql. Atualizar os datasets dos dashboards depois do sucesso.
+
+## 7. Agendamento e operação
+
+A atualização completa exige exportar → enviar → executar a ingestão do
+EXPORT_ID novo → atualizar dashboards. Um Job agendado com caminho fixo
+reprocessa o mesmo snapshot e não busca dados novos no Aiven.
+
+Nesta versão, exportação, upload e disparo do Job não têm orquestração automática
+pronta. Definir o runner/agendador externo e suas credenciais antes de prometer
+atualização periódica. Falhas mantêm o último lote validado; acompanhar o
+horário de vw_atualizacao_dashboard e configurar alertas.
+
+## Diagnóstico
 
 | Sintoma | Conferir |
 | --- | --- |
-| Timeout de conexão | Endpoint, porta, firewall e saída de rede do compute |
-| Erro TLS | CA, hostname do certificado e caminhos em driver/executores |
-| Driver JDBC ausente | Biblioteca PostgreSQL no compute |
-| Import psycopg falha | Biblioteca Python no ambiente da tarefa |
-| Permissão negada | Secrets, grants na origem e privilégios Unity Catalog |
-| Lock ocupado | Outro refresh/ingestão; esperar término e repetir |
-| Tipos incompatíveis | Schema de origem/destino e versões do driver; não forçar cast silencioso |
-| Dashboard vazio | Instalação feita, mas nenhum lote foi publicado; olhar logs |
-
-Ainda é necessário homologar no workspace e banco reais: os arquivos não
-instalam bibliotecas nem configuram infraestrutura por conta própria.
+| Exportador não conecta | Host/porta, allowlist do Aiven, senha e ca.pem na máquina externa |
+| Refresh negado | Papéis instalados, EXECUTE e pendência de provisionamento SET ROLE |
+| Arquivo/manifesto ausente | Estrutura de diretórios e conclusão do upload |
+| Hash divergente | Arquivo incompleto ou modificado; gerar/enviar snapshot íntegro |
+| Contrato/schema divergente | JSON, SQL de destino e scripts Python da mesma versão |
+| Dashboard vazio | Existência de lote publicado e dados elegíveis na origem |
+| Snapshot antigo recusado | Caminho do lote mais recente; não sobrescrever a pasta antiga |
