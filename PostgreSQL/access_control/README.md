@@ -7,7 +7,7 @@ Esta pasta centraliza os papéis PostgreSQL, as permissões sobre os objetos do 
 | Arquivo | Responsabilidade |
 |---|---|
 | `01_roles.sql` | Cria e valida os papéis, aplica permissões, transfere a propriedade dos objetos previstos e configura os acessos de autenticação. |
-| `02_users.sql` | Cria as nove contas aprovadas e atribui seus papéis, sem definir senhas. |
+| `02_users.sql` | Cria as dez contas aprovadas e atribui seus papéis, sem definir senhas. |
 
 Executar nesta ordem, no banco do OLIUS do segundo ano:
 
@@ -123,11 +123,11 @@ Nenhuma conta definida em `02_users.sql` recebe participação nesse papel. A Co
 
 ## Contas configuradas
 
-Os acessos BI abaixo refletem o código atual. A autorização de implantação
-SET ROLE e a decisão final de propriedade do Data Mart permanecem pendentes
-com os responsáveis; não são ampliadas por esta atualização documental.
-Atualmente olius_owner recebe consulta e execução do refresh em dm, mas
-não herda olius_dm_owner nem recebe propriedade dos objetos desse schema.
+A propriedade do Data Mart permanece em olius_dm_owner (NOLOGIN). A conta
+olius_dm_admin recebe esse papel para manutenção, seguindo o padrão de
+olius_core_api → olius_api. Ela não substitui as contas restritas do exportador.
+olius_owner continua com consulta e execução do refresh em dm, sem herdar
+olius_dm_owner nem receber propriedade dos objetos desse schema.
 
 | Conta LOGIN | Papel recebido | Uso |
 |---|---|---|
@@ -138,10 +138,21 @@ não herda olius_dm_owner nem recebe propriedade dos objetos desse schema.
 | `david` | `olius_reader` | Consulta aos dados autorizados e à documentação. |
 | `erick` | `olius_reader` | Consulta aos dados autorizados e à documentação. |
 | `olius_core_api` | `olius_api` | Conexão exclusiva do backend da Core API. |
+| `olius_dm_admin` | `olius_dm_owner` | Administração da estrutura e dos dados do Data Mart; não usar na extração cotidiana. |
 | `olius_bi_reader` | `olius_bi_reader_role` | Leitura das views materializadas pelo exportador externo. |
 | `olius_bi_refresh` | `olius_bi_refresh_role` | Chamada do refresh coordenado e leitura do identificador da atualização. |
 
-As nove contas são criadas com LOGIN/INHERIT e sem privilégios administrativos globais. Membership usa INHERIT TRUE, SET TRUE e ADMIN FALSE: recebem os acessos do grupo, podem assumir o grupo, mas não recebem autorização para delegá-lo a outras contas.
+As dez contas são criadas com LOGIN/INHERIT e sem privilégios administrativos globais. Membership usa INHERIT TRUE, SET TRUE e ADMIN FALSE: recebem os acessos do grupo, podem assumir o grupo, mas não recebem autorização para delegá-lo a outras contas.
+
+Para criar novos objetos de manutenção como olius_dm_admin, usar SET ROLE
+olius_dm_owner e depois RESET ROLE: a propriedade deve ficar no grupo,
+não no login. Essa conta pode alterar/excluir objetos de dm e consultar as
+fontes autorizadas ao proprietário, mas não recebe edição das tabelas public,
+CREATEROLE ou CREATEDB. Sua senha também é configurada fora do Git.
+
+Provisionar esse login após 01_roles.sql não substitui os requisitos da conta
+de implantação para criar os grupos e transferir os objetos na instalação
+inicial. Esses requisitos continuam explicitamente verificados no script.
 
 Na Free Edition, as contas BI são usadas fora do Databricks por
 06_export_snapshot.py. O workspace recebe arquivos e não precisa dessas

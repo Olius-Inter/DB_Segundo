@@ -30,9 +30,10 @@ direto às fontes public para os logins BI.
 | olius_bi_refresh | EXECUTE em dm.refresh_data_mart() e SELECT em dm.refresh_state |
 
 As contas são criadas sem senha. Configurar credenciais no ambiente, fora do
-Git. O proprietário interno é olius_dm_owner. O requisito de SET ROLE para a
-implantação permanece como está no código, aguardando definição com os
-responsáveis; este guia não concede nem modifica essa autorização.
+Git. O proprietário é olius_dm_owner, atribuído à conta de manutenção
+olius_dm_admin. Essa conta não deve ser usada na exportação. O requisito de
+SET ROLE da conta de implantação continua sendo verificado antes de criar
+os logins; provisionar o login administrativo não resolve sozinho esse requisito.
 
 Se um ambiente antigo já tiver o schema dm dos rascunhos, não reaplicar CREATE
 como se fosse uma base vazia: avaliar uma migração antes. A instalação das
@@ -164,7 +165,7 @@ horário de vw_atualizacao_dashboard e configurar alertas.
 | Sintoma | Conferir |
 | --- | --- |
 | Exportador não conecta | Host/porta, allowlist do Aiven, senha e ca.pem na máquina externa |
-| Refresh negado | Papéis instalados, EXECUTE e pendência de provisionamento SET ROLE |
+| Refresh negado | Papéis instalados e EXECUTE no procedimento; na implantação, conferir autoridade SET ROLE |
 | Arquivo/manifesto ausente | Estrutura de diretórios e conclusão do upload |
 | Hash divergente | Arquivo incompleto ou modificado; gerar/enviar snapshot íntegro |
 | Contrato/schema divergente | JSON, SQL de destino e scripts Python da mesma versão |

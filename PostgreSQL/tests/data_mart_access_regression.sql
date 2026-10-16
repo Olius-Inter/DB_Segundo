@@ -2,7 +2,7 @@
 \set ON_ERROR_STOP on
 BEGIN ISOLATION LEVEL REPEATABLE READ;
 \ir fixtures_procedures.sql
-GRANT USAGE ON SCHEMA olius_test TO olius_bi_reader, olius_bi_refresh;
+GRANT USAGE ON SCHEMA olius_test TO olius_bi_reader, olius_bi_refresh, olius_dm_admin;
 
 DO $$
 DECLARE req UUID; c UUID; d UUID;
@@ -25,6 +25,23 @@ SELECT olius_test.expect_error('REFRESH MATERIALIZED VIEW dm.fato_coleta','42501
 SELECT olius_test.expect_error('UPDATE dm.refresh_state SET refreshed_at=now()','42501');
 SELECT olius_test.expect_error('SET ROLE olius_dm_owner','42501');
 SELECT olius_test.expect_error('CREATE TABLE dm.forbidden(id integer)','42501');
+RESET SESSION AUTHORIZATION;
+
+-- Administração separada das contas do exportador, sem acesso administrativo global.
+SET LOCAL SESSION AUTHORIZATION olius_dm_admin;
+SELECT COUNT(*) FROM dm.fato_coleta;
+CALL dm.refresh_data_mart();
+SET LOCAL ROLE olius_dm_owner;
+CREATE TABLE dm.admin_ownership_probe(id INTEGER);
+RESET ROLE;
+SELECT olius_test.assert(
+    (SELECT pg_get_userbyid(relowner)='olius_dm_owner' FROM pg_class
+     WHERE oid='dm.admin_ownership_probe'::regclass),
+    'objetos de manutenção pertencem ao grupo dm_owner');
+DROP TABLE dm.admin_ownership_probe;
+SELECT olius_test.expect_error('SELECT password_hash FROM public.users','42501');
+SELECT olius_test.expect_error('UPDATE public.collection SET points_earned=123','42501');
+SELECT olius_test.expect_error('SET ROLE olius_owner','42501');
 RESET SESSION AUTHORIZATION;
 
 SET LOCAL SESSION AUTHORIZATION olius_bi_refresh;

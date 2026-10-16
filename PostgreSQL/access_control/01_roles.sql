@@ -642,13 +642,14 @@ BEGIN
     REVOKE ALL ON PROCEDURE dm.refresh_data_mart() FROM PUBLIC, olius_bi_reader_role, olius_bi_refresh_role, olius_owner;
     GRANT EXECUTE ON PROCEDURE dm.refresh_data_mart() TO olius_bi_refresh_role, olius_owner;
     ALTER SCHEMA dm OWNER TO olius_dm_owner;
-    -- As contas BI não recebem esse grupo proprietário. Permissão interna de
+    -- As contas de extração BI não recebem esse grupo; somente olius_dm_admin
+    -- o recebe em 02_users.sql para manutenção. Permissão interna de
     -- acesso às fontes não equivale à concessão de acesso aos seus logins.
 END $data_mart_access$;
 ALTER DEFAULT PRIVILEGES FOR ROLE olius_dm_owner REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC;
 
 INSERT INTO public.data_catalog_role(role_name,description) VALUES
-('olius_dm_owner','Proprietário interno NOLOGIN do Data Mart e refresh; sem membership de contas de integração.'),
+('olius_dm_owner','Proprietário NOLOGIN do Data Mart e refresh; atribuído somente à conta de manutenção olius_dm_admin, não às contas de extração.'),
 ('olius_bi_reader_role','Grupo NOLOGIN: SELECT somente nos 13 conjuntos materializados e refresh_state em dm.'),
 ('olius_bi_refresh_role','Grupo NOLOGIN: EXECUTE no refresh coordenado e SELECT em refresh_state; sem DML direto.')
 ON CONFLICT (role_name) DO UPDATE SET description=EXCLUDED.description;

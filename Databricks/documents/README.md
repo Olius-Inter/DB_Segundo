@@ -53,6 +53,7 @@ As views comuns em olius_bi consultam o lote publicado, sem REFRESH próprio.
 A atualização dos resultados/cache dos dashboards ocorre depois da ingestão.
 
 Nenhum destes arquivos cria automaticamente conexão, agendamento externo ou
-Job. A integração deve ser homologada no Aiven e no workspace. A decisão sobre
-o provisionamento SET ROLE/propriedade segue pendente com os responsáveis;
-esta documentação não altera a política atual dos scripts de acesso.
+Job. A integração deve ser homologada no Aiven e no workspace.
+A propriedade permanece em olius_dm_owner, com a conta de manutenção
+olius_dm_admin. A implantação inicial ainda exige a autoridade de SET ROLE
+verificada nos scripts de acesso; o login de manutenção não a concede ao implantador.
