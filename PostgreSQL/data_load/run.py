@@ -261,7 +261,10 @@ def main():
             except (RuntimeError, subprocess.TimeoutExpired) as cleanup_error:
                 manifest["cleanup_error"] = str(cleanup_error)
                 print("Falha ao limpar os arquivos temporários:", cleanup_error, file=sys.stderr)
-        report_file(report_dir, "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+        # O conteúdo do manifesto nunca participa da escolha do caminho.
+        manifest_path = report_file(report_dir, "manifest.json")
+        with manifest_path.open("w", encoding="utf-8") as manifest_stream:
+            json.dump(manifest, manifest_stream, ensure_ascii=False, indent=2)
     print("Relatório:", report_dir / "manifest.json")
 
 

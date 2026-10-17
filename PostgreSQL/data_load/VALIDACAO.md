@@ -98,3 +98,14 @@ O README passou a descrever corretamente o fallback de `journeys_role` para `--u
 Após esse complemento: 21 testes na suíte, com 20 aprovados e um teste de symlink real ignorado pela restrição de criação de links no Windows. Cobertura do runner: 96%. A validação da resposta do PostgreSQL continua simulada nos testes unitários; nenhuma carga foi executada nesta correção.
 
 Justificativa para revisão do alerta Sonar `AaFFcEt4idhKYWVJX5nK` (`pythonsecurity:S8707`): o fluxo apresentado acompanha `args.host` até `manifest['target']['host']`, depois `json.dumps(manifest)` e o argumento de conteúdo de `Path.write_text`. O valor do host não compõe o caminho do arquivo. O caminho é produzido separadamente por `report_directory` e `report_file`, com raízes de saída restritas, validação de nome e recusa de links simbólicos. Por isso, recomenda-se marcar esse apontamento específico como falso positivo, preservando a regra e a análise do arquivo. Essa classificação não foi alterada pelo script nem por exclusão na configuração do Sonar.
+
+
+## Nova análise da PR #24 — commit 49d6866
+
+Na execução 38992798886 (job 117278640897), passaram as regressões SQL, concorrência, os 21 testes do runner e a carga completa em container. A cobertura Python foi 96%. A falha aconteceu exclusivamente em SonarQube Scan, com exit code 3 após o Quality Gate reprovar Security Rating C. Os dois checks vermelhos derivam desse mesmo bloqueio; as três conversas de revisão anteriores já estão resolvidas.
+
+O único apontamento aberto era AaFFcEt4idhKYWVJX5nK (pythonsecurity:S8707), na gravação do manifesto. O fluxo relatado liga o host ao conteúdo JSON, não ao caminho. A gravação foi ajustada para abrir o caminho validado separadamente e serializar com json.dump em um arquivo já aberto. O conteúdo, os campos e as restrições de destino permanecem preservados. Nenhuma regra do Sonar ou condição do Quality Gate foi desativada.
+
+O teste de orquestração direta agora verifica host e banco no JSON e uma falha contendo um caminho relativo e caracteres Unicode: a mensagem deve permanecer como dado no manifesto, sem criar arquivo no caminho mencionado. Após a alteração, 20 testes passaram e um foi ignorado por restrição de symlink no Windows; cobertura de 96% (218/227 instruções). Os testes locais simulam as chamadas PostgreSQL, mas gravam e conferem os relatórios reais em diretórios temporários. Não foi executada carga em banco nesta correção.
+
+A aprovação pelo Sonar ainda exige análise remota do próximo commit. Se o mesmo apontamento persistir, deve ser revisado como falso positivo com base no fluxo comprovado, sem suprimir a regra nem afirmar aprovação antes do resultado remoto.

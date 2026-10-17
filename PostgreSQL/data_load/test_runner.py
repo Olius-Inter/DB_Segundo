@@ -265,7 +265,7 @@ class RunnerTests(unittest.TestCase):
             self.assertNotIn('shell', process.call_args.kwargs)
 
     def test_direct_orchestration_preserves_local_files_and_manifest_has_no_password(self):
-        for fault in (None, 'structure', 'populated'):
+        for fault in (None, 'structure', 'populated', 'error-path'):
             with tempfile.TemporaryDirectory() as directory:
                 argv = ['run.py', '--host', 'database.example.com', '--port', '26714',
                         '--database', 'olius_dev', '--user', 'loader', '--development',
@@ -276,6 +276,8 @@ class RunnerTests(unittest.TestCase):
                     self.assertEqual(environment['PGSSLMODE'], 'verify-full')
                     self.assertNotIn('secret-fixture', str(arguments))
                     if input_text and 'server_version' in input_text:
+                        if fault == 'error-path':
+                            raise RuntimeError('../outside.json — falha simulada')
                         return '16.15'
                     if input_text and 'pg_catalog.pg_class' in input_text:
                         return 'f' if fault == 'structure' else 't'
@@ -301,7 +303,12 @@ class RunnerTests(unittest.TestCase):
                 manifest_text = (Path(directory) / 'coverage/manifest.json').read_text(encoding='utf-8')
                 manifest = json.loads(manifest_text)
                 self.assertNotIn('secret-fixture', manifest_text)
+                if fault == 'error-path':
+                    self.assertEqual(manifest['error'], '../outside.json — falha simulada')
+                    self.assertFalse((Path(directory) / 'outside.json').exists())
                 self.assertEqual(manifest['target']['transport'], 'postgresql')
+                self.assertEqual(manifest['target']['host'], 'database.example.com')
+                self.assertEqual(manifest['target']['database'], 'olius_dev')
                 self.assertEqual(manifest['status'], 'failed' if fault else 'validated')
                 if fault:
                     self.assertEqual(manifest['completed'], [])
