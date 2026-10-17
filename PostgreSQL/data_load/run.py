@@ -234,7 +234,7 @@ def main():
             raise ValueError("Validação direcionada ao PostgreSQL 16.15; versão encontrada: " + version)
         manifest["postgresql_version"] = version
         if args.development:
-            structure = execute("existing-structure", "SELECT to_regclass('public.users') IS NOT NULL AND to_regclass('public.citizens') IS NOT NULL AND to_regclass('public.establishment') IS NOT NULL AND to_regclass('public.delivery_pev') IS NOT NULL AND to_regclass('public.collection') IS NOT NULL;").strip()
+            structure = execute("existing-structure", "SELECT count(*) = 5 FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND c.relkind='r' AND c.relname IN ('users','citizens','establishment','delivery_pev','collection');").strip()
             if structure != "t":
                 raise ValueError("Banco de desenvolvimento sem as tabelas principais esperadas; carga recusada.")
         install_scripts(args, source, manifest, execute)

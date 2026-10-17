@@ -65,7 +65,7 @@ python PostgreSQL/data_load/run.py --container olius-data-load --install --insta
 
 `--install` exige schema public vazio e instala 01–05. Aceita o nome antigo ou o novo do script 04, mas recusa a presença de ambos. Instala 06/07 somente quando o 07 existe. `--install-access-control` instala o catálogo e os scripts existentes de papéis/contas **somente no container**, e executa as jornadas sob `olius_api`. Cadastros e configuração financeira preparatória usam a conta de implantação; nenhuma escrita livre é concedida à Core.
 
-Para testar só a estrutura e as rotinas, omita `--install-access-control`. Se `olius_api` já estiver presente, as jornadas usam esse papel; ele precisa estar configurado pelos scripts oficiais. Na ausência dele, o relatório registra execução como `postgres`. A escolha do papel é registrada em `journeys_role`.
+Para testar só a estrutura e as rotinas, omita `--install-access-control`. Se `olius_api` já estiver presente, as jornadas usam esse papel; ele precisa estar configurado pelos scripts oficiais. Na ausência dele, `journeys_role` registra o usuário informado em `--user`, ou `postgres` quando essa opção não é informada.
 
 O runner exige que todas as tabelas operacionais e logs estejam vazios antes da carga. Só os três metadados do catálogo são excluídos dessa verificação. Não executa DELETE/TRUNCATE nem remove objetos existentes.
 

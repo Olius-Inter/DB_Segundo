@@ -59,7 +59,13 @@ Nesta revisão, o Docker local não respondeu à inicialização, impedindo repe
 
 O runner também aceita `--development` e `--user`, mediante confirmação exata de `container/banco` em `OLIUS_DATA_LOAD_DEVELOPMENT_TARGET`. Esse modo bloqueia instalação de estrutura/permissões e mantém a recusa de tabelas populadas, além de conferir a presença das tabelas principais.
 
-Na adaptação, os 11 testes existentes passaram e verificações adicionais com comandos simulados confirmaram a recusa sem confirmação do destino e o bloqueio de instalação. Esses resultados não comprovam conexão ou privilégios da conta `olius_dev_admin` no ambiente da API.
+Na adaptação inicial, os 11 testes existentes passaram e foram feitas verificações auxiliares simuladas. As proteções agora possuem testes permanentes em `test_runner.py`: `test_docker_development_confirmation_and_installation_guards` cobre a confirmação exata de `container/banco` e a recusa de reinstalação; `test_direct_target_requires_exact_confirmation_and_existing_structure` cobre os contratos equivalentes da conexão direta. O resultado esperado é `ValueError` nos destinos sem confirmação e nas tentativas de instalação em desenvolvimento. Esses testes não comprovam conexão ou privilégios da conta `olius_dev_admin` no ambiente da API.
+
+Para reproduzir, na raiz do repositório, sem conexão ao banco:
+
+```powershell
+python -m unittest discover -s PostgreSQL/data_load -p test_runner.py -v
+```
 
 Não foi executada carga real no destino informado (`olius-local` / `postgres-dev`). Os nomes, a autenticação, a estrutura completa e as permissões devem ser confirmados na execução. O CI continua utilizando exclusivamente o modo descartável.
 
@@ -82,3 +88,13 @@ Na execução remota `38924733620`, regressões, cobertura e a carga completa pa
 Os relatórios agora ficam restritos a `PostgreSQL/data_load/reports/` e `coverage/`, incluindo subpastas. A validação resolve caminhos antes da conferência, rejeita escapes e links para fora dessas raízes e recusa arquivos de relatório simbólicos. O destino atual do CI permanece aceito. Os argumentos dos quatro testes foram preparados antes dos blocos de exceção.
 
 A suíte passou a ter 20 testes: 19 passaram localmente e um teste com symlink real foi ignorado por falta de permissão no Windows; ele permanece na suíte para execução no CI Linux. O bloqueio de arquivos simbólicos também foi verificado com simulação. Cobertura local do runner: 96% (216 de 225 instruções). Não houve carga em banco nem alteração de SQL, permissões ou configuração do Sonar nesta correção. A aprovação remota exige novo push e nova execução da análise.
+
+## Complemento da revisão da PR #24
+
+A verificação de estrutura agora consulta `pg_catalog.pg_class` e `pg_catalog.pg_namespace`, exigindo as cinco tabelas ordinárias no schema `public` (`relkind='r'`). Sequências, views e outros tipos de relação não satisfazem essa pré-condição. A verificação permanece limitada a essas cinco tabelas; ela não certifica toda a versão do schema.
+
+O README passou a descrever corretamente o fallback de `journeys_role` para `--user`. As verificações auxiliares de confirmação do modo Docker foram incorporadas à suíte permanente, com comando reproduzível acima.
+
+Após esse complemento: 21 testes na suíte, com 20 aprovados e um teste de symlink real ignorado pela restrição de criação de links no Windows. Cobertura do runner: 96%. A validação da resposta do PostgreSQL continua simulada nos testes unitários; nenhuma carga foi executada nesta correção.
+
+Justificativa para revisão do alerta Sonar `AaFFcEt4idhKYWVJX5nK` (`pythonsecurity:S8707`): o fluxo apresentado acompanha `args.host` até `manifest['target']['host']`, depois `json.dumps(manifest)` e o argumento de conteúdo de `Path.write_text`. O valor do host não compõe o caminho do arquivo. O caminho é produzido separadamente por `report_directory` e `report_file`, com raízes de saída restritas, validação de nome e recusa de links simbólicos. Por isso, recomenda-se marcar esse apontamento específico como falso positivo, preservando a regra e a análise do arquivo. Essa classificação não foi alterada pelo script nem por exclusão na configuração do Sonar.

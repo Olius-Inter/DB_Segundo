@@ -220,6 +220,20 @@ class RunnerTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 run.connection(directory_args)
 
+    def test_docker_development_confirmation_and_installation_guards(self):
+        args = self.direct_arguments(container='olius-dev', host=None, database='olius_dev')
+        with patch.dict('os.environ', {}, clear=True):
+            with self.assertRaisesRegex(ValueError, 'Confirme'):
+                run.validate_target(args)
+        confirmation = {'OLIUS_DATA_LOAD_DEVELOPMENT_TARGET': 'olius-dev/olius_dev'}
+        with patch.dict('os.environ', confirmation, clear=True):
+            run.validate_target(args)
+            for install_access_control in (False, True):
+                install_args = self.direct_arguments(container='olius-dev', host=None,
+                                                     install=True, install_access_control=install_access_control)
+                with self.assertRaisesRegex(ValueError, 'reinstalar'):
+                    run.validate_target(install_args)
+
     def test_host_and_port_validation(self):
         for value in ('https://server', '--host', 'host name', 'user:secret@host'):
             with self.assertRaises(run.argparse.ArgumentTypeError):
@@ -263,7 +277,7 @@ class RunnerTests(unittest.TestCase):
                     self.assertNotIn('secret-fixture', str(arguments))
                     if input_text and 'server_version' in input_text:
                         return '16.15'
-                    if input_text and 'to_regclass' in input_text:
+                    if input_text and 'pg_catalog.pg_class' in input_text:
                         return 'f' if fault == 'structure' else 't'
                     if input_text and 'Tabela %' in input_text and fault == 'populated':
                         raise RuntimeError('Tabela users não vazia')
