@@ -77,7 +77,7 @@ class RunnerTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.check_config(self.config)
 
-    def run_fake_install(self, fault=None, windows=False):
+    def run_fake_install(self, fault=None, windows=False, data_mart=True):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             for relative in ('01_structure.sql', '02_check_constraints.sql', '03_indexes.sql',
@@ -88,7 +88,9 @@ class RunnerTests(unittest.TestCase):
                              'access_control/02_users.sql'):
                 file = root / relative
                 file.parent.mkdir(parents=True, exist_ok=True)
-                file.write_text('-- fixture', encoding='utf-8')
+                file.write_text('-- fixture ' + relative, encoding='utf-8')
+            if data_mart:
+                (root / '08_materialized_views.sql').write_text('-- data mart fixture', encoding='utf-8')
 
             def docker(arguments, input_text=None, timeout=180):
                 if 'inspect' in arguments:
@@ -125,10 +127,23 @@ class RunnerTests(unittest.TestCase):
                     self.assertEqual(manifest['result']['valid_operations'], 598)
                     self.assertEqual(manifest['journeys_role'], 'olius_api')
                     self.assertEqual(len(manifest['completed']), 4)
+                    scripts = list(manifest['scripts'])
+                    if data_mart:
+                        # Verifica a execução real, pois o JSON pode ordenar as chaves.
+                        sql_calls = [call.args[1] for call in execute.call_args_list if len(call.args) > 1]
+                        data_mart_index = next(i for i, sql in enumerate(sql_calls) if sql and '-- data mart fixture' in sql)
+                        access_index = next(i for i, sql in enumerate(sql_calls) if sql and 'access_control/01_roles.sql' in sql)
+                        self.assertLess(data_mart_index, access_index)
+                        self.assertIn('08_materialized_views.sql', scripts)
+                    else:
+                        self.assertNotIn('08_materialized_views.sql', scripts)
                     self.assertTrue(any('rm' in call.args[0] for call in execute.call_args_list))
 
     def test_install_orchestration_and_manifest(self):
         self.run_fake_install()
+
+    def test_install_without_data_mart_delivery(self):
+        self.run_fake_install(data_mart=False)
 
     def test_version_schema_and_populated_database_are_refused(self):
         for fault in ('version', 'schema', 'populated', 'temporary', 'copy'):

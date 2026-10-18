@@ -4,7 +4,7 @@ on:
   pull_request:
     branches: [main]
   push:
-    branches: [main]
+    branches: ['**']
 
 permissions:
   contents: read
@@ -60,6 +60,18 @@ jobs:
           "$RUNNER_TEMP/olius-data-load-venv/bin/python" -m coverage report --fail-under=80
           "$RUNNER_TEMP/olius-data-load-venv/bin/python" -m coverage xml -o coverage/data-load-python.xml
 
+      - name: Testar refresh Databricks e gerar cobertura Python
+        if: ${{ hashFiles('Databricks/**') != '' }}
+        env:
+          COVERAGE_FILE: coverage/.coverage-databricks
+        run: |
+          test -f Databricks/01_refresh.py
+          test -f Databricks/tests/test_refresh.py
+          "$RUNNER_TEMP/olius-data-load-venv/bin/python" -c "import unittest; suite = unittest.TestLoader().discover('Databricks/tests', pattern='test_*.py'); assert suite.countTestCases() > 0, 'Nenhum teste Databricks encontrado'"
+          "$RUNNER_TEMP/olius-data-load-venv/bin/python" -m coverage run --source=Databricks --omit='*/tests/*' -m unittest discover -s Databricks/tests -p 'test_*.py' -v
+          "$RUNNER_TEMP/olius-data-load-venv/bin/python" -m coverage report --fail-under=80
+          "$RUNNER_TEMP/olius-data-load-venv/bin/python" -m coverage xml -o coverage/databricks-python.xml
+
       - name: Validar carga completa em outro banco descartável
         env:
           OLIUS_DATA_LOAD_DISPOSABLE: '1'
@@ -91,6 +103,8 @@ jobs:
           retention-days: 14
 
       - name: SonarQube Scan
+        # A organização permite análise de PRs e main, mas não de outras branches.
+        if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
         uses: SonarSource/sonarqube-scan-action@7006c4492b2e0ee0f816d36501671557c97f5995 # v8.1.0
         with:
           args: -Dsonar.qualitygate.wait=true
