@@ -169,6 +169,11 @@ def install_scripts(args, source, manifest, execute):
                 file = source / name
                 manifest["scripts"][name] = hashlib.sha256(file.read_bytes()).hexdigest()
                 execute(file.stem, file.read_text(encoding="utf-8-sig"))
+        # A entrega Data Mart deve preceder o controle de acesso que a utiliza.
+        file = source / "08_materialized_views.sql"
+        if file.is_file():
+            manifest["scripts"][file.name] = hashlib.sha256(file.read_bytes()).hexdigest()
+            execute(file.stem, file.read_text(encoding="utf-8-sig"))
     if args.install_access_control:
         for relative in ("data_catalog/01_structure.sql", "data_catalog/02_check_constraints.sql",
                          "data_catalog/03_view.sql", "data_catalog/04_load.sql",

@@ -51,6 +51,31 @@ reviews:
         Evite sugerir otimizações sem benefício claro ou índices sem
         justificativa relacionada ao padrão esperado de acesso aos dados.
 
+    - path: "Databricks/**"
+      instructions: |
+        Revise scripts, notebooks e configurações considerando o ambiente
+        Databricks, Apache Spark, PySpark, Spark SQL e Delta Lake, conforme
+        as tecnologias utilizadas em cada arquivo.
+
+        Verifique sintaxe, schemas, tipos de dados, tratamento de valores nulos,
+        integridade dos dados e dependências entre etapas de processamento.
+        Avalie idempotência das cargas, uso de MERGE, particionamento, joins,
+        shuffles e operações que tragam grandes volumes ao driver.
+
+        Identifique operações destrutivas, sobrescritas de tabelas, exposição
+        de credenciais e caminhos ou configurações específicos de ambiente.
+        Considere a compatibilidade com PostgreSQL quando houver integração
+        entre as duas tecnologias e a consistência da documentação.
+
+        No 01_refresh.py, considere o fluxo real: o notebook solicita refresh
+        do Data Mart no PostgreSQL via psycopg; dashboards usam o catálogo
+        federado. Não presuma ingestão Spark ou cópia para Delta Lake.
+        Verifique secrets Unity Catalog, TLS verify-full e validação do PEM,
+        isolamento REPEATABLE READ, rollback e falhas durante COMMIT,
+        confirmação do snapshot somente após commit, coordenação com o
+        advisory lock do PostgreSQL e ausência de retries ocultos.
+        Os testes devem funcionar com mocks, sem acesso ao Aiven ou secrets.
+
     - path: "PostgreSQL/documents/**"
       instructions: |
         Revise a documentação e seus recursos auxiliares considerando
@@ -66,7 +91,8 @@ reviews:
     - path: ".github/workflows/**"
       instructions: |
         Revise alterações no CI considerando a execução correta dos scripts
-        PostgreSQL e a capacidade do workflow de detectar falhas.
+        PostgreSQL, a inclusão de Databricks na análise estática e a
+        capacidade do workflow de detectar falhas.
 
         Verifique permissões mínimas, exposição de secrets ou credenciais,
         Actions fixadas por SHA, segurança da cadeia de dependências
