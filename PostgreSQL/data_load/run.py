@@ -150,30 +150,34 @@ def prepare_files(args, folder, manifest):
     return directory
 
 
-def install_scripts(args, source, manifest, execute):
-    if args.install:
-        count = execute("empty-schema", "SELECT count(*) FROM pg_class WHERE relnamespace='public'::regnamespace AND relkind IN ('r','v','m');").strip()
-        if count != "0":
-            raise ValueError("Instalação requer schema public vazio; nenhum objeto será apagado.")
-        candidates = [p for p in source.glob("04_functions_procedures*.sql") if p.is_file()]
-        if len(candidates) != 1:
-            raise ValueError("Deve existir exatamente um script principal 04.")
-        names = ["01_structure.sql", "02_check_constraints.sql", "03_indexes.sql", candidates[0].name, "05_triggers.sql"]
-        for name in names:
+def install_main_scripts(source, manifest, execute):
+    count = execute("empty-schema", "SELECT count(*) FROM pg_class WHERE relnamespace='public'::regnamespace AND relkind IN ('r','v','m');").strip()
+    if count != "0":
+        raise ValueError("Instalação requer schema public vazio; nenhum objeto será apagado.")
+    candidates = [p for p in source.glob("04_functions_procedures*.sql") if p.is_file()]
+    if len(candidates) != 1:
+        raise ValueError("Deve existir exatamente um script principal 04.")
+    names = ["01_structure.sql", "02_check_constraints.sql", "03_indexes.sql", candidates[0].name, "05_triggers.sql"]
+    for name in names:
+        file = source / name
+        manifest["scripts"][name] = hashlib.sha256(file.read_bytes()).hexdigest()
+        execute(file.stem, file.read_text(encoding="utf-8-sig"))
+    # O 06 antigo é uma consulta. Só instalar o par quando houver o 07.
+    if (source / "07_window_functions.sql").is_file():
+        for name in ("06_ctes.sql", "07_window_functions.sql"):
             file = source / name
             manifest["scripts"][name] = hashlib.sha256(file.read_bytes()).hexdigest()
             execute(file.stem, file.read_text(encoding="utf-8-sig"))
-        # O 06 antigo é uma consulta. Só instalar o par quando houver o 07.
-        if (source / "07_window_functions.sql").is_file():
-            for name in ("06_ctes.sql", "07_window_functions.sql"):
-                file = source / name
-                manifest["scripts"][name] = hashlib.sha256(file.read_bytes()).hexdigest()
-                execute(file.stem, file.read_text(encoding="utf-8-sig"))
-        # A entrega Data Mart deve preceder o controle de acesso que a utiliza.
-        file = source / "08_materialized_views.sql"
-        if file.is_file():
-            manifest["scripts"][file.name] = hashlib.sha256(file.read_bytes()).hexdigest()
-            execute(file.stem, file.read_text(encoding="utf-8-sig"))
+    # A entrega Data Mart deve preceder o controle de acesso que a utiliza.
+    file = source / "08_materialized_views.sql"
+    if file.is_file():
+        manifest["scripts"][file.name] = hashlib.sha256(file.read_bytes()).hexdigest()
+        execute(file.stem, file.read_text(encoding="utf-8-sig"))
+
+
+def install_scripts(args, source, manifest, execute):
+    if args.install:
+        install_main_scripts(source, manifest, execute)
     if args.install_access_control:
         for relative in ("data_catalog/01_structure.sql", "data_catalog/02_check_constraints.sql",
                          "data_catalog/03_view.sql", "data_catalog/04_load.sql",
