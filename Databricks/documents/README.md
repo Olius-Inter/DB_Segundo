@@ -1,59 +1,34 @@
-# Olius — Data Mart na Databricks Free Edition
+# Olius — Data Mart federado no Databricks
 
-O Data Mart contém três fatos, oito dimensões, uma ponte de motivos e uma
-fotografia do ranking anual aprovado. São 13 views materializadas no PostgreSQL,
-mais a tabela técnica dm.refresh_state.
+O PostgreSQL mantém o star schema: 13 views materializadas e dm.refresh_state.
+Os dashboards consultam databricks_postgresql_catalog.dm usando olius_bi_reader.
+Não há exportação Parquet, upload, Volume de snapshots ou cópia em Delta.
 
-A Free Edition usa compute serverless e restringe acesso externo. O fluxo
-implementado exporta o Aiven **fora do Databricks**, envia arquivos Parquet
-para um Volume e executa a ingestão no Databricks. Não exige JDBC, cluster
-dedicado nem credenciais PostgreSQL dentro do workspace.
+Um único Job executa 01_refresh.py: outra conexão, direta ao PostgreSQL, com
+olius_bi_refresh, executa a procedure em REPEATABLE READ. pg_cron não faz parte
+do fluxo escolhido. O reader continua apenas leitor.
 
-## Arquivos e sequência
-
-| Ordem | Arquivo / atividade | Onde executar |
+| Arquivo | Ambiente | Finalidade |
 | --- | --- | --- |
-| 1 | Scripts principais 01–07 e 08_materialized_views.sql | PostgreSQL |
-| 2 | Catálogo de dados, access_control/01_roles.sql e 02_users.sql | PostgreSQL |
-| 3 | 01_structure.sql, seguido de 03_views.sql | Databricks SQL |
-| 4 | 06_export_snapshot.py, usando 02_ingestion.py e 05_data_contract.json ao lado | Computador/runner externo |
-| 5 | Upload dos Parquets e, por último, manifest.json | CLI ou interface de Volumes |
-| 6 | 02_ingestion.py com --catalog e --snapshot-path | Databricks, tarefa Python serverless |
-| 7 | 04_quality_checks.sql | Databricks SQL |
+| PostgreSQL/08_materialized_views.sql | PostgreSQL, implantação | Instala o Data Mart |
+| PostgreSQL/access_control/01_roles.sql e 02_users.sql | PostgreSQL | Papéis e contas sem senhas no Git |
+| PostgreSQL/09_refresh_materialized_views.sql | PostgreSQL, manual | Teste/manutenção, não outro agendamento |
+| Databricks/01_refresh.py | Notebook de um Job | Atualiza MVs; informa snapshot após COMMIT |
+| Databricks/tests/test_refresh.py | Local e CI | Testes sem rede/credenciais |
 
-Os arquivos PostgreSQL são executados no banco da aplicação; os SQLs deste
-diretório, no Databricks. A numeração identifica os arquivos, não substitui
-a sequência acima. O contrato JSON deve acompanhar os dois scripts Python.
+Dashboards consultam diretamente dm. Esta pasta contém somente o executor do
+refresh e seus testes/guias; não cria views de dashboards nem datasets.
 
-09_refresh_materialized_views.sql é uma opção de refresh manual no PostgreSQL.
-O exportador já chama o mesmo procedimento antes de ler; não é necessário
-agendar um segundo refresh para a mesma exportação.
+Guias:
+- [Conexão e Job](02_execution_guide.md).
+- [Consistência e homologação](03_refresh_and_validation.md).
 
-## Guias
+O repositório não cria nem agenda Jobs automaticamente e não altera o Aiven/workspace.
+A conexão federada e o refresh manual pelo notebook foram confirmados pelo
+usuário no ambiente de teste. A execução agendada pelo Job ainda precisa ser
+configurada e validada. São caminhos diferentes. A Free Edition restringe saída
+de rede e não oferece SLA. Se host/porta ou secrets não estiverem acessíveis,
+o Job ainda não estará operacional; revisar o executor antes de agendar.
+Não ampliar o reader nem desabilitar TLS para contornar essas restrições.
 
-- [Modelo e indicadores](01_data_mart_model.md).
-- [Conexão, exportação, upload e execução](02_execution_guide.md).
-- [Publicação, falhas e validação](03_refresh_and_validation.md).
-
-## Camadas
-
-```text
-Aiven/PostgreSQL: public
-       ↓ refresh transacional
-Aiven/PostgreSQL: dm
-       ↓ exportador externo: psycopg + PyArrow
-Parquets e manifest.json de um snapshot completo
-       ↓ upload para /Volumes/<catalog>/olius_bi_landing/snapshots/<export_id>
-Databricks: tabelas Delta em olius_bi_landing
-       ↓ validação + publicação do lote
-Databricks: views em olius_bi → dashboards
-```
-
-As views comuns em olius_bi consultam o lote publicado, sem REFRESH próprio.
-A atualização dos resultados/cache dos dashboards ocorre depois da ingestão.
-
-Nenhum destes arquivos cria automaticamente conexão, agendamento externo ou
-Job. A integração deve ser homologada no Aiven e no workspace.
-A propriedade permanece em olius_dm_owner, com a conta de manutenção
-olius_dm_admin. A implantação inicial ainda exige a autoridade de SET ROLE
-verificada nos scripts de acesso; o login de manutenção não a concede ao implantador.
+[Limites da Free Edition](https://docs.databricks.com/aws/en/getting-started/free-edition-limitations).

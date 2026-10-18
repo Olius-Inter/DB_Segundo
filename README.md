@@ -13,12 +13,13 @@ O projeto utiliza diferentes tecnologias de armazenamento, cada uma destinada a 
 
 O recorte analítico de coletas, entregas e solicitações usa views materializadas
 em star schema no PostgreSQL. O ranking aprovado também é materializado.
-Na Free Edition, um exportador externo gera Parquets, que são enviados a um
-Volume e ingeridos por lote no Databricks.
+Os dashboards consultam diretamente o schema dm por conexão federada no
+Databricks. Um Job Python separado chama a procedure de refresh no PostgreSQL,
+com a conta restrita de atualização; não há cópia dos dados para Delta.
 
 * **PostgreSQL/08_materialized_views.sql** — instalação das fatos, dimensões e ranking.
 * **PostgreSQL/09_refresh_materialized_views.sql** — refresh manual coordenado.
-* **Databricks/** — estrutura Delta, ingestão Python, views de dashboards e verificações.
+* **Databricks/** — notebook de refresh, seus testes e guias de configuração/execução.
 * [Guia do Data Mart](Databricks/documents/README.md) — conexão, sequência de execução, modelo e atualização.
 
 ---

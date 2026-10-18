@@ -125,7 +125,7 @@ Nenhuma conta definida em `02_users.sql` recebe participação nesse papel. A Co
 
 A propriedade do Data Mart permanece em olius_dm_owner (NOLOGIN). A conta
 olius_dm_admin recebe esse papel para manutenção, seguindo o padrão de
-olius_core_api → olius_api. Ela não substitui as contas restritas do exportador.
+olius_core_api → olius_api. Ela não substitui as contas restritas de consulta e refresh.
 olius_owner continua com consulta e execução do refresh em dm, sem herdar
 olius_dm_owner nem receber propriedade dos objetos desse schema.
 
@@ -138,8 +138,8 @@ olius_dm_owner nem receber propriedade dos objetos desse schema.
 | `david` | `olius_reader` | Consulta aos dados autorizados e à documentação. |
 | `erick` | `olius_reader` | Consulta aos dados autorizados e à documentação. |
 | `olius_core_api` | `olius_api` | Conexão exclusiva do backend da Core API. |
-| `olius_dm_admin` | `olius_dm_owner` | Administração da estrutura e dos dados do Data Mart; não usar na extração cotidiana. |
-| `olius_bi_reader` | `olius_bi_reader_role` | Leitura das views materializadas pelo exportador externo. |
+| `olius_dm_admin` | `olius_dm_owner` | Administração da estrutura e dos dados do Data Mart; não usar na consulta cotidiana nem no Job. |
+| `olius_bi_reader` | `olius_bi_reader_role` | Leitura das views materializadas pela conexão federada do Databricks. |
 | `olius_bi_refresh` | `olius_bi_refresh_role` | Chamada do refresh coordenado e leitura do identificador da atualização. |
 
 As dez contas são criadas com LOGIN/INHERIT e sem privilégios administrativos globais. Membership usa INHERIT TRUE, SET TRUE e ADMIN FALSE: recebem os acessos do grupo, podem assumir o grupo, mas não recebem autorização para delegá-lo a outras contas.
@@ -154,10 +154,11 @@ Provisionar esse login após 01_roles.sql não substitui os requisitos da conta
 de implantação para criar os grupos e transferir os objetos na instalação
 inicial. Esses requisitos continuam explicitamente verificados no script.
 
-Na Free Edition, as contas BI são usadas fora do Databricks por
-06_export_snapshot.py. O workspace recebe arquivos e não precisa dessas
-credenciais. Não atribuir olius_dm_owner às contas BI. Senhas permanecem fora
-dos scripts; variáveis e execução estão no guia de Databricks/documents.
+Na conexão federada do Databricks, usar olius_bi_reader. O Job usa uma conexão
+Python direta separada com olius_bi_refresh, secrets e TLS; sua conectividade
+no serverless precisa de homologação. Não atribuir olius_dm_owner às contas BI
+nem conceder refresh ao reader. Senhas ficam fora dos scripts/Git; configuração
+no guia de Databricks/documents. Não há exportador de arquivos neste fluxo.
 
 Nenhuma conta é criada para o grupo auditor/editor nesta versão; esses papéis ficam disponíveis para atribuições futuras aprovadas. A segunda API também não tem uma conta definida nesta entrega.
 

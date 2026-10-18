@@ -27,7 +27,7 @@ SELECT olius_test.expect_error('SET ROLE olius_dm_owner','42501');
 SELECT olius_test.expect_error('CREATE TABLE dm.forbidden(id integer)','42501');
 RESET SESSION AUTHORIZATION;
 
--- Administração separada das contas do exportador, sem acesso administrativo global.
+-- Administração separada das contas de consulta/refresh, sem acesso administrativo global.
 SET LOCAL SESSION AUTHORIZATION olius_dm_admin;
 SELECT COUNT(*) FROM dm.fato_coleta;
 CALL dm.refresh_data_mart();

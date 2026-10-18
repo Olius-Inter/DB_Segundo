@@ -42,9 +42,10 @@ aprovada e anula a coleta pela procedure oficial. Reverte todas as fixtures.
 O teste de catálogo espera os oito perfis documentais: cinco originais e três
 adicionados pelo controle de acesso do Data Mart.
 
-Os testes PostgreSQL não validam upload nem execução Spark na Free Edition.
-O contrato e o manifesto têm testes locais em Databricks/tests; a transferência
-completa exige homologação no ambiente real.
+Os testes PostgreSQL não validam a rede do notebook nem os datasets no Databricks.
+Databricks/tests testa o controle do refresh com mocks, também executado no CI.
+A conexão Python, o Job, o catálogo federado e os dashboards exigem homologação
+no ambiente real; não há upload/ingestão de arquivos no fluxo atual.
 
 ## Medição de cobertura
 

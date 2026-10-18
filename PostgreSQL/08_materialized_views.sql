@@ -185,9 +185,9 @@ BEGIN
     IF current_setting('transaction_isolation') NOT IN ('repeatable read', 'serializable') THEN
         RAISE EXCEPTION 'Refresh exige transação REPEATABLE READ';
     END IF;
-    -- Mesmo lock usado pelo Python durante refresh E extração.
+    -- Coordena chamadas concorrentes de refresh (Job e manutenção manual).
     IF NOT pg_try_advisory_xact_lock(71007, 1) THEN
-        RAISE EXCEPTION 'Data Mart em atualização ou extração; tentar depois';
+        RAISE EXCEPTION 'Data Mart em atualização; tentar depois';
     END IF;
     REFRESH MATERIALIZED VIEW dm.dim_tempo;
     REFRESH MATERIALIZED VIEW dm.dim_estabelecimento;
