@@ -103,6 +103,8 @@ jobs:
           retention-days: 14
 
       - name: SonarQube Scan
+        # A organização permite análise de PRs e main, mas não de outras branches.
+        if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
         uses: SonarSource/sonarqube-scan-action@7006c4492b2e0ee0f816d36501671557c97f5995 # v8.1.0
         with:
           args: -Dsonar.qualitygate.wait=true
