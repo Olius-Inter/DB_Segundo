@@ -54,7 +54,7 @@ def main():
         raise RuntimeError("A base de teste deve estar vazia; nenhum objeto será apagado pelo runner.")
     for name in ("01_structure.sql", "02_check_constraints.sql", "03_indexes.sql",
                  "04_functions_procedures.sql", "05_triggers.sql",
-                 "06_ctes.sql", "07_window_functions.sql"):
+                 "06_ctes.sql", "07_window_functions.sql", "08_materialized_views.sql"):
         sql_file("PostgreSQL/" + name)
     query("profiler-init", "CREATE SCHEMA ci_metrics; CREATE EXTENSION plpgsql_check WITH SCHEMA ci_metrics;")
     enabled = query("profiler-enabled", "SELECT current_setting('plpgsql_check.profiler')='on' "
@@ -102,6 +102,7 @@ def main():
     if has_access:
         sql_file("PostgreSQL/tests/catalog_access_regression.sql")
         sql_file("PostgreSQL/tests/api_access_regression.sql")
+        sql_file("PostgreSQL/tests/data_mart_access_regression.sql")
     else:
         print("NOTA: testes de API/permissões e catálogo/permissões dependem da PR access_control; não executados nesta branch.")
 

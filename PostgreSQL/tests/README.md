@@ -1,6 +1,6 @@
 # Testes PostgreSQL e cobertura
 
-O CI instala os scripts principais 01–07 em PostgreSQL 16.15 descartável e
+O CI instala os scripts principais 01–08 em PostgreSQL 16.15 descartável e
 executa regressões e disputas entre duas conexões. Qualquer erro interrompe a
 execução antes da análise do Sonar. Nenhum teste deve ser executado no Aiven.
 
@@ -15,7 +15,7 @@ Usa as variáveis `PGHOST`, `PGPORT`, `PGUSER`, `PGPASSWORD` e `PGDATABASE`.
 | Views de pontuação e ranking | `annual_views_regression.sql`, após instalação de 06 e 07 |
 | Sessões e tokens | `auth_sessions_regression.sql`, `auth_sessions_edges.sql`, `operational_regression.sql` e `auth_sessions_concurrency.py` |
 | Catálogo | Instalação 01–04 e verificação `05_validate.sql` |
-| Controle de acesso, catálogo e sessões | Também `catalog_access_regression.sql` e `api_access_regression.sql` |
+| Controle de acesso, catálogo, sessões e Data Mart | Também `catalog_access_regression.sql`, `api_access_regression.sql` e `data_mart_access_regression.sql` |
 
 Enquanto a branch de sessões não contém `access_control`, o runner utiliza
 `ci_auth_bootstrap.sql`: uma fixture de permissões mínimas para exercitar as
@@ -33,6 +33,19 @@ corrente em São Paulo. `annual_views_regression.sql` usa as procedures e
 consulta as views para validar tipos, empates, piso zero, reenvios, correções,
 anulações, recorrência, revisões e fronteira anual. Termina com `ROLLBACK`.
 O Data Mart, Redis e Databricks não são dependências desses testes.
+
+## Data Mart e acessos BI
+
+`data_mart_access_regression.sql` usa as contas reais de leitura/refresh,
+confere acessos permitidos e negados, compara o ranking materializado à view
+aprovada e anula a coleta pela procedure oficial. Reverte todas as fixtures.
+O teste de catálogo espera os oito perfis documentais: cinco originais e três
+adicionados pelo controle de acesso do Data Mart.
+
+Os testes PostgreSQL não validam a rede do notebook nem os datasets no Databricks.
+Databricks/tests testa o controle do refresh com mocks, também executado no CI.
+A conexão Python, o Job, o catálogo federado e os dashboards exigem homologação
+no ambiente real; não há upload/ingestão de arquivos no fluxo atual.
 
 ## Medição de cobertura
 
