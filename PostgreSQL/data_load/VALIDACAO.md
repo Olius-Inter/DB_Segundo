@@ -2,7 +2,44 @@
 
 A carga foi executada em bancos descartáveis isolados, com PostgreSQL 16.15. Não foi executada no Aiven.
 
-## Resultado da execução final
+## Atualização de 20/10/2026 — carga oficial compartilhada
+
+A configuração inicial agora vem de `../initial_data/`, com 16 registros: 3 planos,
+3 níveis de certificados, 7 tipos de estabelecimento e 3 motivos. O JSON da
+simulação contém apenas a seed. As seções seguintes são evidências históricas;
+as antigas referências a metas pendentes e ausência de certificados não descrevem
+mais o comportamento atual.
+
+Validação desta entrega, exclusivamente em containers novos e isolados com
+PostgreSQL 16.15; nenhuma execução no Aiven ou banco de produção:
+
+- Carga oficial em banco vazio: 16 registros, nenhum usuário/operação/concessão.
+- Duas cargas oficiais simultâneas: sucesso sem duplicidade.
+- Reexecução: IDs, timestamps, valores e quantidades de logs inalterados.
+- ID preexistente compatível e categoria adicional legítima preservados.
+- Preço divergente e nome de certificado duplicado recusados; rollback integral,
+  incluindo inserções tentadas antes da divergência e seus logs.
+- Validador de somente leitura confere o contrato independentemente.
+- Carga completa com scripts 01–08, catálogo, papéis e jornadas sob `olius_api`:
+  112 usuários, 240 solicitações, 200 coletas, 400 entregas, 598 fatos RECORDED,
+  600 cálculos vigentes, 35 históricos, 33 pagamentos simulados e **15 certificados**
+  gerados pelas rotinas existentes. Metas: 100, 500 e 1.000 L.
+- Modo desenvolvimento em outro banco já estruturado e com os 16 registros:
+  carga completa aprovada, reutilizando as referências.
+- Nova tentativa na base populada: recusada antes da carga oficial/simulações;
+  600 fatos e 15 certificados permaneceram preservados.
+- Suíte PostgreSQL completa do CI aprovada, incluindo auth, negócios, acessos,
+  Data Mart, nova regressão de carga inicial, concorrência e exportação de cobertura.
+- Suíte Python do runner: 20 testes, 19 aprovados e 1 ignorado por restrição de
+  criação de symlink no Windows; cobertura de **96% (214/223 instruções)**.
+
+A regressão real da carga oficial é chamada automaticamente por `tests/run_ci.py`.
+Aprovação do Sonar/CI remoto depende de commit, push e nova execução; não foi
+alterado nenhum Quality Gate. As MVs de BI continuam exigindo refresh pelo fluxo
+oficial após popular a demonstração. Não há provedor financeiro real nem envio
+para Redis nesta carga.
+
+## Resultado histórico da execução inicial
 
 Base técnica: scripts locais do projeto no commit `4e24c67a0b0743cc0b2865a81f5fa9d5d0be2ac8`, incluindo catálogo e controle de acesso. As jornadas foram executadas com o papel `olius_api`; instalação, cadastros iniciais e contratos foram preparados pela conta administrativa do ambiente de teste.
 

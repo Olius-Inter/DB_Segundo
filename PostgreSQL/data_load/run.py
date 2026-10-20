@@ -8,7 +8,6 @@ import subprocess
 import sys
 import re
 import shutil
-from decimal import Decimal
 
 REPORT_ROOT = Path(__file__).resolve().parents[2]
 
@@ -49,32 +48,13 @@ def command(args, input_text=None, timeout=180, environment=None):
     return result.stdout
 
 
-def validate_plan(plan):
-    if not plan.get("name", "").strip():
-        raise ValueError("Nome do plano obrigatório.")
-    for field in ("monthly_price", "volume_limit_liters"):
-        number = Decimal(str(plan[field]))
-        if not number.is_finite() or number <= 0 or number != number.quantize(Decimal("0.01")):
-            raise ValueError(f"Valor inválido para {field}.")
-    if type(plan["collection_limit"]) is not int or plan["collection_limit"] < 1:
-        raise ValueError("Limite de coletas deve ser inteiro positivo.")
-
-
 def load_config(path):
     value = json.loads(path.read_text(encoding="utf-8-sig"))
-    plans = value.get("plans", [])
-    if len(plans) != 3:
-        raise ValueError("Configurar os três planos oficiais em ordem crescente.")
-    for plan in plans:
-        validate_plan(plan)
-    for lower, higher in zip(plans, plans[1:]):
-        if any(Decimal(str(higher[f])) <= Decimal(str(lower[f])) for f in
-               ("monthly_price", "volume_limit_liters", "collection_limit")):
-            raise ValueError("Os upgrades exigem aumento do preço e de ambos os limites.")
-    if plans[2]["collection_limit"] < 8 or Decimal(str(plans[2]["volume_limit_liters"])) < 250:
-        raise ValueError("A distribuição aprovada exige pelo menos 8 vagas e 250 L no plano superior.")
-    if value.get("certificate_levels") != []:
-        raise ValueError("As metas oficiais ainda estão pendentes: manter certificate_levels vazio nesta versão.")
+    if not isinstance(value, dict) or set(value) != {"seed"}:
+        raise ValueError("Configuração aceita somente seed; catálogos oficiais vêm de initial_data.")
+    seed = value["seed"]
+    if not isinstance(seed, str) or re.fullmatch(r"[A-Za-z0-9_-]{1,64}", seed) is None:
+        raise ValueError("Seed deve conter de 1 a 64 letras, números, hífen ou underscore.")
     return value
 
 
@@ -187,6 +167,14 @@ def install_scripts(args, source, manifest, execute):
             execute(relative.replace("/", "_"), file.read_text(encoding="utf-8-sig"))
 
 
+def load_reference_data(source, manifest, execute):
+    for name in ("01_reference_data.sql", "02_validate.sql"):
+        file = source / "initial_data" / name
+        manifest["scripts"]["initial_data/" + name] = hashlib.sha256(file.read_bytes()).hexdigest()
+        execute("initial_data_" + file.stem, file.read_text(encoding="utf-8-sig"))
+    manifest["reference_data"] = "validated"
+
+
 def run_stages(temporary_dir, manifest, execute):
     for name in ("01_seed.sql", "02_contracts.sql", "03_journeys.sql", "04_validate.sql"):
         output = execute(name[:-4], path=temporary_dir + "/" + name)
@@ -247,9 +235,23 @@ def main():
             if structure != "t":
                 raise ValueError("Banco de desenvolvimento sem as tabelas principais esperadas; carga recusada.")
         install_scripts(args, source, manifest, execute)
-        # Um banco parcialmente carregado também é recusado. Recriar só o container de teste.
-        guard = "DO $$ DECLARE t RECORD; n BIGINT; BEGIN FOR t IN SELECT tablename FROM pg_tables WHERE schemaname='public' AND tablename NOT IN ('data_catalog_table','data_catalog_column','data_catalog_role') LOOP EXECUTE format('SELECT count(*) FROM public.%I',t.tablename) INTO n; IF n<>0 THEN RAISE EXCEPTION 'Tabela % não vazia; carga recusada.',t.tablename; END IF; END LOOP; END $$;"
+        # Referências oficiais podem existir; operações e seus logs continuam proibidos.
+        guard = """DO $$ DECLARE t RECORD; n BIGINT; BEGIN
+        FOR t IN SELECT tablename FROM pg_tables WHERE schemaname='public'
+            AND tablename NOT IN ('data_catalog_table','data_catalog_column','data_catalog_role',
+                'subscription_plan','certificate_level','establishment_type','collection_failure_reason',
+                'subscription_plan_log','certificate_level_log','collection_failure_reason_log') LOOP
+            EXECUTE format('SELECT count(*) FROM public.%I',t.tablename) INTO n;
+            IF n<>0 THEN RAISE EXCEPTION 'Tabela % não vazia; carga recusada.',t.tablename; END IF;
+        END LOOP;
+        FOR t IN SELECT * FROM (VALUES ('subscription_plan'),('certificate_level'),('collection_failure_reason')) r(base) LOOP
+            EXECUTE format('SELECT count(*) FROM public.%I l WHERE l.actor_kind IS DISTINCT FROM ''SYSTEM'' OR NOT EXISTS (SELECT 1 FROM public.%I b WHERE b.id=l.id)',
+                t.base || '_log',t.base) INTO n;
+            IF n<>0 THEN RAISE EXCEPTION 'Histórico de catálogo % incompatível com banco de demonstração.',t.base; END IF;
+        END LOOP;
+        END $$;"""
         execute("empty-data", guard)
+        load_reference_data(source, manifest, execute)
         # Em conexão direta, psql lê os includes locais, sem enviar arquivos ao servidor.
         folder = Path(__file__).resolve().parent
         temporary_dir = prepare_files(args, folder, manifest)

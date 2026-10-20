@@ -6,19 +6,19 @@ Carga artificial para o requisito de Modelagem de Dados do segundo ano: pelo men
 
 | Arquivo | Responsabilidade |
 |---|---|
-| `config.json` | Três planos oficiais documentados; níveis de certificado vazios enquanto suas metas não forem definidas. |
+| `config.json` | Seed da geração fictícia. Não contém preços, metas ou categorias oficiais. |
 | `00_helpers.sql` | Identificadores determinísticos, contexto de auditoria e verificações temporárias. Não cria objetos permanentes da aplicação. |
 | `01_seed.sql` | 112 usuários da aplicação (2 ADM, 80 cidadãos e 30 estabelecimentos), QR Codes, telefones, 38 endereços, 5 motoristas e 8 PEVs aprovados. |
 | `02_contracts.sql` | 30 assinaturas e seus pagamentos simulados; aplicação pelas procedures, 2 upgrades e 1 pagamento duplicado que pede reembolso. |
 | `03_journeys.sql` | 200 coletas, 400 entregas, 40 pedidos adicionais, reenvios, correções e anulações. |
 | `04_validate.sql` | Quantidades, saldos calculados de forma independente, componentes, limites dos ciclos, vínculos PEV/validador, revisões e auditoria. |
-| `run.py` | Conexão Docker ou direta via psql, pré-condições, instalação opcional em container descartável, execução em etapas e relatórios. |
+| `run.py` | Conexão Docker ou direta via psql, proteções, instalação opcional, execução de `initial_data` antes das simulações e relatórios. |
 | `test_runner.py` | Validação de configurações, execução e proteções do runner. |
 | `VALIDACAO.md` | Resultado dos testes realizados nesta entrega. |
 
 ## Configurações oficiais
 
-Fonte: documentos `Contexto do Projeto - OLIUS.docx` e `Regras de Negocio - OLIUS.docx` da pasta `01_Sobre/Técnico`.
+Fonte dos planos: documentos oficiais da pasta `01_Sobre/Técnico`. Certificados, categorias e motivos foram aprovados pelo responsável em 20/10/2026. A carga compartilhada fica em [`../initial_data/`](../initial_data/README.md); os valores não são redefinidos no JSON nem no seed fictício.
 
 | Plano | Preço mensal | Litros | Coletas |
 |---|---:|---:|---:|
@@ -28,9 +28,9 @@ Fonte: documentos `Contexto do Projeto - OLIUS.docx` e `Regras de Negocio - OLIU
 
 Os 30 estabelecimentos chegam ao Plano Empresa: dois começam nos planos inferiores e recebem upgrade pago antes das coletas; os demais começam no Empresa. Isso permite oito pedidos originais por estabelecimento sem aumentar franquias artificialmente. Os upgrades mantêm as datas e substituem os limites, sem somá-los.
 
-Os nomes/metas dos certificados ainda estão pendentes nos documentos. `certificate_levels` fica vazio; a massa não cria certificados. Não existe dependência de cadastrar níveis para registrar óleo ou calcular pontos.
+A carga oficial instala três níveis: Óleo Amigo — Bronze (100 L), Prata (500 L) e Ouro (1.000 L). As concessões fictícias são produzidas pelas rotinas conforme o volume acumulado RECORDED, inclusive coletas malsucedidas com volume recolhido, e reconferidas após correções/anulações. As imagens dos níveis ficam inicialmente sem preenchimento.
 
-As categorias de estabelecimento e todos os cadastros pessoais são dados de demonstração. São marcados com `[DEMO]`, e-mails em domínio reservado `.invalid`, documentos sintéticos e coordenadas ilustrativas. As CNHs atendem ao formato exigido pelo banco, sem representar habilitações verificadas.
+Os sete tipos de estabelecimento e os três motivos de falha vêm da carga oficial; a distribuição fictícia utiliza os sete tipos. Todos os cadastros pessoais são de demonstração, marcados com `[DEMO]`, e-mails em domínio reservado `.invalid`, documentos sintéticos e coordenadas ilustrativas. As CNHs atendem ao formato exigido pelo banco, sem representar habilitações verificadas.
 
 `password_hash` contém um marcador sem credencial utilizável. Estes usuários servem para modelagem/jornadas no banco, não para login no frontend. Esta entrega não define senhas de usuários PostgreSQL nem divulga uma senha comum da aplicação.
 
@@ -63,13 +63,13 @@ $env:OLIUS_DATA_LOAD_DISPOSABLE='1'
 python PostgreSQL/data_load/run.py --container olius-data-load --install --install-access-control
 ```
 
-`--install` exige schema public vazio e instala 01–05. Aceita o nome antigo ou o novo do script 04, mas recusa a presença de ambos. Instala 06/07 somente quando o 07 existe. `--install-access-control` instala o catálogo e os scripts existentes de papéis/contas **somente no container**, e executa as jornadas sob `olius_api`. Cadastros e configuração financeira preparatória usam a conta de implantação; nenhuma escrita livre é concedida à Core.
+`--install` exige schema public vazio e instala 01–05. Aceita o nome antigo ou o novo do script 04, mas recusa a presença de ambos. Instala 06/07 somente quando o 07 existe e instala 08 quando disponível, antes do controle de acesso. `--install-access-control` instala o catálogo e os scripts existentes de papéis/contas **somente no container**, e executa as jornadas sob `olius_api`. Cadastros e configuração financeira preparatória usam a conta de implantação; nenhuma escrita livre é concedida à Core.
 
 Para testar só a estrutura e as rotinas, omita `--install-access-control`. Se `olius_api` já estiver presente, as jornadas usam esse papel; ele precisa estar configurado pelos scripts oficiais. Na ausência dele, `journeys_role` registra o usuário informado em `--user`, ou `postgres` quando essa opção não é informada.
 
-O runner exige que todas as tabelas operacionais e logs estejam vazios antes da carga. Só os três metadados do catálogo são excluídos dessa verificação. Não executa DELETE/TRUNCATE nem remove objetos existentes.
+O runner exige tabelas operacionais e logs vazios. Aceita os três metadados documentais e as quatro tabelas de configuração oficial. Dos logs de configuração existentes, aceita somente snapshots SYSTEM vinculados a registros ainda presentes. Em seguida executa e valida `initial_data`; a demonstração exige exatamente 3 planos, 3 níveis, 7 tipos e 3 motivos, recusando configurações adicionais. Dados divergentes não são corrigidos automaticamente. Não executa DELETE/TRUNCATE nem remove objetos existentes.
 
-Cada etapa SQL é transacional e interrompe em erro. Há commits entre etapas: se uma etapa falhar, as anteriores podem permanecer. O runner recusa reaplicar a massa nessa base parcial. Recrie somente o container descartável para uma nova execução:
+A carga oficial e cada etapa fictícia têm sua própria transação e interrompem em erro. Há commits entre etapas: se uma etapa falhar, as anteriores podem permanecer. O runner recusa reaplicar a massa nessa base parcial. Recrie somente o container descartável para uma nova execução:
 
 ```powershell
 docker rm -f -v olius-data-load
@@ -87,7 +87,7 @@ O runner grava `reports/manifest.json` e logs por etapa. O manifesto inclui vers
 python -m unittest discover -s PostgreSQL/data_load -p test_runner.py
 ```
 
-A validação das views, quando presentes, ocorre administrativamente. O acesso das integrações às novas views continua sujeito ao ajuste apontado na PR #21; carregar dados não corrige permissões nem publica pontos no Redis.
+A validação das views, quando presentes, ocorre administrativamente. A carga não modifica permissões existentes nem publica pontos no Redis. As MVs do Data Mart instaladas antes das simulações exigem refresh posterior pelo fluxo oficial de BI.
 
 A carga não foi executada no Aiven. O modo padrão exige container identificado como descartável; o modo de desenvolvimento aceita Docker ou conexão direta, exige confirmação explícita do destino e estrutura existente. Massa inicial não substitui a integração RPA/ETL exigida em outra etapa da disciplina.
 
@@ -95,7 +95,7 @@ A carga não foi executada no Aiven. O modo padrão exige container identificado
 
 Execute pelo terminal PowerShell na raiz do repositório. Os scripts usam variáveis e comandos do `psql`; não execute os arquivos isoladamente no editor SQL do pgAdmin ou DBeaver, nem pule o `00_helpers.sql`. O runner fornece a configuração e os recursos temporários necessários.
 
-O container deve estar iniciado, com PostgreSQL 16.15 e a estrutura atual já instalada. As tabelas operacionais e de auditoria devem estar vazias; somente os três metadados do catálogo são excluídos da verificação. Pause operações da API durante a carga para evitar gravações concorrentes.
+O container deve estar iniciado, com PostgreSQL 16.15 e a estrutura atual já instalada. As tabelas operacionais e seus logs devem estar vazios; configurações oficiais e seus logs SYSTEM são aceitos conforme a pré-condição descrita acima. Pause operações da API durante a carga para evitar gravações concorrentes.
 
 Exemplo com os nomes informados pelo responsável pelo projeto, que precisam corresponder ao destino real:
 
@@ -123,7 +123,7 @@ Remove-Item Env:OLIUS_DATA_LOAD_DEVELOPMENT_TARGET
 
 ## Conexão direta: PostgreSQL local, Aiven ou outro provedor
 
-Use `--host` no lugar de `--container`. Docker não é necessário nesse modo, mas o cliente **psql** precisa estar instalado e disponível no PATH. Confira com `psql --version`; se não for localizado, adicione ao PATH da sessão a pasta `bin` da instalação PostgreSQL. O runner continua exigindo servidor PostgreSQL 16.15, estrutura completa atual, privilégios de carga e tabelas operacionais/de auditoria vazias. Não há instalação automática de estrutura ou papéis em conexão direta.
+Use `--host` no lugar de `--container`. Docker não é necessário nesse modo, mas o cliente **psql** precisa estar instalado e disponível no PATH. Confira com `psql --version`; se não for localizado, adicione ao PATH da sessão a pasta `bin` da instalação PostgreSQL. O runner continua exigindo servidor PostgreSQL 16.15, estrutura completa atual, privilégios de carga e tabelas operacionais e seus logs vazios, admitindo somente as exceções de referência descritas acima. Não há instalação automática de estrutura ou papéis em conexão direta.
 
 A confirmação tem o formato exato `host:porta/banco`. Não use URLs JDBC, URLs com senha ou credenciais dentro de `--host`. Atualmente são aceitos nomes DNS e IPv4.
 

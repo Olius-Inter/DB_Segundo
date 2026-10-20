@@ -1,7 +1,12 @@
 -- Helpers temporários da carga: não acrescentam tabelas ou rotinas à aplicação.
 CREATE TEMP TABLE dl_config AS SELECT :'load_config'::JSONB AS value;
 CREATE FUNCTION pg_temp.dl_id(kind TEXT, number INTEGER) RETURNS UUID
-LANGUAGE SQL IMMUTABLE AS $$ SELECT md5('olius-data-load-v1:' || kind || ':' || number)::UUID $$;
+LANGUAGE SQL STABLE AS $$
+SELECT CASE kind
+    WHEN 'plan' THEN (SELECT id FROM public.subscription_plan ORDER BY monthly_price,id OFFSET (number-1) LIMIT 1)
+    WHEN 'type' THEN (SELECT id FROM public.establishment_type ORDER BY name,id OFFSET (number-1) LIMIT 1)
+    ELSE md5((SELECT value->>'seed' FROM dl_config) || ':' || kind || ':' || number)::UUID
+END $$;
 CREATE FUNCTION pg_temp.dl_assert(condition BOOLEAN, explanation TEXT) RETURNS VOID
 LANGUAGE plpgsql AS $$ BEGIN
     IF condition IS DISTINCT FROM TRUE THEN RAISE EXCEPTION 'Data Load: %', explanation; END IF;
