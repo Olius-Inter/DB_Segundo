@@ -89,6 +89,30 @@ def check_reference_data():
     execute("UPDATE public.subscription_plan SET monthly_price=19.90 WHERE name='Plano Básico';")
     execute(relative=load)
 
+    # O validador relacional deve recusar desvios em cada grupo sem modificar dados.
+    changes = (
+        ("UPDATE public.subscription_plan SET collection_limit=3 WHERE name='Plano Básico';",
+         "UPDATE public.subscription_plan SET collection_limit=2 WHERE name='Plano Básico';"),
+        ("UPDATE public.subscription_plan SET volume_limit_liters=51 WHERE name='Plano Básico';",
+         "UPDATE public.subscription_plan SET volume_limit_liters=50 WHERE name='Plano Básico';"),
+        ("UPDATE public.certificate_level SET required_liters=101 WHERE name='Óleo Amigo — Bronze';",
+         "UPDATE public.certificate_level SET required_liters=100 WHERE name='Óleo Amigo — Bronze';"),
+        ("UPDATE public.establishment_type SET name='Tipo alterado' WHERE name='Restaurante';",
+         "UPDATE public.establishment_type SET name='Restaurante' WHERE name='Tipo alterado';"),
+        ("UPDATE public.collection_failure_reason SET status='INACTIVE' WHERE code='OIL_UNACCEPTABLE';",
+         "UPDATE public.collection_failure_reason SET status='ACTIVE' WHERE code='OIL_UNACCEPTABLE';"),
+        ("UPDATE public.collection_failure_reason SET description=NULL WHERE code='OIL_UNACCEPTABLE';",
+         "UPDATE public.collection_failure_reason SET description='Condição inadequada do óleo registrada na coleta malsucedida.' WHERE code='OIL_UNACCEPTABLE';"),
+    )
+    for change, restore in changes:
+        execute(change)
+        before = snapshot()
+        execute(relative=validate, fails=True)
+        if before != snapshot():
+            raise AssertionError("Validação de divergência alterou dados ou logs.")
+        execute(restore)
+    execute(relative=validate)
+
     execute("""INSERT INTO public.certificate_level(name,required_liters)
                VALUES ('Óleo Amigo — Ouro',1000);""")
     before = snapshot()

@@ -33,8 +33,9 @@ A carga não atualiza as materializações de BI. Após configurar/popular o ban
 executar o refresh pelo script 09 ou pelo Job autorizado para refletir os dados em `dm`.
 
 `02_validate.sql` executa em transação de somente leitura e reporta ausência,
-ambiguidade ou divergência; não corrige dados. O contrato esperado é explícito
-nesse validador para conferir independentemente o resultado da instalação.
+ambiguidade ou divergência; não corrige dados. O contrato esperado usa CTEs e
+relações de valores para conferir independentemente o resultado da instalação, sem copiar o catálogo
+JSON nem o algoritmo de inserção do script 01.
 
 Usar a conta de implantação autorizada, com leitura, inserção e autoridade
 para bloquear os quatro catálogos, além das permissões necessárias às triggers.

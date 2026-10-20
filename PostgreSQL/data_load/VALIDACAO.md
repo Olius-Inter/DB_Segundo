@@ -146,3 +146,31 @@ O único apontamento aberto era AaFFcEt4idhKYWVJX5nK (pythonsecurity:S8707), na 
 O teste de orquestração direta agora verifica host e banco no JSON e uma falha contendo um caminho relativo e caracteres Unicode: a mensagem deve permanecer como dado no manifesto, sem criar arquivo no caminho mencionado. Após a alteração, 20 testes passaram e um foi ignorado por restrição de symlink no Windows; cobertura de 96% (218/227 instruções). Os testes locais simulam as chamadas PostgreSQL, mas gravam e conferem os relatórios reais em diretórios temporários. Não foi executada carga em banco nesta correção.
 
 A aprovação pelo Sonar ainda exige análise remota do próximo commit. Se o mesmo apontamento persistir, deve ser revisado como falso positivo com base no fluxo comprovado, sem suprimir a regra nem afirmar aprovação antes do resultado remoto.
+
+
+## Correção da PR #28 — duplicação no validador
+
+No commit 7b8067c, a execução 39422560216 (job 118626928370) passou nas
+regressões SQL, concorrência, testes Python/Databricks e carga completa. A etapa
+Sonar falhou com exit code 3: 178 linhas novas duplicadas em 468 (38,0%), acima
+do limite de 3%. O bloco de 89 linhas aparecia tanto em initial_data/01_reference_data.sql
+(linha 18) quanto em initial_data/02_validate.sql (linha 9). O CI de push passou
+porque a análise Sonar nessa branch é executada no evento de PR, não de push.
+
+O validador foi reescrito com CTEs, relações VALUES e comparação agregada entre
+registros esperados e existentes. Deixou de copiar o catálogo JSON, loops e SQL
+dinâmico da instalação. Continua independente, em REPEATABLE READ READ ONLY,
+validando os mesmos 16 registros, valores e duplicidades, aceitando IDs existentes
+e registros adicionais legítimos. Não foram alterados os dados oficiais, a carga
+de instalação, os filtros do Sonar nem o Quality Gate.
+
+A regressão ganhou seis cenários de divergência (vagas, litros, meta, categoria,
+status e descrição NULL), conferindo também que a validação não modifica dados
+ou logs. A suíte PostgreSQL completa passou novamente em PostgreSQL 16.15
+descartável, incluindo a regressão da carga oficial, acessos, Data Mart e
+concorrência. A carga completa também passou com olius_api: 600 operações,
+598 RECORDED e 15 certificados, com valores e contagens preservados.
+
+Nenhuma execução em produção/Aiven. A medição atualizada de duplicação e a
+aprovação do Quality Gate precisam da nova análise remota após commit/push;
+a aprovação do Sonar não foi presumida a partir dos testes locais.
