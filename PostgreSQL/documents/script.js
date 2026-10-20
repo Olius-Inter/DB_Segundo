@@ -1,5 +1,5 @@
-// A modelagem é um documento JSON embutido no HTML para funcionar sem servidor.
-const MODEL = JSON.parse(document.getElementById('model-data').textContent);
+// Dados e comportamento separados; a página funciona sem servidor.
+const MODEL = JSON.parse(OLIUS_MODEL_JSON);
 
 // Utilitários, cores e estado da modelagem.
 const $=id=>document.getElementById(id);
