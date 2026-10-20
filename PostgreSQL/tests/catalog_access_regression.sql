@@ -14,18 +14,18 @@ BEGIN
 END $$;
 GRANT USAGE ON SCHEMA catalog_test TO olius_owner,olius_reader,olius_catalog_editor,olius_auditor;
 
-SELECT catalog_test.assert((SELECT count(*)=58 FROM public.data_catalog_table),'58 tabelas catalogadas');
-SELECT catalog_test.assert((SELECT count(*)=828 FROM public.data_catalog_column),'828 colunas documentadas');
+SELECT catalog_test.assert((SELECT count(*)=61 FROM public.data_catalog_table),'61 tabelas catalogadas');
+SELECT catalog_test.assert((SELECT count(*)=863 FROM public.data_catalog_column),'863 colunas documentadas');
 SELECT catalog_test.assert(NOT EXISTS(SELECT 1 FROM public.data_catalog_column WHERE documentation_status='PENDING'),'sem colunas pendentes');
 SELECT catalog_test.assert(NOT EXISTS(SELECT 1 FROM public.data_catalog_table WHERE access_status='PENDING' OR domain_name='Pendente de classificação'),'sem tabelas pendentes');
-SELECT catalog_test.assert((SELECT count(*)=55 FROM (SELECT DISTINCT table_name FROM public.vw_data_catalog) t),'view exclui 3 tabelas documentais');
-SELECT catalog_test.assert((SELECT count(*)=808 FROM (SELECT DISTINCT table_name,column_name FROM public.vw_data_catalog) t),'808 colunas distintas na view');
+SELECT catalog_test.assert((SELECT count(*)=58 FROM (SELECT DISTINCT table_name FROM public.vw_data_catalog) t),'view exclui 3 tabelas documentais');
+SELECT catalog_test.assert((SELECT count(*)=843 FROM (SELECT DISTINCT table_name,column_name FROM public.vw_data_catalog) t),'843 colunas distintas na view');
 SELECT catalog_test.assert(
     (SELECT array_agg(role_name ORDER BY role_name) FROM public.data_catalog_role)
     = ARRAY['olius_api','olius_auditor','olius_bi_reader_role','olius_bi_refresh_role',
             'olius_catalog_editor','olius_dm_owner','olius_owner','olius_reader']::TEXT[],
     'oito perfis documentais, incluindo os três papéis do Data Mart');
-SELECT catalog_test.assert((SELECT count(*)=8 FROM pg_proc WHERE pronamespace='public'::regnamespace AND proowner='olius_auth_owner'::regrole),'oito funções mantidas no auth_owner');
+SELECT catalog_test.assert((SELECT count(*)=15 FROM pg_proc WHERE pronamespace='public'::regnamespace AND proowner='olius_auth_owner'::regrole),'quinze funções mantidas no auth_owner');
 
 SET LOCAL SESSION AUTHORIZATION pedro;
 ALTER TABLE public.collection ADD COLUMN catalog_test_pedro text;

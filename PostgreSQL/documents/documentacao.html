@@ -15,7 +15,7 @@
           <p class="sub">Arquitetura de negócio · visão geral, relações e campos reais do PostgreSQL.</p>
         </div>
         <div class="stamp">Fonte: <b>01_structure.sql</b>
-        <br>Revisão do script: 10/09/2026<br>Análise: 13/09/2026</div>
+        <br>Sincronização: 20/10/2026<br>Estrutura e regras: scripts 01–05</div>
       </div>
     </header>
     <main class="shell">
@@ -66,15 +66,15 @@
               <details>
                 <summary>Como ler os relacionamentos e os limites desta análise</summary>
                 <p>As setas vão da tabela que contém a FK para a tabela referenciada. Em cada ponta, a cardinalidade indica quantas linhas daquele lado podem corresponder a uma linha do lado oposto. Por exemplo, <b>telephone (0..N) → users (1)</b>: um usuário pode ter vários telefones; cada telefone exige um usuário.</p>
-                <p>As cardinalidades foram inferidas das PKs, FKs, UNIQUEs, nulabilidade e constantes geradas do script 01. Não se presume que um registro pai já tenha filhos. Em FKs compostas, uma coluna anulável pode tornar o vínculo opcional (MATCH SIMPLE). As regras condicionais dos índices parciais estão na aba <b>Regras</b>, sem transformar uma relação geral 1:N em 1:1.</p>
-                <p>Os diagramas temáticos priorizam as relações principais. A ficha de cada tabela apresenta <b>todas as FKs de entrada e saída entre as 28 tabelas incluídas</b>, inclusive autoria, validação e correção. Uma linha com “×2” representa duas FKs distintas entre o mesmo par; selecione a linha para ver as duas. Cardinalidades diferentes são indicadas por “ver FKs”.</p>
-                <p>As descrições vêm dos comentários do script: podem citar regras implementadas no script 02 ou nas futuras rotinas. A descrição de uma regra não é tratada como prova de que ela já está garantida pela estrutura. O diagrama não é uma validação do banco em execução.</p>
+                <p>As cardinalidades foram inferidas das PKs, FKs, UNIQUEs, nulabilidade e colunas geradas dos scripts atuais. Não se presume que um registro pai já tenha filhos. Em FKs compostas, uma coluna anulável pode tornar o vínculo opcional (MATCH SIMPLE). As regras condicionais dos índices parciais estão na aba <b>Regras</b>, sem transformar uma relação geral 1:N em 1:1.</p>
+                <p>Os diagramas temáticos priorizam as relações principais. A ficha de cada tabela apresenta <b>todas as FKs de entrada e saída entre as 31 tabelas incluídas</b>, inclusive autoria, validação e correção. Uma linha com “×2” representa duas FKs distintas entre o mesmo par; selecione a linha para ver as duas. Cardinalidades diferentes são indicadas por “ver FKs”.</p>
+                <p>As descrições vêm dos comentários do script: podem citar regras implementadas no script 02 ou nas rotinas e triggers dos scripts 04 e 05. A descrição de uma regra não é tratada como prova de que ela já está garantida pela estrutura. O diagrama não é uma validação do banco em execução.</p>
                 <p>
                   <b>Referências compostas são preservadas.</b> Campos como establishment_id podem integrar uma FK para subscription_cycle ou billing_order, sem uma FK direta para establishment. Nenhuma ligação direta foi criada apenas pela semelhança de nomes.</p>
                 </details>
                 <details>
                   <summary id="exclusion-title">Escopo e tabelas excluídas</summary>
-                  <p>Fora dos diagramas: as 22 tabelas *_log de auditoria, payment_refund_attempt (tentativas técnicas de reembolso) e payment_provider_event (processamento de eventos do provedor).</p>
+                  <p>Fora dos diagramas: as 24 tabelas *_log de auditoria, payment_refund_attempt (tentativas técnicas de reembolso), payment_provider_event (eventos do provedor) e admin_guard_state (coordenação transacional). O escopo contabiliza as 58 tabelas do script principal 01; catálogo, Data Mart e papéis PostgreSQL são entregas auxiliares e não integram este diagrama.</p>
                   <div class="excluded" id="excluded">
                   </div>
                   <p>Mantidas: <b>collection_schedule_history</b> (acordos de agendamento), <b>subscription_cycle_change</b> (upgrades pagos) e <b>point_calculation / point_transaction</b> (cálculo e componentes da pontuação). Esses registros têm significado de negócio; não são apenas rastros técnicos de execução.</p>
@@ -83,6 +83,7 @@
                 </div>
               </section>
             </main>
+            <script src="model-data.js"></script>
             <script src="script.js">
             </script>
           </body>
