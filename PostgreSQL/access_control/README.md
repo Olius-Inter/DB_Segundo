@@ -45,13 +45,13 @@ Os cinco perfis gerais recebem CONNECT no banco selecionado e USAGE no schema pu
 
 Recebe ALL PRIVILEGES WITH GRANT OPTION sobre os objetos da lista fechada do script. Além dos privilégios, o script transfere a propriedade de:
 
-- 55 tabelas da aplicação/auditoria, três tabelas documentais, `vw_data_catalog`, `vw_annual_scores` e `vw_annual_ranking`;
+- 58 tabelas da aplicação/auditoria, três tabelas documentais, `vw_data_catalog`, `vw_annual_scores` e `vw_annual_ranking`;
 - 22 tipos enum do projeto;
 - 11 funções comuns explicitamente listadas. As dez procedures e duas funções de trigger de negócio passam ao proprietário interno.
 
 A propriedade permite manutenção estrutural, como ALTER e DROP, que GRANT ALL sozinho não concede. Banco, schema e objetos de extensões não têm sua propriedade transferida.
 
-O grupo também pode executar as cinco funções de integração de autenticação. As oito funções pertencentes a `olius_auth_owner` permanecem com esse proprietário restrito.
+O grupo também pode executar as cinco funções de integração de autenticação. As quinze funções pertencentes a `olius_auth_owner` permanecem com esse proprietário restrito.
 
 Pedro e Caio são administradores confiáveis dos dados: a propriedade das tabelas permite alterar sua estrutura e triggers. A separação do proprietário das funções de autenticação protege principalmente os acessos da API e dos leitores; não elimina os poderes de manutenção das tabelas concedidos aos administradores.
 
@@ -187,3 +187,14 @@ A configuração foi testada em PostgreSQL 16.15 descartável: criação/reaplic
 Essas execuções foram locais, sem implantação no Aiven e sem integração dos testes novos ao CI. A existência dos scripts não significa que as contas já estejam criadas no servidor real.
 
 A ampliação do contrato da Core foi validada com as oito procedures públicas, pontos/certificados/auditoria derivados, entradas operacionais e bloqueios da conta olius_core_api. Novas funções operacionais estão no script principal 04; todas as concessões e atributos SECURITY DEFINER são centralizados em 01_roles.sql. Após reinstalar 04/05, reaplicar as permissões antes de liberar tráfego.
+
+
+## Convites administrativos
+
+olius_auth_owner passa a operar admin_invitation e admin_guard_state e a inserir
+usuários/alterar status pelas funções revisadas. Continua NOLOGIN e não é
+atribuído à Core. olius_api recebe EXECUTE nas quatro operações administrativas,
+na coordenação técnica e SELECT apenas nos metadados do convite sem hash.
+O bootstrap recebe EXECUTE somente para olius_owner. Auditor lê snapshots de
+admin_invitation_log, sem token original ou hash. Não foram criados novos papéis
+ou logins nesta entrega. Contrato e atualização: ../admin_management/README.md.

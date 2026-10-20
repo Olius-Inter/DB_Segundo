@@ -106,11 +106,13 @@ def main():
         sql_file("PostgreSQL/tests/catalog_access_regression.sql")
         sql_file("PostgreSQL/tests/api_access_regression.sql")
         sql_file("PostgreSQL/tests/data_mart_access_regression.sql")
+        sql_file("PostgreSQL/tests/admin_management_regression.sql")
     else:
         print("NOTA: testes de API/permissões e catálogo/permissões dependem da PR access_control; não executados nesta branch.")
 
     # Regressões SQL fazem ROLLBACK. Concorrência cria fixtures persistentes:
     # executar por último para não colidir com os schemas das regressões.
+    execute("admin-concurrency", [sys.executable, str(TESTS / "admin_management_concurrency.py")])
     execute("procedures-concurrency", [sys.executable, str(TESTS / "procedures_concurrency.py")])
     if has_auth:
         execute("auth-concurrency", [sys.executable, str(TESTS / "auth_sessions_concurrency.py")])

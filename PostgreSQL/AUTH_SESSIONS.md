@@ -284,3 +284,12 @@ Em PostgreSQL 16.15 descartável, os cinco scripts principais instalaram sem cri
 ## Contas pessoais e propriedade comum — entrega data_catalog
 
 O arquivo `data_catalog/08_users.sql` configura separadamente as seis contas pessoais aprovadas, sem senhas no código. Pedro/Caio recebem olius_owner; Matheus/Guilherme/David/Erick recebem olius_reader. Nenhuma dessas contas recebe olius_auth_owner. Os objetos comuns são transferidos para olius_owner pelo script 06; as oito funções de autenticação continuam com o proprietário restrito definido no script 07. A conta LOGIN da Core não é criada pelo script das pessoas. Consulte `data_catalog/README.md` e os relatórios de validação para implantação e limites no servidor compartilhado.
+
+
+## Evolução: administração por convites
+
+Os números da entrega original acima são históricos. Com a entrega administrativa,
+os scripts principais possuem 58 tabelas públicas, incluindo 24 logs, e
+olius_auth_owner mantém também sete funções de coordenação/convites/status.
+O mecanismo de sessões e os prazos de inatividade permanecem iguais.
+Ver admin_management/README.md e access_control/API_DATABASE_CONTRACT.md.

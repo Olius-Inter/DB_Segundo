@@ -93,3 +93,13 @@ O scanner espera o Quality Gate: se o Sonar reprovar, a etapa também falha.
 
 Referências: [profiler plpgsql_check](https://github.com/okbob/plpgsql_check#profiler)
 e [formato genérico de cobertura do Sonar](https://docs.sonarsource.com/sonarqube-server/2025.6/analyzing-source-code/test-coverage/generic-test-data).
+
+
+## Administração por convite
+
+`admin_management_regression.sql` cobre bootstrap restrito, aceite único,
+expiração, reenvio, revogação, autor inativo, e-mail ocupado, permissões,
+auditoria sem hash, sessões revogadas e proteção do último ADMIN.
+`admin_management_concurrency.py` cria outro banco descartável e usa duas
+conexões reais para inativação simultânea e aceite duplicado. Confere espera
+por lock e recusa segura em READ COMMITTED (55000) e REPEATABLE READ (40001).

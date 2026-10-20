@@ -160,3 +160,9 @@ O manifesto passa a registrar transporte, destino, usuário e modo TLS, sem incl
 O workflow executa os testes do runner com `coverage.py`, exige pelo menos 80% de cobertura e exporta `coverage/data-load-python.xml` para o Sonar. Os testes Python são classificados como testes, não como código de produção.
 
 A carga completa roda em outro container, isolado dos testes de regressão. Logs e manifesto ficam em `coverage/data-load/`, publicados junto dos relatórios existentes. O runner valida os identificadores externos e cria seus arquivos em um diretório exclusivo com `mktemp -d`, sob `/var/lib/postgresql`, com permissões restritas. Esse diretório é removido ao terminar.
+
+
+A linha singleton de admin_guard_state é uma exceção técnica à pré-condição de
+banco vazio. Convites e seus logs precisam estar vazios. Os dois ADMINs [DEMO]
+são fixtures inseridas pela conta de implantação, não pelo cadastro público.
+Nenhuma conta ADMIN real ou convite de produção é criado pela demonstração.

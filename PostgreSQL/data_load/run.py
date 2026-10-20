@@ -239,7 +239,7 @@ def main():
         guard = """DO $$ DECLARE t RECORD; n BIGINT; BEGIN
         FOR t IN SELECT tablename FROM pg_tables WHERE schemaname='public'
             AND tablename NOT IN ('data_catalog_table','data_catalog_column','data_catalog_role',
-                'subscription_plan','certificate_level','establishment_type','collection_failure_reason',
+                'subscription_plan','certificate_level','establishment_type','collection_failure_reason','admin_guard_state',
                 'subscription_plan_log','certificate_level_log','collection_failure_reason_log') LOOP
             EXECUTE format('SELECT count(*) FROM public.%I',t.tablename) INTO n;
             IF n<>0 THEN RAISE EXCEPTION 'Tabela % não vazia; carga recusada.',t.tablename; END IF;
@@ -249,6 +249,9 @@ def main():
                 t.base || '_log',t.base) INTO n;
             IF n<>0 THEN RAISE EXCEPTION 'Histórico de catálogo % incompatível com banco de demonstração.',t.base; END IF;
         END LOOP;
+        IF (SELECT count(*) FROM public.admin_guard_state WHERE singleton)<>1 THEN
+            RAISE EXCEPTION 'Controle administrativo ausente.';
+        END IF;
         END $$;"""
         execute("empty-data", guard)
         load_reference_data(source, manifest, execute)
