@@ -9,6 +9,11 @@ O projeto utiliza diferentes tecnologias de armazenamento, cada uma destinada a 
 * **Redis** — Armazenamento em memória para dados temporários e operações de alta velocidade.
 * **Neo4j** — Banco de dados orientado a grafos.
 
+## Cargas de dados
+
+- [Configuração inicial oficial](PostgreSQL/initial_data/README.md): 16 registros de planos, níveis de certificados, tipos de estabelecimento e motivos de falha. Compartilhada entre produção e desenvolvimento.
+- [Data Load de demonstração](PostgreSQL/data_load/README.md): reutiliza a configuração oficial e cria dados fictícios exclusivamente em desenvolvimento/testes. Não executar em produção.
+
 ## Data Mart e BI
 
 O recorte analítico de coletas, entregas e solicitações usa views materializadas

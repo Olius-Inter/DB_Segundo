@@ -2,7 +2,44 @@
 
 A carga foi executada em bancos descartáveis isolados, com PostgreSQL 16.15. Não foi executada no Aiven.
 
-## Resultado da execução final
+## Atualização de 20/10/2026 — carga oficial compartilhada
+
+A configuração inicial agora vem de `../initial_data/`, com 16 registros: 3 planos,
+3 níveis de certificados, 7 tipos de estabelecimento e 3 motivos. O JSON da
+simulação contém apenas a seed. As seções seguintes são evidências históricas;
+as antigas referências a metas pendentes e ausência de certificados não descrevem
+mais o comportamento atual.
+
+Validação desta entrega, exclusivamente em containers novos e isolados com
+PostgreSQL 16.15; nenhuma execução no Aiven ou banco de produção:
+
+- Carga oficial em banco vazio: 16 registros, nenhum usuário/operação/concessão.
+- Duas cargas oficiais simultâneas: sucesso sem duplicidade.
+- Reexecução: IDs, timestamps, valores e quantidades de logs inalterados.
+- ID preexistente compatível e categoria adicional legítima preservados.
+- Preço divergente e nome de certificado duplicado recusados; rollback integral,
+  incluindo inserções tentadas antes da divergência e seus logs.
+- Validador de somente leitura confere o contrato independentemente.
+- Carga completa com scripts 01–08, catálogo, papéis e jornadas sob `olius_api`:
+  112 usuários, 240 solicitações, 200 coletas, 400 entregas, 598 fatos RECORDED,
+  600 cálculos vigentes, 35 históricos, 33 pagamentos simulados e **15 certificados**
+  gerados pelas rotinas existentes. Metas: 100, 500 e 1.000 L.
+- Modo desenvolvimento em outro banco já estruturado e com os 16 registros:
+  carga completa aprovada, reutilizando as referências.
+- Nova tentativa na base populada: recusada antes da carga oficial/simulações;
+  600 fatos e 15 certificados permaneceram preservados.
+- Suíte PostgreSQL completa do CI aprovada, incluindo auth, negócios, acessos,
+  Data Mart, nova regressão de carga inicial, concorrência e exportação de cobertura.
+- Suíte Python do runner: 20 testes, 19 aprovados e 1 ignorado por restrição de
+  criação de symlink no Windows; cobertura de **96% (214/223 instruções)**.
+
+A regressão real da carga oficial é chamada automaticamente por `tests/run_ci.py`.
+Aprovação do Sonar/CI remoto depende de commit, push e nova execução; não foi
+alterado nenhum Quality Gate. As MVs de BI continuam exigindo refresh pelo fluxo
+oficial após popular a demonstração. Não há provedor financeiro real nem envio
+para Redis nesta carga.
+
+## Resultado histórico da execução inicial
 
 Base técnica: scripts locais do projeto no commit `4e24c67a0b0743cc0b2865a81f5fa9d5d0be2ac8`, incluindo catálogo e controle de acesso. As jornadas foram executadas com o papel `olius_api`; instalação, cadastros iniciais e contratos foram preparados pela conta administrativa do ambiente de teste.
 
@@ -109,3 +146,31 @@ O único apontamento aberto era AaFFcEt4idhKYWVJX5nK (pythonsecurity:S8707), na 
 O teste de orquestração direta agora verifica host e banco no JSON e uma falha contendo um caminho relativo e caracteres Unicode: a mensagem deve permanecer como dado no manifesto, sem criar arquivo no caminho mencionado. Após a alteração, 20 testes passaram e um foi ignorado por restrição de symlink no Windows; cobertura de 96% (218/227 instruções). Os testes locais simulam as chamadas PostgreSQL, mas gravam e conferem os relatórios reais em diretórios temporários. Não foi executada carga em banco nesta correção.
 
 A aprovação pelo Sonar ainda exige análise remota do próximo commit. Se o mesmo apontamento persistir, deve ser revisado como falso positivo com base no fluxo comprovado, sem suprimir a regra nem afirmar aprovação antes do resultado remoto.
+
+
+## Correção da PR #28 — duplicação no validador
+
+No commit 7b8067c, a execução 39422560216 (job 118626928370) passou nas
+regressões SQL, concorrência, testes Python/Databricks e carga completa. A etapa
+Sonar falhou com exit code 3: 178 linhas novas duplicadas em 468 (38,0%), acima
+do limite de 3%. O bloco de 89 linhas aparecia tanto em initial_data/01_reference_data.sql
+(linha 18) quanto em initial_data/02_validate.sql (linha 9). O CI de push passou
+porque a análise Sonar nessa branch é executada no evento de PR, não de push.
+
+O validador foi reescrito com CTEs, relações VALUES e comparação agregada entre
+registros esperados e existentes. Deixou de copiar o catálogo JSON, loops e SQL
+dinâmico da instalação. Continua independente, em REPEATABLE READ READ ONLY,
+validando os mesmos 16 registros, valores e duplicidades, aceitando IDs existentes
+e registros adicionais legítimos. Não foram alterados os dados oficiais, a carga
+de instalação, os filtros do Sonar nem o Quality Gate.
+
+A regressão ganhou seis cenários de divergência (vagas, litros, meta, categoria,
+status e descrição NULL), conferindo também que a validação não modifica dados
+ou logs. A suíte PostgreSQL completa passou novamente em PostgreSQL 16.15
+descartável, incluindo a regressão da carga oficial, acessos, Data Mart e
+concorrência. A carga completa também passou com olius_api: 600 operações,
+598 RECORDED e 15 certificados, com valores e contagens preservados.
+
+Nenhuma execução em produção/Aiven. A medição atualizada de duplicação e a
+aprovação do Quality Gate precisam da nova análise remota após commit/push;
+a aprovação do Sonar não foi presumida a partir dos testes locais.

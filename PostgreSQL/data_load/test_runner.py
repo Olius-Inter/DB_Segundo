@@ -18,23 +18,24 @@ class RunnerTests(unittest.TestCase):
             file.write_text(json.dumps(value), encoding="utf-8")
             return run.load_config(file)
 
-    def test_official_plans_without_invented_certificate_levels(self):
-        self.assertEqual(self.check_config(self.config)["certificate_levels"], [])
+    def test_config_only_contains_demonstration_seed(self):
+        self.assertEqual(self.check_config(self.config), {"seed": "olius-data-load-v1"})
 
-    def test_upgrades_require_increasing_both_limits(self):
-        self.config["plans"][2]["collection_limit"] = 4
-        with self.assertRaisesRegex(ValueError, "ambos os limites"):
-            self.check_config(self.config)
+    def test_official_configuration_cannot_be_overridden(self):
+        for key in ('plans', 'certificate_levels'):
+            with self.subTest(key=key):
+                with self.assertRaisesRegex(ValueError, "initial_data"):
+                    self.check_config({**self.config, key: []})
 
-    def test_mass_refuses_capacity_below_eight_requests(self):
-        self.config["plans"][2]["collection_limit"] = 7
-        with self.assertRaisesRegex(ValueError, "8 vagas"):
-            self.check_config(self.config)
-
-    def test_undefined_certificates_cannot_be_silently_filled(self):
-        self.config["certificate_levels"] = [{"name": "Não aprovado", "required_liters": 1}]
-        with self.assertRaisesRegex(ValueError, "pendentes"):
-            self.check_config(self.config)
+    def test_invalid_seed_is_refused(self):
+        for value in ('', '../outside', None, 3, 'x' * 65):
+            with self.subTest(seed=value):
+                with self.assertRaisesRegex(ValueError, "Seed"):
+                    self.check_config({'seed': value})
+        for value in ([], {}, {'other': 'value'}):
+            with self.subTest(config=value):
+                with self.assertRaisesRegex(ValueError, "somente seed"):
+                    self.check_config(value)
 
     def test_container_without_disposable_label_refuses_sql_execution(self):
         with patch("sys.argv", ["run.py", "--container", "untrusted"]), \
@@ -66,17 +67,6 @@ class RunnerTests(unittest.TestCase):
             with self.assertRaises(FileNotFoundError):
                 run.command(['docker'])
 
-    def test_invalid_configuration(self):
-        for field, value in [('name', ''), ('monthly_price', 'NaN'),
-                             ('volume_limit_liters', '1.001'), ('collection_limit', True)]:
-            config = json.loads(json.dumps(self.config))
-            config['plans'][0][field] = value
-            with self.assertRaises(ValueError):
-                self.check_config(config)
-        self.config['plans'].pop()
-        with self.assertRaises(ValueError):
-            self.check_config(self.config)
-
     def run_fake_install(self, fault=None, windows=False, data_mart=True):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -85,7 +75,7 @@ class RunnerTests(unittest.TestCase):
                              '07_window_functions.sql', 'data_catalog/01_structure.sql',
                              'data_catalog/02_check_constraints.sql', 'data_catalog/03_view.sql',
                              'data_catalog/04_load.sql', 'access_control/01_roles.sql',
-                             'access_control/02_users.sql'):
+                             'access_control/02_users.sql', 'initial_data/01_reference_data.sql', 'initial_data/02_validate.sql'):
                 file = root / relative
                 file.parent.mkdir(parents=True, exist_ok=True)
                 file.write_text('-- fixture ' + relative, encoding='utf-8')
@@ -105,6 +95,8 @@ class RunnerTests(unittest.TestCase):
                     return '17.0' if fault == 'version' else '16.15\n'
                 if input_text and 'pg_class' in input_text:
                     return '1' if fault == 'schema' else '0'
+                if input_text and 'initial_data/02_validate.sql' in input_text and fault == 'reference':
+                    raise RuntimeError('Configuração oficial divergente')
                 if input_text and 'pg_roles' in input_text:
                     return 't'
                 if input_text and 'Tabela %' in input_text and fault == 'populated':
@@ -127,7 +119,15 @@ class RunnerTests(unittest.TestCase):
                     self.assertEqual(manifest['result']['valid_operations'], 598)
                     self.assertEqual(manifest['journeys_role'], 'olius_api')
                     self.assertEqual(len(manifest['completed']), 4)
+                    self.assertEqual(manifest['reference_data'], 'validated')
                     scripts = list(manifest['scripts'])
+                    self.assertIn('initial_data/01_reference_data.sql', scripts)
+                    self.assertIn('initial_data/02_validate.sql', scripts)
+                    reference_call = next(i for i, call in enumerate(execute.call_args_list)
+                                          if len(call.args)>1 and call.args[1] and 'initial_data/02_validate.sql' in call.args[1])
+                    first_stage = next(i for i, call in enumerate(execute.call_args_list) if '-f' in call.args[0])
+                    self.assertLess(reference_call, first_stage)
+
                     if data_mart:
                         # Verifica a execução real, pois o JSON pode ordenar as chaves.
                         sql_calls = [call.args[1] for call in execute.call_args_list if len(call.args) > 1]
@@ -146,7 +146,7 @@ class RunnerTests(unittest.TestCase):
         self.run_fake_install(data_mart=False)
 
     def test_version_schema_and_populated_database_are_refused(self):
-        for fault in ('version', 'schema', 'populated', 'temporary', 'copy'):
+        for fault in ('version', 'schema', 'populated', 'temporary', 'copy', 'reference'):
             self.run_fake_install(fault)
 
     def test_environment_and_install_contract(self):

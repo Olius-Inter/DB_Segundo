@@ -5282,7 +5282,7 @@ const OLIUS_MODEL_JSON = `
     "certificate_level": {
       "name": "certificate_level",
       "domain": "pontos",
-      "description": "Metas e nomes definitivos pendentes; não inserir níveis fictícios.",
+      "description": "Níveis oficiais por volume acumulado efetivamente coletado: Bronze 100 L, Prata 500 L e Ouro 1.000 L; sem reinício anual.",
       "columns": [
         {
           "name": "id",
@@ -7406,7 +7406,7 @@ const OLIUS_MODEL_JSON = `
   ],
   "source": {
     "file": "01_structure.sql",
-    "sha256": "8400d617881d9658c44126b3ea83606df663ad8507808b8dd218ff750e198571",
+    "sha256": "47bc5582b16ec87e85c2dc285aa68b063d40f581d1581de150a4b85feacf7979",
     "revision": "20/10/2026",
     "analyzed": "20/10/2026",
     "checks_sha256": "fc8d5ec45af3305c8c4e6fc585e58079d1a828a91aab1108900c0cae4379acbf",
