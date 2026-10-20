@@ -1140,4 +1140,23 @@ UPDATE data_catalog_table SET access_policy=replace(access_policy,
 UPDATE data_catalog_role SET description='Papel NOLOGIN da Core: consultas de negócio, escrita limitada por coluna e EXECUTE nas rotinas públicas; sem acesso direto a sessões, refresh tokens ou logs. Contrato: access_control/01_roles.sql e API_DATABASE_CONTRACT.md.'
 WHERE role_name='olius_api' AND description='Papel NOLOGIN da Core API: SELECT nos quatro catálogos de referência e EXECUTE nas cinco funções de autenticação; sem DML direto nas sessões. Demais acessos de negócio ainda exigem concessões revisadas.';
 
+
+-- Administração de usuários: classifica somente os metadados novos descobertos acima.
+UPDATE data_catalog_table SET domain_name=CASE WHEN table_name='admin_invitation_log' THEN 'Auditoria' ELSE 'Autenticação e sessões' END,
+    description=CASE table_name WHEN 'admin_guard_state' THEN 'Mutex persistente para integridade concorrente dos administradores.'
+        WHEN 'admin_invitation' THEN 'Convites administrativos de uso único, válidos por 24 horas.'
+        ELSE 'Snapshots de convites sem token ou hash.' END,
+    business_rules='Contas ADMIN surgem no aceite. Último ADMIN ativo protegido transacionalmente; bootstrap restrito antes de qualquer ADMIN.',
+    access_policy='olius_owner mantém os objetos. Core usa rotinas revisadas e leitura de metadados do convite sem hash; log reservado ao auditor. Controle técnico sem DML direto da Core.',
+    access_status='DEFINED', source_reference='ADMIN_MANAGEMENT.md; scripts principais 01–05 e access_control'
+WHERE schema_name='public' AND table_name IN ('admin_guard_state','admin_invitation','admin_invitation_log')
+    AND domain_name='Pendente de classificação';
+UPDATE data_catalog_column dc SET description=pg_catalog.col_description(c.oid,a.attnum),
+    documentation_status='DOCUMENTED',source_reference='ADMIN_MANAGEMENT.md; comentários revisados do script 01'
+FROM data_catalog_table dt JOIN pg_catalog.pg_namespace n ON n.nspname=dt.schema_name
+JOIN pg_catalog.pg_class c ON c.relnamespace=n.oid AND c.relname=dt.table_name
+JOIN pg_catalog.pg_attribute a ON a.attrelid=c.oid AND a.attnum>0 AND NOT a.attisdropped
+WHERE dc.table_catalog_id=dt.id AND dc.column_name=a.attname AND dt.schema_name='public'
+    AND dt.table_name IN ('admin_guard_state','admin_invitation','admin_invitation_log')
+    AND dc.documentation_status='PENDING' AND pg_catalog.col_description(c.oid,a.attnum) IS NOT NULL;
 COMMIT;

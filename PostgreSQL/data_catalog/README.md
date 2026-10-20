@@ -37,7 +37,7 @@ Nenhum arquivo se conecta automaticamente ao Aiven. Nesta revisão, a execução
 
 ## Cobertura atual
 
-**58 tabelas e 828 colunas documentadas:** 55 tabelas da aplicação/auditoria e três do catálogo. A view exclui as três tabelas documentais e apresenta **55 tabelas e 808 colunas distintas**. Existem 23 tabelas de auditoria no banco.
+**58 tabelas e 828 colunas documentadas:** 58 tabelas da aplicação/auditoria e três do catálogo. A view exclui as três tabelas documentais e apresenta **55 tabelas e 808 colunas distintas**. Existem 23 tabelas de auditoria no banco.
 
 Não conte linhas da view para medir colunas: uma coluna pode aparecer uma vez para cada papel com acesso. A validação verifica ausência física, renomeações, metadados faltantes e campos pendentes. Novos objetos continuam sendo descobertos como PENDING até revisão; não recebem descrições de negócio inventadas.
 
@@ -53,7 +53,7 @@ O catálogo documenta tabelas e colunas. O comportamento das rotinas de sessão 
 | `olius_catalog_editor` | SELECT/INSERT/UPDATE/DELETE nas três tabelas documentais e leitura da view. |
 | `olius_api` | Consultas de negócio, escrita limitada por coluna e EXECUTE nas operações públicas. Contrato completo em ../access_control/API_DATABASE_CONTRACT.md. |
 
-`olius_auth_owner` é um proprietário interno NOLOGIN, não um sexto perfil da equipe. Mantém oito funções de autenticação: a auxiliar de prazo, cinco de integração e duas de trigger SECURITY DEFINER. Nenhuma das sete contas recebe participação nesse papel. `olius_owner` pode executar as cinco funções de integração, sem poder redefini-las por sua associação ao grupo comum.
+`olius_auth_owner` é um proprietário interno NOLOGIN, não um sexto perfil da equipe. Mantém as oito funções de sessões e sete rotinas administrativas revisadas (15 no total). Nenhuma das sete contas recebe participação nesse papel. `olius_owner` pode executar as cinco funções de integração, sem poder redefini-las por sua associação ao grupo comum.
 
 access_control/01_roles.sql transfere a propriedade dos objetos listados para `olius_owner`: GRANT ALL sozinho não concede ALTER/DROP. Ele não usa REASSIGN OWNED, não transfere banco/schema/extensões e não assume controle de objetos arbitrários com base no catálogo documental editável.
 

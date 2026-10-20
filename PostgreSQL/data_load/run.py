@@ -247,8 +247,17 @@ def main():
             if structure != "t":
                 raise ValueError("Banco de desenvolvimento sem as tabelas principais esperadas; carga recusada.")
         install_scripts(args, source, manifest, execute)
-        # Um banco parcialmente carregado também é recusado. Recriar só o container de teste.
-        guard = "DO $$ DECLARE t RECORD; n BIGINT; BEGIN FOR t IN SELECT tablename FROM pg_tables WHERE schemaname='public' AND tablename NOT IN ('data_catalog_table','data_catalog_column','data_catalog_role') LOOP EXECUTE format('SELECT count(*) FROM public.%I',t.tablename) INTO n; IF n<>0 THEN RAISE EXCEPTION 'Tabela % não vazia; carga recusada.',t.tablename; END IF; END LOOP; END $$;"
+        # Um banco parcialmente carregado é recusado; a linha técnica não é massa de negócio.
+        guard = """DO $$ DECLARE t RECORD; n BIGINT; BEGIN
+        FOR t IN SELECT tablename FROM pg_tables WHERE schemaname='public'
+            AND tablename NOT IN ('data_catalog_table','data_catalog_column','data_catalog_role','admin_guard_state') LOOP
+            EXECUTE format('SELECT count(*) FROM public.%I',t.tablename) INTO n;
+            IF n<>0 THEN RAISE EXCEPTION 'Tabela % não vazia; carga recusada.',t.tablename; END IF;
+        END LOOP;
+        IF (SELECT count(*) FROM public.admin_guard_state WHERE singleton)<>1 THEN
+            RAISE EXCEPTION 'Controle administrativo ausente.';
+        END IF;
+        END $$;"""
         execute("empty-data", guard)
         # Em conexão direta, psql lê os includes locais, sem enviar arquivos ao servidor.
         folder = Path(__file__).resolve().parent

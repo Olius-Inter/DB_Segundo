@@ -76,6 +76,9 @@ INSERT INTO olius_permission_scope VALUES
     ('point_calculation_log'),
     ('certificate_level_log'),
     ('certificate_log'),
+    ('admin_guard_state'),
+    ('admin_invitation'),
+    ('admin_invitation_log'),
     ('auth_session'),
     ('auth_refresh_token'),
     ('auth_session_log'),
@@ -318,6 +321,7 @@ BEGIN
         'fn_olius_audit_reason',
         'fn_olius_write_audit_snapshot',
         'fn_olius_set_updated_at',
+        'fn_olius_admin_guard',
         'fn_olius_auth_token_guard',
         'fn_olius_auth_session_guard'] LOOP
         SELECT count(*) INTO matches FROM pg_catalog.pg_proc p
@@ -527,6 +531,48 @@ BEGIN
 END $business_routines$;
 REVOKE CREATE ON SCHEMA public FROM olius_business_owner;
 ALTER DEFAULT PRIVILEGES FOR ROLE olius_business_owner REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC;
+
+
+-- BEGIN ADMIN_MANAGEMENT
+-- Convites e gestão administrativa usam o proprietário interno já existente.
+REVOKE ALL ON public.admin_guard_state, public.admin_invitation, public.admin_invitation_log FROM PUBLIC, olius_api;
+GRANT SELECT, UPDATE ON public.admin_guard_state TO olius_auth_owner;
+GRANT SELECT, INSERT, UPDATE ON public.admin_invitation TO olius_auth_owner;
+GRANT SELECT (name,email), INSERT (id,name,email,password_hash,user_type,status), UPDATE (status)
+    ON public.users TO olius_auth_owner;
+GRANT INSERT ON public.admin_invitation_log TO olius_business_owner;
+GRANT SELECT ON public.admin_invitation_log TO olius_auditor;
+GRANT SELECT (id,name,email,issued_at,expires_at,invited_by,is_bootstrap,accepted_at,accepted_user_id,revoked_at,revoked_by)
+    ON public.admin_invitation TO olius_api;
+GRANT CREATE ON SCHEMA public TO olius_auth_owner;
+DO $admin_routine_access$
+DECLARE r RECORD; v_name TEXT; v_names CONSTANT TEXT[]:=ARRAY[
+    'lock_admin_registry','create_admin_invitation_internal','issue_admin_invitation',
+    'issue_bootstrap_admin_invitation','revoke_admin_invitation','accept_admin_invitation','set_admin_status'];
+BEGIN
+    FOREACH v_name IN ARRAY v_names LOOP
+        IF (SELECT count(*) FROM pg_proc WHERE pronamespace='public'::regnamespace AND proname=v_name)<>1 THEN
+            RAISE EXCEPTION 'Rotina administrativa % ausente ou sobrecarregada.',v_name;
+        END IF;
+        SELECT p.oid,p.proowner,pg_get_function_identity_arguments(p.oid) AS args INTO r FROM pg_proc p
+            WHERE p.pronamespace='public'::regnamespace AND p.proname=v_name AND p.prokind='f' AND p.prosecdef;
+        IF NOT FOUND THEN RAISE EXCEPTION 'Rotina administrativa incompatível: %.',v_name; END IF;
+        IF EXISTS(SELECT 1 FROM aclexplode(coalesce((SELECT proacl FROM pg_proc WHERE oid=r.oid),acldefault('f',r.proowner))) a
+            WHERE a.grantee NOT IN(0,r.proowner,'olius_owner'::regrole,'olius_api'::regrole,'olius_auth_owner'::regrole)) THEN
+            RAISE EXCEPTION 'Concessão externa em rotina administrativa %; revisar.',v_name;
+        END IF;
+        EXECUTE format('ALTER FUNCTION public.%I(%s) OWNER TO olius_auth_owner',v_name,r.args);
+        EXECUTE format('REVOKE ALL ON FUNCTION public.%I(%s) FROM PUBLIC, olius_api, olius_owner RESTRICT',v_name,r.args);
+        IF v_name<>'create_admin_invitation_internal' THEN
+            EXECUTE format('GRANT EXECUTE ON FUNCTION public.%I(%s) TO olius_owner',v_name,r.args);
+            IF v_name<>'issue_bootstrap_admin_invitation' THEN
+                EXECUTE format('GRANT EXECUTE ON FUNCTION public.%I(%s) TO olius_api',v_name,r.args);
+            END IF;
+        END IF;
+    END LOOP;
+END $admin_routine_access$;
+REVOKE CREATE ON SCHEMA public FROM olius_auth_owner;
+-- END ADMIN_MANAGEMENT
 
 -- DATA MART — grupos NOLOGIN; os logins são provisionados em 02_users.sql.
 -- Lista fechada. Não conceder fontes operacionais aos usuários de integração.
