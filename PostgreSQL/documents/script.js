@@ -9,45 +9,49 @@ const MODEL = {
       "columns": [
         {
           "name": "id",
-          "type": "UUID",
+          "type": "uuid",
           "pk": true,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "id UUID PRIMARY KEY DEFAULT gen_random_uuid()",
+          "constantNonNull": false,
+          "definition": "id uuid NOT NULL DEFAULT gen_random_uuid()",
           "description": "",
           "fk": []
         },
         {
           "name": "name",
-          "type": "VARCHAR(150)",
+          "type": "character varying(150)",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "name VARCHAR(150) NOT NULL",
+          "constantNonNull": false,
+          "definition": "name character varying(150) NOT NULL",
           "description": "",
           "fk": []
         },
         {
           "name": "email",
-          "type": "VARCHAR(255)",
+          "type": "character varying(255)",
           "pk": false,
           "unique": true,
           "generated": null,
           "nullable": false,
-          "definition": "email VARCHAR(255) NOT NULL UNIQUE",
+          "constantNonNull": false,
+          "definition": "email character varying(255) NOT NULL",
           "description": "",
           "fk": []
         },
         {
           "name": "password_hash",
-          "type": "VARCHAR(255)",
+          "type": "character varying(255)",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "password_hash VARCHAR(255) NOT NULL",
+          "constantNonNull": false,
+          "definition": "password_hash character varying(255) NOT NULL",
           "description": "",
           "fk": []
         },
@@ -58,6 +62,7 @@ const MODEL = {
           "unique": false,
           "generated": null,
           "nullable": false,
+          "constantNonNull": false,
           "definition": "user_type user_type_t NOT NULL",
           "description": "",
           "fk": []
@@ -69,29 +74,32 @@ const MODEL = {
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "status active_status_t NOT NULL DEFAULT 'ACTIVE'",
+          "constantNonNull": false,
+          "definition": "status active_status_t NOT NULL DEFAULT 'ACTIVE'::active_status_t",
           "description": "",
           "fk": []
         },
         {
           "name": "created_at",
-          "type": "TIMESTAMPTZ",
+          "type": "timestamp with time zone",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP",
+          "constantNonNull": false,
+          "definition": "created_at timestamp with time zone NOT NULL DEFAULT CURRENT_TIMESTAMP",
           "description": "",
           "fk": []
         },
         {
           "name": "updated_at",
-          "type": "TIMESTAMPTZ",
+          "type": "timestamp with time zone",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP",
+          "constantNonNull": false,
+          "definition": "updated_at timestamp with time zone NOT NULL DEFAULT CURRENT_TIMESTAMP",
           "description": "",
           "fk": []
         }
@@ -115,7 +123,12 @@ const MODEL = {
         }
       ],
       "fks": [],
-      "special": [],
+      "special": [
+        "ck_users_name_not_blank: CHECK ((btrim((name)::text) <> ''::text))",
+        "ck_users_email: CHECK (((btrim((email)::text) <> ''::text) AND (POSITION(('@'::text) IN (email)) > 1)))",
+        "ck_users_password_not_blank: CHECK ((btrim((password_hash)::text) <> ''::text))",
+        "ck_users_timestamps: CHECK ((isfinite(created_at) AND isfinite(updated_at) AND (updated_at >= created_at)))"
+      ],
       "main": [
         "id",
         "name",
@@ -131,34 +144,37 @@ const MODEL = {
       "columns": [
         {
           "name": "id",
-          "type": "UUID",
+          "type": "uuid",
           "pk": true,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "id UUID PRIMARY KEY DEFAULT gen_random_uuid()",
+          "constantNonNull": false,
+          "definition": "id uuid NOT NULL DEFAULT gen_random_uuid()",
           "description": "",
           "fk": []
         },
         {
           "name": "name",
-          "type": "VARCHAR(100)",
+          "type": "character varying(100)",
           "pk": false,
           "unique": true,
           "generated": null,
           "nullable": false,
-          "definition": "name VARCHAR(100) NOT NULL UNIQUE",
+          "constantNonNull": false,
+          "definition": "name character varying(100) NOT NULL",
           "description": "",
           "fk": []
         },
         {
           "name": "description",
-          "type": "VARCHAR(255)",
+          "type": "character varying(255)",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": true,
-          "definition": "description VARCHAR(255)",
+          "constantNonNull": false,
+          "definition": "description character varying(255)",
           "description": "",
           "fk": []
         }
@@ -175,7 +191,9 @@ const MODEL = {
         }
       ],
       "fks": [],
-      "special": [],
+      "special": [
+        "ck_establishment_type_name_not_blank: CHECK ((btrim((name)::text) <> ''::text))"
+      ],
       "main": [
         "id",
         "name"
@@ -188,12 +206,13 @@ const MODEL = {
       "columns": [
         {
           "name": "id",
-          "type": "UUID",
+          "type": "uuid",
           "pk": true,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "id UUID PRIMARY KEY DEFAULT gen_random_uuid()",
+          "constantNonNull": false,
+          "definition": "id uuid NOT NULL DEFAULT gen_random_uuid()",
           "description": "",
           "fk": []
         },
@@ -204,106 +223,116 @@ const MODEL = {
           "unique": false,
           "generated": null,
           "nullable": false,
+          "constantNonNull": false,
           "definition": "owner_kind address_owner_t NOT NULL",
           "description": "",
           "fk": []
         },
         {
           "name": "state",
-          "type": "CHAR(2)",
+          "type": "character(2)",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "state CHAR(2) NOT NULL",
+          "constantNonNull": false,
+          "definition": "state character(2) NOT NULL",
           "description": "",
           "fk": []
         },
         {
           "name": "city",
-          "type": "VARCHAR(100)",
+          "type": "character varying(100)",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "city VARCHAR(100) NOT NULL",
+          "constantNonNull": false,
+          "definition": "city character varying(100) NOT NULL",
           "description": "",
           "fk": []
         },
         {
           "name": "neighborhood",
-          "type": "VARCHAR(100)",
+          "type": "character varying(100)",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "neighborhood VARCHAR(100) NOT NULL",
+          "constantNonNull": false,
+          "definition": "neighborhood character varying(100) NOT NULL",
           "description": "",
           "fk": []
         },
         {
           "name": "street",
-          "type": "VARCHAR(150)",
+          "type": "character varying(150)",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "street VARCHAR(150) NOT NULL",
+          "constantNonNull": false,
+          "definition": "street character varying(150) NOT NULL",
           "description": "",
           "fk": []
         },
         {
           "name": "number",
-          "type": "VARCHAR(20)",
+          "type": "character varying(20)",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "number VARCHAR(20) NOT NULL",
+          "constantNonNull": false,
+          "definition": "number character varying(20) NOT NULL",
           "description": "",
           "fk": []
         },
         {
           "name": "cep",
-          "type": "CHAR(8)",
+          "type": "character(8)",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "cep CHAR(8) NOT NULL",
+          "constantNonNull": false,
+          "definition": "cep character(8) NOT NULL",
           "description": "",
           "fk": []
         },
         {
           "name": "complement",
-          "type": "VARCHAR(150)",
+          "type": "character varying(150)",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": true,
-          "definition": "complement VARCHAR(150)",
+          "constantNonNull": false,
+          "definition": "complement character varying(150)",
           "description": "",
           "fk": []
         },
         {
           "name": "latitude",
-          "type": "DECIMAL(9,6)",
+          "type": "numeric(9,6)",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": true,
-          "definition": "latitude DECIMAL(9,6)",
+          "constantNonNull": false,
+          "definition": "latitude numeric(9,6)",
           "description": "",
           "fk": []
         },
         {
           "name": "longitude",
-          "type": "DECIMAL(9,6)",
+          "type": "numeric(9,6)",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": true,
-          "definition": "longitude DECIMAL(9,6)",
+          "constantNonNull": false,
+          "definition": "longitude numeric(9,6)",
           "description": "",
           "fk": []
         }
@@ -321,7 +350,16 @@ const MODEL = {
         }
       ],
       "fks": [],
-      "special": [],
+      "special": [
+        "ck_addresses_state: CHECK ((state ~ '^[A-Z]{2}$'::text))",
+        "ck_addresses_cep: CHECK ((cep ~ '^[0-9]{8}$'::text))",
+        "ck_addresses_city: CHECK ((btrim((city)::text) <> ''::text))",
+        "ck_addresses_neighborhood: CHECK ((btrim((neighborhood)::text) <> ''::text))",
+        "ck_addresses_street: CHECK ((btrim((street)::text) <> ''::text))",
+        "ck_addresses_number: CHECK ((btrim((number)::text) <> ''::text))",
+        "ck_addresses_latitude: CHECK (((latitude IS NULL) OR ((latitude >= ('-90'::integer)::numeric) AND (latitude <= (90)::numeric))))",
+        "ck_addresses_longitude: CHECK (((longitude IS NULL) OR ((longitude >= ('-180'::integer)::numeric) AND (longitude <= (180)::numeric))))"
+      ],
       "main": [
         "id",
         "owner_kind",
@@ -338,34 +376,37 @@ const MODEL = {
       "columns": [
         {
           "name": "id",
-          "type": "UUID",
+          "type": "uuid",
           "pk": true,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "id UUID PRIMARY KEY DEFAULT gen_random_uuid()",
+          "constantNonNull": false,
+          "definition": "id uuid NOT NULL DEFAULT gen_random_uuid()",
           "description": "",
           "fk": []
         },
         {
           "name": "telephone",
-          "type": "VARCHAR(20)",
+          "type": "character varying(20)",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "telephone VARCHAR(20) NOT NULL",
+          "constantNonNull": false,
+          "definition": "telephone character varying(20) NOT NULL",
           "description": "",
           "fk": []
         },
         {
           "name": "user_id",
-          "type": "UUID",
+          "type": "uuid",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "user_id UUID NOT NULL",
+          "constantNonNull": false,
+          "definition": "user_id uuid NOT NULL",
           "description": "",
           "fk": [
             "fk_telephone_user"
@@ -400,7 +441,9 @@ const MODEL = {
           "childCard": "0..N"
         }
       ],
-      "special": [],
+      "special": [
+        "ck_telephone_length: CHECK (((length((telephone)::text) >= 10) AND (length((telephone)::text) <= 15)))"
+      ],
       "main": [
         "id",
         "user_id",
@@ -414,12 +457,13 @@ const MODEL = {
       "columns": [
         {
           "name": "user_id",
-          "type": "UUID",
+          "type": "uuid",
           "pk": true,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "user_id UUID PRIMARY KEY",
+          "constantNonNull": false,
+          "definition": "user_id uuid NOT NULL",
           "description": "",
           "fk": [
             "fk_user_qr_type"
@@ -427,12 +471,13 @@ const MODEL = {
         },
         {
           "name": "qr_token",
-          "type": "VARCHAR(64)",
+          "type": "character varying(64)",
           "pk": false,
           "unique": true,
           "generated": null,
           "nullable": false,
-          "definition": "qr_token VARCHAR(64) NOT NULL UNIQUE",
+          "constantNonNull": false,
+          "definition": "qr_token character varying(64) NOT NULL",
           "description": "",
           "fk": []
         },
@@ -443,6 +488,7 @@ const MODEL = {
           "unique": false,
           "generated": null,
           "nullable": false,
+          "constantNonNull": false,
           "definition": "user_type user_type_t NOT NULL",
           "description": "",
           "fk": [
@@ -451,12 +497,13 @@ const MODEL = {
         },
         {
           "name": "updated_at",
-          "type": "TIMESTAMPTZ",
+          "type": "timestamp with time zone",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP",
+          "constantNonNull": false,
+          "definition": "updated_at timestamp with time zone NOT NULL DEFAULT CURRENT_TIMESTAMP",
           "description": "",
           "fk": []
         }
@@ -497,7 +544,10 @@ const MODEL = {
           "childCard": "0..1"
         }
       ],
-      "special": [],
+      "special": [
+        "ck_user_qr_code_type: CHECK ((user_type = ANY (ARRAY['CITIZENS'::user_type_t, 'ESTABLISHMENT'::user_type_t])))",
+        "ck_user_qr_code_token: CHECK ((btrim((qr_token)::text) <> ''::text))"
+      ],
       "main": [
         "user_id",
         "qr_token",
@@ -511,12 +561,13 @@ const MODEL = {
       "columns": [
         {
           "name": "id",
-          "type": "UUID",
+          "type": "uuid",
           "pk": true,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "id UUID PRIMARY KEY",
+          "constantNonNull": false,
+          "definition": "id uuid NOT NULL",
           "description": "",
           "fk": [
             "fk_citizens_user_type",
@@ -525,12 +576,13 @@ const MODEL = {
         },
         {
           "name": "cpf",
-          "type": "CHAR(11)",
+          "type": "character(11)",
           "pk": false,
           "unique": true,
           "generated": null,
           "nullable": false,
-          "definition": "cpf CHAR(11) NOT NULL UNIQUE",
+          "constantNonNull": false,
+          "definition": "cpf character(11) NOT NULL",
           "description": "",
           "fk": []
         },
@@ -539,8 +591,9 @@ const MODEL = {
           "type": "user_type_t",
           "pk": false,
           "unique": false,
-          "generated": "CITIZENS",
-          "nullable": false,
+          "generated": "'CITIZENS'::user_type_t",
+          "nullable": true,
+          "constantNonNull": true,
           "definition": "user_type user_type_t GENERATED ALWAYS AS ('CITIZENS'::user_type_t) STORED",
           "description": "",
           "fk": [
@@ -549,12 +602,13 @@ const MODEL = {
         },
         {
           "name": "qr_token",
-          "type": "VARCHAR(64)",
+          "type": "character varying(64)",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "qr_token VARCHAR(64) NOT NULL",
+          "constantNonNull": false,
+          "definition": "qr_token character varying(64) NOT NULL",
           "description": "",
           "fk": [
             "fk_citizens_qr"
@@ -562,12 +616,13 @@ const MODEL = {
         },
         {
           "name": "points",
-          "type": "BIGINT",
+          "type": "bigint",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "points BIGINT NOT NULL DEFAULT 0",
+          "constantNonNull": false,
+          "definition": "points bigint NOT NULL DEFAULT 0",
           "description": "",
           "fk": []
         }
@@ -617,7 +672,10 @@ const MODEL = {
           "childCard": "0..1"
         }
       ],
-      "special": [],
+      "special": [
+        "ck_citizens_cpf: CHECK ((length(cpf) = 11))",
+        "ck_citizens_points: CHECK ((points >= 0))"
+      ],
       "main": [
         "id",
         "cpf",
@@ -633,12 +691,13 @@ const MODEL = {
       "columns": [
         {
           "name": "id",
-          "type": "UUID",
+          "type": "uuid",
           "pk": true,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "id UUID PRIMARY KEY",
+          "constantNonNull": false,
+          "definition": "id uuid NOT NULL",
           "description": "",
           "fk": [
             "fk_establishment_user_type",
@@ -647,12 +706,13 @@ const MODEL = {
         },
         {
           "name": "cnpj",
-          "type": "CHAR(14)",
+          "type": "character(14)",
           "pk": false,
           "unique": true,
           "generated": null,
           "nullable": false,
-          "definition": "cnpj CHAR(14) NOT NULL UNIQUE",
+          "constantNonNull": false,
+          "definition": "cnpj character(14) NOT NULL",
           "description": "",
           "fk": []
         },
@@ -661,8 +721,9 @@ const MODEL = {
           "type": "user_type_t",
           "pk": false,
           "unique": false,
-          "generated": "ESTABLISHMENT",
-          "nullable": false,
+          "generated": "'ESTABLISHMENT'::user_type_t",
+          "nullable": true,
+          "constantNonNull": true,
           "definition": "user_type user_type_t GENERATED ALWAYS AS ('ESTABLISHMENT'::user_type_t) STORED",
           "description": "",
           "fk": [
@@ -671,12 +732,13 @@ const MODEL = {
         },
         {
           "name": "qr_token",
-          "type": "VARCHAR(64)",
+          "type": "character varying(64)",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "qr_token VARCHAR(64) NOT NULL",
+          "constantNonNull": false,
+          "definition": "qr_token character varying(64) NOT NULL",
           "description": "",
           "fk": [
             "fk_establishment_qr"
@@ -684,45 +746,49 @@ const MODEL = {
         },
         {
           "name": "points",
-          "type": "BIGINT",
+          "type": "bigint",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "points BIGINT NOT NULL DEFAULT 0",
+          "constantNonNull": false,
+          "definition": "points bigint NOT NULL DEFAULT 0",
           "description": "",
           "fk": []
         },
         {
           "name": "description",
-          "type": "TEXT",
+          "type": "text",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": true,
-          "definition": "description TEXT",
+          "constantNonNull": false,
+          "definition": "description text",
           "description": "",
           "fk": []
         },
         {
           "name": "is_pev",
-          "type": "BOOLEAN",
+          "type": "boolean",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "is_pev BOOLEAN NOT NULL DEFAULT FALSE",
+          "constantNonNull": false,
+          "definition": "is_pev boolean NOT NULL DEFAULT false",
           "description": "Derivado do PEV APPROVED; sincronizar na mesma transação, sem edição independente.",
           "fk": []
         },
         {
           "name": "type_id",
-          "type": "UUID",
+          "type": "uuid",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "type_id UUID NOT NULL",
+          "constantNonNull": false,
+          "definition": "type_id uuid NOT NULL",
           "description": "",
           "fk": [
             "fk_establishment_type"
@@ -730,12 +796,13 @@ const MODEL = {
         },
         {
           "name": "address_id",
-          "type": "UUID",
+          "type": "uuid",
           "pk": false,
           "unique": true,
           "generated": null,
           "nullable": false,
-          "definition": "address_id UUID NOT NULL UNIQUE",
+          "constantNonNull": false,
+          "definition": "address_id uuid NOT NULL",
           "description": "",
           "fk": [
             "fk_establishment_address"
@@ -746,8 +813,9 @@ const MODEL = {
           "type": "address_owner_t",
           "pk": false,
           "unique": false,
-          "generated": "ESTABLISHMENT",
-          "nullable": false,
+          "generated": "'ESTABLISHMENT'::address_owner_t",
+          "nullable": true,
+          "constantNonNull": true,
           "definition": "address_kind address_owner_t GENERATED ALWAYS AS ('ESTABLISHMENT'::address_owner_t) STORED",
           "description": "",
           "fk": [
@@ -836,7 +904,10 @@ const MODEL = {
           "childCard": "0..1"
         }
       ],
-      "special": [],
+      "special": [
+        "ck_establishment_cnpj: CHECK ((length(cnpj) = 14))",
+        "ck_establishment_points: CHECK ((points >= 0))"
+      ],
       "main": [
         "id",
         "cnpj",
@@ -854,67 +925,73 @@ const MODEL = {
       "columns": [
         {
           "name": "id",
-          "type": "UUID",
+          "type": "uuid",
           "pk": true,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "id UUID PRIMARY KEY DEFAULT gen_random_uuid()",
+          "constantNonNull": false,
+          "definition": "id uuid NOT NULL DEFAULT gen_random_uuid()",
           "description": "",
           "fk": []
         },
         {
           "name": "name",
-          "type": "VARCHAR(150)",
+          "type": "character varying(150)",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "name VARCHAR(150) NOT NULL",
+          "constantNonNull": false,
+          "definition": "name character varying(150) NOT NULL",
           "description": "",
           "fk": []
         },
         {
           "name": "cpf",
-          "type": "CHAR(11)",
+          "type": "character(11)",
           "pk": false,
           "unique": true,
           "generated": null,
           "nullable": false,
-          "definition": "cpf CHAR(11) NOT NULL UNIQUE",
+          "constantNonNull": false,
+          "definition": "cpf character(11) NOT NULL",
           "description": "",
           "fk": []
         },
         {
           "name": "cnh",
-          "type": "CHAR(11)",
+          "type": "character(11)",
           "pk": false,
           "unique": true,
           "generated": null,
           "nullable": false,
-          "definition": "cnh CHAR(11) NOT NULL UNIQUE",
+          "constantNonNull": false,
+          "definition": "cnh character(11) NOT NULL",
           "description": "",
           "fk": []
         },
         {
           "name": "registration_date",
-          "type": "TIMESTAMPTZ",
+          "type": "timestamp with time zone",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "registration_date TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP",
+          "constantNonNull": false,
+          "definition": "registration_date timestamp with time zone NOT NULL DEFAULT CURRENT_TIMESTAMP",
           "description": "",
           "fk": []
         },
         {
           "name": "updated_at",
-          "type": "TIMESTAMPTZ",
+          "type": "timestamp with time zone",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP",
+          "constantNonNull": false,
+          "definition": "updated_at timestamp with time zone NOT NULL DEFAULT CURRENT_TIMESTAMP",
           "description": "",
           "fk": []
         },
@@ -925,7 +1002,8 @@ const MODEL = {
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "status active_status_t NOT NULL DEFAULT 'ACTIVE'",
+          "constantNonNull": false,
+          "definition": "status active_status_t NOT NULL DEFAULT 'ACTIVE'::active_status_t",
           "description": "",
           "fk": []
         }
@@ -948,7 +1026,11 @@ const MODEL = {
         }
       ],
       "fks": [],
-      "special": [],
+      "special": [
+        "ck_driver_name_not_blank: CHECK ((btrim((name)::text) <> ''::text))",
+        "ck_driver_documents: CHECK (((length(cpf) = 11) AND (length(cnh) = 11)))",
+        "ck_driver_dates: CHECK ((isfinite(registration_date) AND isfinite(updated_at) AND (updated_at >= registration_date)))"
+      ],
       "main": [
         "id",
         "name",
@@ -964,12 +1046,13 @@ const MODEL = {
       "columns": [
         {
           "name": "id",
-          "type": "UUID",
+          "type": "uuid",
           "pk": true,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "id UUID PRIMARY KEY DEFAULT gen_random_uuid()",
+          "constantNonNull": false,
+          "definition": "id uuid NOT NULL DEFAULT gen_random_uuid()",
           "description": "",
           "fk": []
         },
@@ -980,51 +1063,56 @@ const MODEL = {
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "status approval_status_t NOT NULL DEFAULT 'PENDING'",
+          "constantNonNull": false,
+          "definition": "status approval_status_t NOT NULL DEFAULT 'PENDING'::approval_status_t",
           "description": "",
           "fk": []
         },
         {
           "name": "created_at",
-          "type": "TIMESTAMPTZ",
+          "type": "timestamp with time zone",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP",
+          "constantNonNull": false,
+          "definition": "created_at timestamp with time zone NOT NULL DEFAULT CURRENT_TIMESTAMP",
           "description": "",
           "fk": []
         },
         {
           "name": "updated_at",
-          "type": "TIMESTAMPTZ",
+          "type": "timestamp with time zone",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP",
+          "constantNonNull": false,
+          "definition": "updated_at timestamp with time zone NOT NULL DEFAULT CURRENT_TIMESTAMP",
           "description": "",
           "fk": []
         },
         {
           "name": "approved_at",
-          "type": "TIMESTAMPTZ",
+          "type": "timestamp with time zone",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": true,
-          "definition": "approved_at TIMESTAMPTZ",
+          "constantNonNull": false,
+          "definition": "approved_at timestamp with time zone",
           "description": "",
           "fk": []
         },
         {
           "name": "approved_by",
-          "type": "UUID",
+          "type": "uuid",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": true,
-          "definition": "approved_by UUID",
+          "constantNonNull": false,
+          "definition": "approved_by uuid",
           "description": "",
           "fk": [
             "fk_pev_admin"
@@ -1035,8 +1123,9 @@ const MODEL = {
           "type": "user_type_t",
           "pk": false,
           "unique": false,
-          "generated": "ADMIN",
-          "nullable": false,
+          "generated": "'ADMIN'::user_type_t",
+          "nullable": true,
+          "constantNonNull": true,
           "definition": "admin_type user_type_t GENERATED ALWAYS AS ('ADMIN'::user_type_t) STORED",
           "description": "",
           "fk": [
@@ -1045,12 +1134,13 @@ const MODEL = {
         },
         {
           "name": "citizen_id",
-          "type": "UUID",
+          "type": "uuid",
           "pk": false,
           "unique": true,
           "generated": null,
           "nullable": true,
-          "definition": "citizen_id UUID UNIQUE",
+          "constantNonNull": false,
+          "definition": "citizen_id uuid",
           "description": "",
           "fk": [
             "fk_pev_citizen"
@@ -1058,12 +1148,13 @@ const MODEL = {
         },
         {
           "name": "establishment_id",
-          "type": "UUID",
+          "type": "uuid",
           "pk": false,
           "unique": true,
           "generated": null,
           "nullable": true,
-          "definition": "establishment_id UUID UNIQUE",
+          "constantNonNull": false,
+          "definition": "establishment_id uuid",
           "description": "",
           "fk": [
             "fk_pev_establishment"
@@ -1071,12 +1162,13 @@ const MODEL = {
         },
         {
           "name": "address_id",
-          "type": "UUID",
+          "type": "uuid",
           "pk": false,
           "unique": true,
           "generated": null,
           "nullable": false,
-          "definition": "address_id UUID NOT NULL UNIQUE",
+          "constantNonNull": false,
+          "definition": "address_id uuid NOT NULL",
           "description": "",
           "fk": [
             "fk_pev_address"
@@ -1087,8 +1179,9 @@ const MODEL = {
           "type": "address_owner_t",
           "pk": false,
           "unique": false,
-          "generated": "PEV",
-          "nullable": false,
+          "generated": "'PEV'::address_owner_t",
+          "nullable": true,
+          "constantNonNull": true,
           "definition": "address_kind address_owner_t GENERATED ALWAYS AS ('PEV'::address_owner_t) STORED",
           "description": "",
           "fk": [
@@ -1181,7 +1274,11 @@ const MODEL = {
           "childCard": "0..N"
         }
       ],
-      "special": [],
+      "special": [
+        "ck_pev_single_owner: CHECK (((citizen_id IS NOT NULL) <> (establishment_id IS NOT NULL)))",
+        "ck_pev_approval: CHECK ((((approved_at IS NULL) = (approved_by IS NULL)) AND ((status <> 'APPROVED'::approval_status_t) OR (approved_at IS NOT NULL)) AND ((approved_at IS NULL) OR (isfinite(approved_at) AND (approved_at >= created_at)))))",
+        "ck_pev_timestamps: CHECK ((isfinite(created_at) AND isfinite(updated_at) AND (updated_at >= created_at)))"
+      ],
       "main": [
         "id",
         "citizen_id",
@@ -1198,67 +1295,73 @@ const MODEL = {
       "columns": [
         {
           "name": "id",
-          "type": "UUID",
+          "type": "uuid",
           "pk": true,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "id UUID PRIMARY KEY DEFAULT gen_random_uuid()",
+          "constantNonNull": false,
+          "definition": "id uuid NOT NULL DEFAULT gen_random_uuid()",
           "description": "",
           "fk": []
         },
         {
           "name": "name",
-          "type": "VARCHAR(100)",
+          "type": "character varying(100)",
           "pk": false,
           "unique": true,
           "generated": null,
           "nullable": false,
-          "definition": "name VARCHAR(100) NOT NULL UNIQUE",
+          "constantNonNull": false,
+          "definition": "name character varying(100) NOT NULL",
           "description": "",
           "fk": []
         },
         {
           "name": "description",
-          "type": "TEXT",
+          "type": "text",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": true,
-          "definition": "description TEXT",
+          "constantNonNull": false,
+          "definition": "description text",
           "description": "",
           "fk": []
         },
         {
           "name": "monthly_price",
-          "type": "DECIMAL(10,2)",
+          "type": "numeric(10,2)",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "monthly_price DECIMAL(10,2) NOT NULL",
+          "constantNonNull": false,
+          "definition": "monthly_price numeric(10,2) NOT NULL",
           "description": "",
           "fk": []
         },
         {
           "name": "volume_limit_liters",
-          "type": "DECIMAL(8,2)",
+          "type": "numeric(8,2)",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "volume_limit_liters DECIMAL(8,2) NOT NULL",
+          "constantNonNull": false,
+          "definition": "volume_limit_liters numeric(8,2) NOT NULL",
           "description": "",
           "fk": []
         },
         {
           "name": "collection_limit",
-          "type": "INTEGER",
+          "type": "integer",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "collection_limit INTEGER NOT NULL",
+          "constantNonNull": false,
+          "definition": "collection_limit integer NOT NULL",
           "description": "",
           "fk": []
         },
@@ -1269,29 +1372,32 @@ const MODEL = {
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "status active_status_t NOT NULL DEFAULT 'ACTIVE'",
+          "constantNonNull": false,
+          "definition": "status active_status_t NOT NULL DEFAULT 'ACTIVE'::active_status_t",
           "description": "",
           "fk": []
         },
         {
           "name": "created_at",
-          "type": "TIMESTAMPTZ",
+          "type": "timestamp with time zone",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP",
+          "constantNonNull": false,
+          "definition": "created_at timestamp with time zone NOT NULL DEFAULT CURRENT_TIMESTAMP",
           "description": "",
           "fk": []
         },
         {
           "name": "updated_at",
-          "type": "TIMESTAMPTZ",
+          "type": "timestamp with time zone",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP",
+          "constantNonNull": false,
+          "definition": "updated_at timestamp with time zone NOT NULL DEFAULT CURRENT_TIMESTAMP",
           "description": "",
           "fk": []
         }
@@ -1308,7 +1414,13 @@ const MODEL = {
         }
       ],
       "fks": [],
-      "special": [],
+      "special": [
+        "ck_subscription_plan_name_not_blank: CHECK ((btrim((name)::text) <> ''::text))",
+        "ck_subscription_plan_price: CHECK (((monthly_price > (0)::numeric) AND (monthly_price <> 'NaN'::numeric)))",
+        "ck_subscription_plan_volume: CHECK (((volume_limit_liters > (0)::numeric) AND (volume_limit_liters <> 'NaN'::numeric)))",
+        "ck_subscription_plan_slots: CHECK ((collection_limit > 0))",
+        "ck_subscription_plan_timestamps: CHECK ((isfinite(created_at) AND isfinite(updated_at) AND (updated_at >= created_at)))"
+      ],
       "main": [
         "id",
         "name",
@@ -1325,23 +1437,25 @@ const MODEL = {
       "columns": [
         {
           "name": "id",
-          "type": "UUID",
+          "type": "uuid",
           "pk": true,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "id UUID PRIMARY KEY DEFAULT gen_random_uuid()",
+          "constantNonNull": false,
+          "definition": "id uuid NOT NULL DEFAULT gen_random_uuid()",
           "description": "",
           "fk": []
         },
         {
           "name": "establishment_id",
-          "type": "UUID",
+          "type": "uuid",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "establishment_id UUID NOT NULL",
+          "constantNonNull": false,
+          "definition": "establishment_id uuid NOT NULL",
           "description": "",
           "fk": [
             "fk_subscription_establishment"
@@ -1354,51 +1468,56 @@ const MODEL = {
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "status subscription_status_t NOT NULL DEFAULT 'PENDING'",
+          "constantNonNull": false,
+          "definition": "status subscription_status_t NOT NULL DEFAULT 'PENDING'::subscription_status_t",
           "description": "",
           "fk": []
         },
         {
           "name": "activated_at",
-          "type": "TIMESTAMPTZ",
+          "type": "timestamp with time zone",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": true,
-          "definition": "activated_at TIMESTAMPTZ",
+          "constantNonNull": false,
+          "definition": "activated_at timestamp with time zone",
           "description": "",
           "fk": []
         },
         {
           "name": "inactivated_at",
-          "type": "TIMESTAMPTZ",
+          "type": "timestamp with time zone",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": true,
-          "definition": "inactivated_at TIMESTAMPTZ",
+          "constantNonNull": false,
+          "definition": "inactivated_at timestamp with time zone",
           "description": "",
           "fk": []
         },
         {
           "name": "created_at",
-          "type": "TIMESTAMPTZ",
+          "type": "timestamp with time zone",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP",
+          "constantNonNull": false,
+          "definition": "created_at timestamp with time zone NOT NULL DEFAULT CURRENT_TIMESTAMP",
           "description": "",
           "fk": []
         },
         {
           "name": "updated_at",
-          "type": "TIMESTAMPTZ",
+          "type": "timestamp with time zone",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP",
+          "constantNonNull": false,
+          "definition": "updated_at timestamp with time zone NOT NULL DEFAULT CURRENT_TIMESTAMP",
           "description": "",
           "fk": []
         }
@@ -1432,7 +1551,10 @@ const MODEL = {
         }
       ],
       "special": [
-        "UNIQUE (establishment_id) WHERE status = 'ACTIVE'"
+        "ck_establishment_subscription_activation: CHECK ((((status <> 'ACTIVE'::subscription_status_t) OR (activated_at IS NOT NULL)) AND ((status <> 'INACTIVE'::subscription_status_t) OR (inactivated_at IS NOT NULL)) AND ((activated_at IS NULL) OR (isfinite(activated_at) AND (activated_at >= created_at))) AND ((inactivated_at IS NULL) OR (isfinite(inactivated_at) AND (inactivated_at >= created_at)))))",
+        "ck_establishment_subscription_status_dates: CHECK ((((status <> 'ACTIVE'::subscription_status_t) OR (inactivated_at IS NULL)) AND ((status <> 'PENDING'::subscription_status_t) OR ((activated_at IS NULL) AND (inactivated_at IS NULL))) AND ((activated_at IS NULL) OR (inactivated_at IS NULL) OR (inactivated_at >= activated_at))))",
+        "ck_establishment_subscription_timestamps: CHECK ((isfinite(created_at) AND isfinite(updated_at) AND (updated_at >= created_at)))",
+        "CREATE UNIQUE INDEX uq_subscription_active ON public.establishment_subscription USING btree (establishment_id) WHERE (status = 'ACTIVE'::subscription_status_t)"
       ],
       "main": [
         "id",
@@ -1448,23 +1570,25 @@ const MODEL = {
       "columns": [
         {
           "name": "id",
-          "type": "UUID",
+          "type": "uuid",
           "pk": true,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "id UUID PRIMARY KEY DEFAULT gen_random_uuid()",
+          "constantNonNull": false,
+          "definition": "id uuid NOT NULL DEFAULT gen_random_uuid()",
           "description": "",
           "fk": []
         },
         {
           "name": "subscription_id",
-          "type": "UUID",
+          "type": "uuid",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "subscription_id UUID NOT NULL",
+          "constantNonNull": false,
+          "definition": "subscription_id uuid NOT NULL",
           "description": "",
           "fk": [
             "fk_cycle_subscription_owner"
@@ -1472,12 +1596,13 @@ const MODEL = {
         },
         {
           "name": "establishment_id",
-          "type": "UUID",
+          "type": "uuid",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "establishment_id UUID NOT NULL",
+          "constantNonNull": false,
+          "definition": "establishment_id uuid NOT NULL",
           "description": "",
           "fk": [
             "fk_cycle_subscription_owner"
@@ -1485,78 +1610,85 @@ const MODEL = {
         },
         {
           "name": "cycle_number",
-          "type": "INTEGER",
+          "type": "integer",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "cycle_number INTEGER NOT NULL",
+          "constantNonNull": false,
+          "definition": "cycle_number integer NOT NULL",
           "description": "",
           "fk": []
         },
         {
           "name": "starts_at",
-          "type": "TIMESTAMPTZ",
+          "type": "timestamp with time zone",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "starts_at TIMESTAMPTZ NOT NULL",
+          "constantNonNull": false,
+          "definition": "starts_at timestamp with time zone NOT NULL",
           "description": "",
           "fk": []
         },
         {
           "name": "ends_at",
-          "type": "TIMESTAMPTZ",
+          "type": "timestamp with time zone",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "ends_at TIMESTAMPTZ NOT NULL",
+          "constantNonNull": false,
+          "definition": "ends_at timestamp with time zone NOT NULL",
           "description": "",
           "fk": []
         },
         {
           "name": "anchor_day",
-          "type": "SMALLINT",
+          "type": "smallint",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "anchor_day SMALLINT NOT NULL",
+          "constantNonNull": false,
+          "definition": "anchor_day smallint NOT NULL",
           "description": "Dia original do calendário mensal: 31 pode ajustar para fevereiro sem virar 28 nos meses seguintes.",
           "fk": []
         },
         {
           "name": "anchor_local_time",
-          "type": "TIME",
+          "type": "time without time zone",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "anchor_local_time TIME NOT NULL",
+          "constantNonNull": false,
+          "definition": "anchor_local_time time without time zone NOT NULL",
           "description": "",
           "fk": []
         },
         {
           "name": "anchor_timezone",
-          "type": "VARCHAR(100)",
+          "type": "character varying(100)",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "anchor_timezone VARCHAR(100) NOT NULL",
+          "constantNonNull": false,
+          "definition": "anchor_timezone character varying(100) NOT NULL",
           "description": "Fuso usado no calendário mensal; TIMESTAMPTZ preserva o instante, não o nome do fuso.",
           "fk": []
         },
         {
           "name": "plan_id",
-          "type": "UUID",
+          "type": "uuid",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "plan_id UUID NOT NULL",
+          "constantNonNull": false,
+          "definition": "plan_id uuid NOT NULL",
           "description": "",
           "fk": [
             "fk_cycle_plan"
@@ -1564,78 +1696,85 @@ const MODEL = {
         },
         {
           "name": "plan_name",
-          "type": "VARCHAR(100)",
+          "type": "character varying(100)",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "plan_name VARCHAR(100) NOT NULL",
+          "constantNonNull": false,
+          "definition": "plan_name character varying(100) NOT NULL",
           "description": "",
           "fk": []
         },
         {
           "name": "plan_description",
-          "type": "TEXT",
+          "type": "text",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": true,
-          "definition": "plan_description TEXT",
+          "constantNonNull": false,
+          "definition": "plan_description text",
           "description": "",
           "fk": []
         },
         {
           "name": "monthly_price",
-          "type": "DECIMAL(10,2)",
+          "type": "numeric(10,2)",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "monthly_price DECIMAL(10,2) NOT NULL",
+          "constantNonNull": false,
+          "definition": "monthly_price numeric(10,2) NOT NULL",
           "description": "",
           "fk": []
         },
         {
           "name": "volume_limit_liters",
-          "type": "DECIMAL(8,2)",
+          "type": "numeric(8,2)",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "volume_limit_liters DECIMAL(8,2) NOT NULL",
+          "constantNonNull": false,
+          "definition": "volume_limit_liters numeric(8,2) NOT NULL",
           "description": "",
           "fk": []
         },
         {
           "name": "collection_limit",
-          "type": "INTEGER",
+          "type": "integer",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "collection_limit INTEGER NOT NULL",
+          "constantNonNull": false,
+          "definition": "collection_limit integer NOT NULL",
           "description": "",
           "fk": []
         },
         {
           "name": "created_at",
-          "type": "TIMESTAMPTZ",
+          "type": "timestamp with time zone",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP",
+          "constantNonNull": false,
+          "definition": "created_at timestamp with time zone NOT NULL DEFAULT CURRENT_TIMESTAMP",
           "description": "",
           "fk": []
         },
         {
           "name": "updated_at",
-          "type": "TIMESTAMPTZ",
+          "type": "timestamp with time zone",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP",
+          "constantNonNull": false,
+          "definition": "updated_at timestamp with time zone NOT NULL DEFAULT CURRENT_TIMESTAMP",
           "description": "",
           "fk": []
         }
@@ -1692,7 +1831,15 @@ const MODEL = {
         }
       ],
       "special": [
-        "CONSTRAINT ex_cycle_no_overlap EXCLUDE USING gist (establishment_id WITH =, tstzrange(starts_at, ends_at, '[)') WITH &&)"
+        "ex_cycle_no_overlap: EXCLUDE USING gist (establishment_id WITH =, tstzrange(starts_at, ends_at, '[)'::text) WITH &&)",
+        "ck_subscription_cycle_price: CHECK (((monthly_price > (0)::numeric) AND (monthly_price <> 'NaN'::numeric)))",
+        "ck_subscription_cycle_volume: CHECK (((volume_limit_liters > (0)::numeric) AND (volume_limit_liters <> 'NaN'::numeric)))",
+        "ck_subscription_cycle_slots: CHECK ((collection_limit > 0))",
+        "ck_subscription_cycle_period: CHECK ((isfinite(starts_at) AND isfinite(ends_at) AND (ends_at > starts_at)))",
+        "ck_subscription_cycle_anchor: CHECK ((((anchor_day >= 1) AND (anchor_day <= 31)) AND (btrim((anchor_timezone)::text) <> ''::text) AND (anchor_local_time < '24:00:00'::time without time zone)))",
+        "ck_subscription_cycle_number: CHECK ((cycle_number > 0))",
+        "ck_subscription_cycle_plan_name: CHECK ((btrim((plan_name)::text) <> ''::text))",
+        "ck_subscription_cycle_timestamps: CHECK ((isfinite(created_at) AND isfinite(updated_at) AND (updated_at >= created_at)))"
       ],
       "main": [
         "id",
@@ -1712,23 +1859,25 @@ const MODEL = {
       "columns": [
         {
           "name": "id",
-          "type": "UUID",
+          "type": "uuid",
           "pk": true,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "id UUID PRIMARY KEY DEFAULT gen_random_uuid()",
+          "constantNonNull": false,
+          "definition": "id uuid NOT NULL DEFAULT gen_random_uuid()",
           "description": "",
           "fk": []
         },
         {
           "name": "establishment_id",
-          "type": "UUID",
+          "type": "uuid",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "establishment_id UUID NOT NULL",
+          "constantNonNull": false,
+          "definition": "establishment_id uuid NOT NULL",
           "description": "",
           "fk": [
             "fk_order_subscription_owner",
@@ -1738,12 +1887,13 @@ const MODEL = {
         },
         {
           "name": "subscription_id",
-          "type": "UUID",
+          "type": "uuid",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "subscription_id UUID NOT NULL",
+          "constantNonNull": false,
+          "definition": "subscription_id uuid NOT NULL",
           "description": "",
           "fk": [
             "fk_order_subscription_owner"
@@ -1756,29 +1906,32 @@ const MODEL = {
           "unique": false,
           "generated": null,
           "nullable": false,
+          "constantNonNull": false,
           "definition": "purpose billing_purpose_t NOT NULL",
           "description": "",
           "fk": []
         },
         {
           "name": "benefit_key",
-          "type": "VARCHAR(150)",
+          "type": "character varying(150)",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "benefit_key VARCHAR(150) NOT NULL",
+          "constantNonNull": false,
+          "definition": "benefit_key character varying(150) NOT NULL",
           "description": "Identidade estável do benefício; reutilizar nas reemissões da cobrança equivalente.",
           "fk": []
         },
         {
           "name": "target_cycle_id",
-          "type": "UUID",
+          "type": "uuid",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": true,
-          "definition": "target_cycle_id UUID",
+          "constantNonNull": false,
+          "definition": "target_cycle_id uuid",
           "description": "",
           "fk": [
             "fk_order_target_cycle"
@@ -1786,12 +1939,13 @@ const MODEL = {
         },
         {
           "name": "previous_cycle_id",
-          "type": "UUID",
+          "type": "uuid",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": true,
-          "definition": "previous_cycle_id UUID",
+          "constantNonNull": false,
+          "definition": "previous_cycle_id uuid",
           "description": "",
           "fk": [
             "fk_order_previous_cycle"
@@ -1799,23 +1953,25 @@ const MODEL = {
         },
         {
           "name": "created_at",
-          "type": "TIMESTAMPTZ",
+          "type": "timestamp with time zone",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP",
+          "constantNonNull": false,
+          "definition": "created_at timestamp with time zone NOT NULL DEFAULT CURRENT_TIMESTAMP",
           "description": "",
           "fk": []
         },
         {
           "name": "updated_at",
-          "type": "TIMESTAMPTZ",
+          "type": "timestamp with time zone",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP",
+          "constantNonNull": false,
+          "definition": "updated_at timestamp with time zone NOT NULL DEFAULT CURRENT_TIMESTAMP",
           "description": "",
           "fk": []
         }
@@ -1898,8 +2054,11 @@ const MODEL = {
         }
       ],
       "special": [
-        "UNIQUE (subscription_id) WHERE purpose = 'INITIAL'",
-        "UNIQUE (previous_cycle_id) WHERE purpose = 'RENEWAL'"
+        "ck_billing_order_benefit_key: CHECK ((btrim((benefit_key)::text) <> ''::text))",
+        "ck_billing_order_purpose: CHECK ((((purpose = 'INITIAL'::billing_purpose_t) AND (target_cycle_id IS NULL) AND (previous_cycle_id IS NULL)) OR ((purpose = 'RENEWAL'::billing_purpose_t) AND (target_cycle_id IS NULL) AND (previous_cycle_id IS NOT NULL)) OR ((purpose = 'UPGRADE'::billing_purpose_t) AND (target_cycle_id IS NOT NULL) AND (previous_cycle_id IS NULL))))",
+        "ck_billing_order_timestamps: CHECK ((isfinite(created_at) AND isfinite(updated_at) AND (updated_at >= created_at)))",
+        "CREATE UNIQUE INDEX uq_order_initial_subscription ON public.billing_order USING btree (subscription_id) WHERE (purpose = 'INITIAL'::billing_purpose_t)",
+        "CREATE UNIQUE INDEX uq_order_renewal_previous_cycle ON public.billing_order USING btree (previous_cycle_id) WHERE (purpose = 'RENEWAL'::billing_purpose_t)"
       ],
       "main": [
         "id",
@@ -1918,23 +2077,25 @@ const MODEL = {
       "columns": [
         {
           "name": "id",
-          "type": "UUID",
+          "type": "uuid",
           "pk": true,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "id UUID PRIMARY KEY DEFAULT gen_random_uuid()",
+          "constantNonNull": false,
+          "definition": "id uuid NOT NULL DEFAULT gen_random_uuid()",
           "description": "",
           "fk": []
         },
         {
           "name": "billing_order_id",
-          "type": "UUID",
+          "type": "uuid",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "billing_order_id UUID NOT NULL",
+          "constantNonNull": false,
+          "definition": "billing_order_id uuid NOT NULL",
           "description": "",
           "fk": [
             "fk_charge_order_owner",
@@ -1943,12 +2104,13 @@ const MODEL = {
         },
         {
           "name": "establishment_id",
-          "type": "UUID",
+          "type": "uuid",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "establishment_id UUID NOT NULL",
+          "constantNonNull": false,
+          "definition": "establishment_id uuid NOT NULL",
           "description": "",
           "fk": [
             "fk_charge_order_owner",
@@ -1962,6 +2124,7 @@ const MODEL = {
           "unique": false,
           "generated": null,
           "nullable": false,
+          "constantNonNull": false,
           "definition": "purpose billing_purpose_t NOT NULL",
           "description": "",
           "fk": [
@@ -1970,12 +2133,13 @@ const MODEL = {
         },
         {
           "name": "target_cycle_id",
-          "type": "UUID",
+          "type": "uuid",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": true,
-          "definition": "target_cycle_id UUID",
+          "constantNonNull": false,
+          "definition": "target_cycle_id uuid",
           "description": "",
           "fk": [
             "fk_charge_order_target",
@@ -1984,34 +2148,37 @@ const MODEL = {
         },
         {
           "name": "provider",
-          "type": "VARCHAR(100)",
+          "type": "character varying(100)",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "provider VARCHAR(100) NOT NULL",
+          "constantNonNull": false,
+          "definition": "provider character varying(100) NOT NULL",
           "description": "",
           "fk": []
         },
         {
           "name": "provider_charge_id",
-          "type": "VARCHAR(255)",
+          "type": "character varying(255)",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": true,
-          "definition": "provider_charge_id VARCHAR(255)",
+          "constantNonNull": false,
+          "definition": "provider_charge_id character varying(255)",
           "description": "",
           "fk": []
         },
         {
           "name": "idempotency_key",
-          "type": "UUID",
+          "type": "uuid",
           "pk": false,
           "unique": true,
           "generated": null,
           "nullable": false,
-          "definition": "idempotency_key UUID NOT NULL UNIQUE DEFAULT gen_random_uuid()",
+          "constantNonNull": false,
+          "definition": "idempotency_key uuid NOT NULL DEFAULT gen_random_uuid()",
           "description": "",
           "fk": []
         },
@@ -2022,18 +2189,20 @@ const MODEL = {
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "status charge_status_t NOT NULL DEFAULT 'OPEN'",
+          "constantNonNull": false,
+          "definition": "status charge_status_t NOT NULL DEFAULT 'OPEN'::charge_status_t",
           "description": "",
           "fk": []
         },
         {
           "name": "plan_id",
-          "type": "UUID",
+          "type": "uuid",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "plan_id UUID NOT NULL",
+          "constantNonNull": false,
+          "definition": "plan_id uuid NOT NULL",
           "description": "",
           "fk": [
             "fk_charge_plan"
@@ -2041,67 +2210,73 @@ const MODEL = {
         },
         {
           "name": "plan_name",
-          "type": "VARCHAR(100)",
+          "type": "character varying(100)",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "plan_name VARCHAR(100) NOT NULL",
+          "constantNonNull": false,
+          "definition": "plan_name character varying(100) NOT NULL",
           "description": "",
           "fk": []
         },
         {
           "name": "plan_description",
-          "type": "TEXT",
+          "type": "text",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": true,
-          "definition": "plan_description TEXT",
+          "constantNonNull": false,
+          "definition": "plan_description text",
           "description": "",
           "fk": []
         },
         {
           "name": "quoted_monthly_price",
-          "type": "DECIMAL(10,2)",
+          "type": "numeric(10,2)",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "quoted_monthly_price DECIMAL(10,2) NOT NULL",
+          "constantNonNull": false,
+          "definition": "quoted_monthly_price numeric(10,2) NOT NULL",
           "description": "",
           "fk": []
         },
         {
           "name": "quoted_volume_limit_liters",
-          "type": "DECIMAL(8,2)",
+          "type": "numeric(8,2)",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "quoted_volume_limit_liters DECIMAL(8,2) NOT NULL",
+          "constantNonNull": false,
+          "definition": "quoted_volume_limit_liters numeric(8,2) NOT NULL",
           "description": "",
           "fk": []
         },
         {
           "name": "quoted_collection_limit",
-          "type": "INTEGER",
+          "type": "integer",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "quoted_collection_limit INTEGER NOT NULL",
+          "constantNonNull": false,
+          "definition": "quoted_collection_limit integer NOT NULL",
           "description": "",
           "fk": []
         },
         {
           "name": "from_plan_id",
-          "type": "UUID",
+          "type": "uuid",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": true,
-          "definition": "from_plan_id UUID",
+          "constantNonNull": false,
+          "definition": "from_plan_id uuid",
           "description": "",
           "fk": [
             "fk_charge_from_plan"
@@ -2109,78 +2284,85 @@ const MODEL = {
         },
         {
           "name": "from_monthly_price",
-          "type": "DECIMAL(10,2)",
+          "type": "numeric(10,2)",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": true,
-          "definition": "from_monthly_price DECIMAL(10,2)",
+          "constantNonNull": false,
+          "definition": "from_monthly_price numeric(10,2)",
           "description": "",
           "fk": []
         },
         {
           "name": "amount",
-          "type": "DECIMAL(10,2)",
+          "type": "numeric(10,2)",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "amount DECIMAL(10,2) NOT NULL",
+          "constantNonNull": false,
+          "definition": "amount numeric(10,2) NOT NULL",
           "description": "",
           "fk": []
         },
         {
           "name": "currency",
-          "type": "CHAR(3)",
+          "type": "character(3)",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "currency CHAR(3) NOT NULL DEFAULT 'BRL'",
+          "constantNonNull": false,
+          "definition": "currency character(3) NOT NULL DEFAULT 'BRL'::bpchar",
           "description": "",
           "fk": []
         },
         {
           "name": "expires_at",
-          "type": "TIMESTAMPTZ",
+          "type": "timestamp with time zone",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "expires_at TIMESTAMPTZ NOT NULL",
+          "constantNonNull": false,
+          "definition": "expires_at timestamp with time zone NOT NULL",
           "description": "",
           "fk": []
         },
         {
           "name": "closed_at",
-          "type": "TIMESTAMPTZ",
+          "type": "timestamp with time zone",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": true,
-          "definition": "closed_at TIMESTAMPTZ",
+          "constantNonNull": false,
+          "definition": "closed_at timestamp with time zone",
           "description": "",
           "fk": []
         },
         {
           "name": "created_at",
-          "type": "TIMESTAMPTZ",
+          "type": "timestamp with time zone",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP",
+          "constantNonNull": false,
+          "definition": "created_at timestamp with time zone NOT NULL DEFAULT CURRENT_TIMESTAMP",
           "description": "",
           "fk": []
         },
         {
           "name": "updated_at",
-          "type": "TIMESTAMPTZ",
+          "type": "timestamp with time zone",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP",
+          "constantNonNull": false,
+          "definition": "updated_at timestamp with time zone NOT NULL DEFAULT CURRENT_TIMESTAMP",
           "description": "",
           "fk": []
         }
@@ -2299,8 +2481,16 @@ const MODEL = {
         }
       ],
       "special": [
-        "UNIQUE (establishment_id) WHERE purpose IN ('INITIAL','RENEWAL') AND status IN ('OPEN','CANCELLATION_PENDING')",
-        "UNIQUE (target_cycle_id) WHERE purpose = 'UPGRADE' AND status IN ('OPEN','CANCELLATION_PENDING')"
+        "ck_billing_charge_quote: CHECK (((quoted_monthly_price > (0)::numeric) AND (quoted_monthly_price <> 'NaN'::numeric) AND (quoted_volume_limit_liters > (0)::numeric) AND (quoted_volume_limit_liters <> 'NaN'::numeric) AND (quoted_collection_limit > 0) AND (amount > (0)::numeric) AND (amount <> 'NaN'::numeric)))",
+        "ck_billing_charge_purpose: CHECK ((((purpose = ANY (ARRAY['INITIAL'::billing_purpose_t, 'RENEWAL'::billing_purpose_t])) AND (target_cycle_id IS NULL) AND (from_plan_id IS NULL) AND (from_monthly_price IS NULL) AND (amount = quoted_monthly_price)) OR ((purpose = 'UPGRADE'::billing_purpose_t) AND (target_cycle_id IS NOT NULL) AND (from_plan_id IS NOT NULL) AND (from_monthly_price IS NOT NULL) AND (from_monthly_price > (0)::numeric) AND (from_monthly_price <> 'NaN'::numeric) AND (from_plan_id <> plan_id) AND (amount = (quoted_monthly_price - from_monthly_price)))))",
+        "ck_billing_charge_dates: CHECK ((isfinite(expires_at) AND (expires_at > created_at) AND (((status = ANY (ARRAY['OPEN'::charge_status_t, 'CANCELLATION_PENDING'::charge_status_t])) AND (closed_at IS NULL)) OR ((status = ANY (ARRAY['PAID'::charge_status_t, 'CANCELLED'::charge_status_t, 'EXPIRED'::charge_status_t])) AND (closed_at IS NOT NULL) AND isfinite(closed_at) AND (closed_at >= created_at)))))",
+        "ck_billing_charge_currency: CHECK ((currency = 'BRL'::bpchar))",
+        "ck_billing_charge_provider: CHECK ((btrim((provider)::text) <> ''::text))",
+        "ck_billing_charge_provider_charge_id_not_blank: CHECK (((provider_charge_id IS NULL) OR (btrim((provider_charge_id)::text) <> ''::text)))",
+        "ck_billing_charge_plan_name: CHECK ((btrim((plan_name)::text) <> ''::text))",
+        "ck_billing_charge_timestamps: CHECK ((isfinite(created_at) AND isfinite(updated_at) AND (updated_at >= created_at)))",
+        "CREATE UNIQUE INDEX uq_charge_open_period ON public.billing_charge USING btree (establishment_id) WHERE ((purpose = ANY (ARRAY['INITIAL'::billing_purpose_t, 'RENEWAL'::billing_purpose_t])) AND (status = ANY (ARRAY['OPEN'::charge_status_t, 'CANCELLATION_PENDING'::charge_status_t])))",
+        "CREATE UNIQUE INDEX uq_charge_open_upgrade ON public.billing_charge USING btree (target_cycle_id) WHERE ((purpose = 'UPGRADE'::billing_purpose_t) AND (status = ANY (ARRAY['OPEN'::charge_status_t, 'CANCELLATION_PENDING'::charge_status_t])))"
       ],
       "main": [
         "id",
@@ -2319,23 +2509,25 @@ const MODEL = {
       "columns": [
         {
           "name": "id",
-          "type": "UUID",
+          "type": "uuid",
           "pk": true,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "id UUID PRIMARY KEY DEFAULT gen_random_uuid()",
+          "constantNonNull": false,
+          "definition": "id uuid NOT NULL DEFAULT gen_random_uuid()",
           "description": "",
           "fk": []
         },
         {
           "name": "billing_charge_id",
-          "type": "UUID",
+          "type": "uuid",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "billing_charge_id UUID NOT NULL",
+          "constantNonNull": false,
+          "definition": "billing_charge_id uuid NOT NULL",
           "description": "",
           "fk": [
             "fk_payment_charge_order",
@@ -2344,12 +2536,13 @@ const MODEL = {
         },
         {
           "name": "billing_order_id",
-          "type": "UUID",
+          "type": "uuid",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "billing_order_id UUID NOT NULL",
+          "constantNonNull": false,
+          "definition": "billing_order_id uuid NOT NULL",
           "description": "",
           "fk": [
             "fk_payment_charge_order"
@@ -2357,12 +2550,13 @@ const MODEL = {
         },
         {
           "name": "establishment_id",
-          "type": "UUID",
+          "type": "uuid",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "establishment_id UUID NOT NULL",
+          "constantNonNull": false,
+          "definition": "establishment_id uuid NOT NULL",
           "description": "",
           "fk": [
             "fk_payment_charge_order"
@@ -2370,12 +2564,13 @@ const MODEL = {
         },
         {
           "name": "provider",
-          "type": "VARCHAR(100)",
+          "type": "character varying(100)",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "provider VARCHAR(100) NOT NULL",
+          "constantNonNull": false,
+          "definition": "provider character varying(100) NOT NULL",
           "description": "",
           "fk": [
             "fk_payment_charge_provider"
@@ -2383,67 +2578,73 @@ const MODEL = {
         },
         {
           "name": "provider_payment_id",
-          "type": "VARCHAR(255)",
+          "type": "character varying(255)",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "provider_payment_id VARCHAR(255) NOT NULL",
+          "constantNonNull": false,
+          "definition": "provider_payment_id character varying(255) NOT NULL",
           "description": "",
           "fk": []
         },
         {
           "name": "amount",
-          "type": "DECIMAL(10,2)",
+          "type": "numeric(10,2)",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "amount DECIMAL(10,2) NOT NULL",
+          "constantNonNull": false,
+          "definition": "amount numeric(10,2) NOT NULL",
           "description": "",
           "fk": []
         },
         {
           "name": "currency",
-          "type": "CHAR(3)",
+          "type": "character(3)",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "currency CHAR(3) NOT NULL DEFAULT 'BRL'",
+          "constantNonNull": false,
+          "definition": "currency character(3) NOT NULL DEFAULT 'BRL'::bpchar",
           "description": "",
           "fk": []
         },
         {
           "name": "paid_at",
-          "type": "TIMESTAMPTZ",
+          "type": "timestamp with time zone",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "paid_at TIMESTAMPTZ NOT NULL",
+          "constantNonNull": false,
+          "definition": "paid_at timestamp with time zone NOT NULL",
           "description": "",
           "fk": []
         },
         {
           "name": "verified_at",
-          "type": "TIMESTAMPTZ",
+          "type": "timestamp with time zone",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "verified_at TIMESTAMPTZ NOT NULL",
+          "constantNonNull": false,
+          "definition": "verified_at timestamp with time zone NOT NULL",
           "description": "",
           "fk": []
         },
         {
           "name": "created_at",
-          "type": "TIMESTAMPTZ",
+          "type": "timestamp with time zone",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP",
+          "constantNonNull": false,
+          "definition": "created_at timestamp with time zone NOT NULL DEFAULT CURRENT_TIMESTAMP",
           "description": "",
           "fk": []
         }
@@ -2520,7 +2721,13 @@ const MODEL = {
           "childCard": "0..N"
         }
       ],
-      "special": [],
+      "special": [
+        "ck_payment_currency: CHECK ((currency = 'BRL'::bpchar))",
+        "ck_payment_provider: CHECK ((btrim((provider)::text) <> ''::text))",
+        "ck_payment_identity: CHECK ((btrim((provider_payment_id)::text) <> ''::text))",
+        "ck_payment_amount: CHECK (((amount > (0)::numeric) AND (amount <> 'NaN'::numeric)))",
+        "ck_payment_dates: CHECK ((isfinite(paid_at) AND isfinite(verified_at) AND isfinite(created_at) AND (paid_at <= verified_at) AND (verified_at <= created_at)))"
+      ],
       "main": [
         "id",
         "billing_charge_id",
@@ -2537,23 +2744,25 @@ const MODEL = {
       "columns": [
         {
           "name": "id",
-          "type": "UUID",
+          "type": "uuid",
           "pk": true,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "id UUID PRIMARY KEY DEFAULT gen_random_uuid()",
+          "constantNonNull": false,
+          "definition": "id uuid NOT NULL DEFAULT gen_random_uuid()",
           "description": "",
           "fk": []
         },
         {
           "name": "payment_id",
-          "type": "UUID",
+          "type": "uuid",
           "pk": false,
           "unique": true,
           "generated": null,
           "nullable": false,
-          "definition": "payment_id UUID NOT NULL UNIQUE",
+          "constantNonNull": false,
+          "definition": "payment_id uuid NOT NULL",
           "description": "",
           "fk": [
             "fk_application_payment_order"
@@ -2561,12 +2770,13 @@ const MODEL = {
         },
         {
           "name": "billing_order_id",
-          "type": "UUID",
+          "type": "uuid",
           "pk": false,
           "unique": true,
           "generated": null,
           "nullable": false,
-          "definition": "billing_order_id UUID NOT NULL UNIQUE",
+          "constantNonNull": false,
+          "definition": "billing_order_id uuid NOT NULL",
           "description": "",
           "fk": [
             "fk_application_payment_order",
@@ -2575,12 +2785,13 @@ const MODEL = {
         },
         {
           "name": "establishment_id",
-          "type": "UUID",
+          "type": "uuid",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "establishment_id UUID NOT NULL",
+          "constantNonNull": false,
+          "definition": "establishment_id uuid NOT NULL",
           "description": "",
           "fk": [
             "fk_application_payment_order",
@@ -2595,6 +2806,7 @@ const MODEL = {
           "unique": false,
           "generated": null,
           "nullable": false,
+          "constantNonNull": false,
           "definition": "purpose billing_purpose_t NOT NULL",
           "description": "",
           "fk": [
@@ -2603,12 +2815,13 @@ const MODEL = {
         },
         {
           "name": "cycle_id",
-          "type": "UUID",
+          "type": "uuid",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "cycle_id UUID NOT NULL",
+          "constantNonNull": false,
+          "definition": "cycle_id uuid NOT NULL",
           "description": "",
           "fk": [
             "fk_application_cycle_owner"
@@ -2616,23 +2829,25 @@ const MODEL = {
         },
         {
           "name": "applied_at",
-          "type": "TIMESTAMPTZ",
+          "type": "timestamp with time zone",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "applied_at TIMESTAMPTZ NOT NULL",
+          "constantNonNull": false,
+          "definition": "applied_at timestamp with time zone NOT NULL",
           "description": "",
           "fk": []
         },
         {
           "name": "created_at",
-          "type": "TIMESTAMPTZ",
+          "type": "timestamp with time zone",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP",
+          "constantNonNull": false,
+          "definition": "created_at timestamp with time zone NOT NULL DEFAULT CURRENT_TIMESTAMP",
           "description": "",
           "fk": []
         }
@@ -2717,7 +2932,8 @@ const MODEL = {
         }
       ],
       "special": [
-        "UNIQUE (cycle_id) WHERE purpose IN ('INITIAL','RENEWAL')"
+        "ck_payment_application_dates: CHECK ((isfinite(applied_at) AND isfinite(created_at) AND (applied_at <= created_at)))",
+        "CREATE UNIQUE INDEX uq_application_initial_cycle ON public.payment_application USING btree (cycle_id) WHERE (purpose = ANY (ARRAY['INITIAL'::billing_purpose_t, 'RENEWAL'::billing_purpose_t]))"
       ],
       "main": [
         "id",
@@ -2735,23 +2951,25 @@ const MODEL = {
       "columns": [
         {
           "name": "id",
-          "type": "UUID",
+          "type": "uuid",
           "pk": true,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "id UUID PRIMARY KEY DEFAULT gen_random_uuid()",
+          "constantNonNull": false,
+          "definition": "id uuid NOT NULL DEFAULT gen_random_uuid()",
           "description": "",
           "fk": []
         },
         {
           "name": "cycle_id",
-          "type": "UUID",
+          "type": "uuid",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "cycle_id UUID NOT NULL",
+          "constantNonNull": false,
+          "definition": "cycle_id uuid NOT NULL",
           "description": "",
           "fk": [
             "fk_cycle_change_application"
@@ -2759,12 +2977,13 @@ const MODEL = {
         },
         {
           "name": "payment_application_id",
-          "type": "UUID",
+          "type": "uuid",
           "pk": false,
           "unique": true,
           "generated": null,
           "nullable": false,
-          "definition": "payment_application_id UUID NOT NULL UNIQUE",
+          "constantNonNull": false,
+          "definition": "payment_application_id uuid NOT NULL",
           "description": "",
           "fk": [
             "fk_cycle_change_application"
@@ -2775,8 +2994,9 @@ const MODEL = {
           "type": "billing_purpose_t",
           "pk": false,
           "unique": false,
-          "generated": "UPGRADE",
-          "nullable": false,
+          "generated": "'UPGRADE'::billing_purpose_t",
+          "nullable": true,
+          "constantNonNull": true,
           "definition": "purpose billing_purpose_t GENERATED ALWAYS AS ('UPGRADE'::billing_purpose_t) STORED",
           "description": "",
           "fk": [
@@ -2785,12 +3005,13 @@ const MODEL = {
         },
         {
           "name": "from_plan_id",
-          "type": "UUID",
+          "type": "uuid",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "from_plan_id UUID NOT NULL",
+          "constantNonNull": false,
+          "definition": "from_plan_id uuid NOT NULL",
           "description": "",
           "fk": [
             "fk_cycle_change_from_plan"
@@ -2798,12 +3019,13 @@ const MODEL = {
         },
         {
           "name": "to_plan_id",
-          "type": "UUID",
+          "type": "uuid",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "to_plan_id UUID NOT NULL",
+          "constantNonNull": false,
+          "definition": "to_plan_id uuid NOT NULL",
           "description": "",
           "fk": [
             "fk_cycle_change_to_plan"
@@ -2811,89 +3033,97 @@ const MODEL = {
         },
         {
           "name": "from_monthly_price",
-          "type": "DECIMAL(10,2)",
+          "type": "numeric(10,2)",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "from_monthly_price DECIMAL(10,2) NOT NULL",
+          "constantNonNull": false,
+          "definition": "from_monthly_price numeric(10,2) NOT NULL",
           "description": "",
           "fk": []
         },
         {
           "name": "to_monthly_price",
-          "type": "DECIMAL(10,2)",
+          "type": "numeric(10,2)",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "to_monthly_price DECIMAL(10,2) NOT NULL",
+          "constantNonNull": false,
+          "definition": "to_monthly_price numeric(10,2) NOT NULL",
           "description": "",
           "fk": []
         },
         {
           "name": "from_volume_limit_liters",
-          "type": "DECIMAL(8,2)",
+          "type": "numeric(8,2)",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "from_volume_limit_liters DECIMAL(8,2) NOT NULL",
+          "constantNonNull": false,
+          "definition": "from_volume_limit_liters numeric(8,2) NOT NULL",
           "description": "",
           "fk": []
         },
         {
           "name": "to_volume_limit_liters",
-          "type": "DECIMAL(8,2)",
+          "type": "numeric(8,2)",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "to_volume_limit_liters DECIMAL(8,2) NOT NULL",
+          "constantNonNull": false,
+          "definition": "to_volume_limit_liters numeric(8,2) NOT NULL",
           "description": "",
           "fk": []
         },
         {
           "name": "from_collection_limit",
-          "type": "INTEGER",
+          "type": "integer",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "from_collection_limit INTEGER NOT NULL",
+          "constantNonNull": false,
+          "definition": "from_collection_limit integer NOT NULL",
           "description": "",
           "fk": []
         },
         {
           "name": "to_collection_limit",
-          "type": "INTEGER",
+          "type": "integer",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "to_collection_limit INTEGER NOT NULL",
+          "constantNonNull": false,
+          "definition": "to_collection_limit integer NOT NULL",
           "description": "",
           "fk": []
         },
         {
           "name": "applied_at",
-          "type": "TIMESTAMPTZ",
+          "type": "timestamp with time zone",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "applied_at TIMESTAMPTZ NOT NULL",
+          "constantNonNull": false,
+          "definition": "applied_at timestamp with time zone NOT NULL",
           "description": "",
           "fk": []
         },
         {
           "name": "created_at",
-          "type": "TIMESTAMPTZ",
+          "type": "timestamp with time zone",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP",
+          "constantNonNull": false,
+          "definition": "created_at timestamp with time zone NOT NULL DEFAULT CURRENT_TIMESTAMP",
           "description": "",
           "fk": []
         }
@@ -2957,7 +3187,11 @@ const MODEL = {
           "childCard": "0..N"
         }
       ],
-      "special": [],
+      "special": [
+        "ck_subscription_cycle_change_dates: CHECK ((isfinite(applied_at) AND isfinite(created_at) AND (applied_at <= created_at)))",
+        "ck_subscription_cycle_change_plans: CHECK ((from_plan_id <> to_plan_id))",
+        "ck_subscription_cycle_change_limits: CHECK (((from_monthly_price > (0)::numeric) AND (to_monthly_price > from_monthly_price) AND (to_monthly_price <> 'NaN'::numeric) AND (from_volume_limit_liters > (0)::numeric) AND (to_volume_limit_liters > from_volume_limit_liters) AND (to_volume_limit_liters <> 'NaN'::numeric) AND (from_collection_limit > 0) AND (to_collection_limit > from_collection_limit)))"
+      ],
       "main": [
         "id",
         "cycle_id",
@@ -2974,23 +3208,25 @@ const MODEL = {
       "columns": [
         {
           "name": "id",
-          "type": "UUID",
+          "type": "uuid",
           "pk": true,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "id UUID PRIMARY KEY DEFAULT gen_random_uuid()",
+          "constantNonNull": false,
+          "definition": "id uuid NOT NULL DEFAULT gen_random_uuid()",
           "description": "",
           "fk": []
         },
         {
           "name": "payment_id",
-          "type": "UUID",
+          "type": "uuid",
           "pk": false,
           "unique": true,
           "generated": null,
           "nullable": false,
-          "definition": "payment_id UUID NOT NULL UNIQUE",
+          "constantNonNull": false,
+          "definition": "payment_id uuid NOT NULL",
           "description": "",
           "fk": [
             "fk_refund_payment"
@@ -3003,18 +3239,20 @@ const MODEL = {
           "unique": false,
           "generated": null,
           "nullable": false,
+          "constantNonNull": false,
           "definition": "reason refund_reason_t NOT NULL",
           "description": "",
           "fk": []
         },
         {
           "name": "amount",
-          "type": "DECIMAL(10,2)",
+          "type": "numeric(10,2)",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "amount DECIMAL(10,2) NOT NULL",
+          "constantNonNull": false,
+          "definition": "amount numeric(10,2) NOT NULL",
           "description": "",
           "fk": [
             "fk_refund_payment"
@@ -3022,12 +3260,13 @@ const MODEL = {
         },
         {
           "name": "provider",
-          "type": "VARCHAR(100)",
+          "type": "character varying(100)",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "provider VARCHAR(100) NOT NULL",
+          "constantNonNull": false,
+          "definition": "provider character varying(100) NOT NULL",
           "description": "",
           "fk": [
             "fk_refund_payment"
@@ -3040,73 +3279,80 @@ const MODEL = {
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "status refund_status_t NOT NULL DEFAULT 'REQUESTED'",
+          "constantNonNull": false,
+          "definition": "status refund_status_t NOT NULL DEFAULT 'REQUESTED'::refund_status_t",
           "description": "",
           "fk": []
         },
         {
           "name": "idempotency_key",
-          "type": "UUID",
+          "type": "uuid",
           "pk": false,
           "unique": true,
           "generated": null,
           "nullable": false,
-          "definition": "idempotency_key UUID NOT NULL UNIQUE DEFAULT gen_random_uuid()",
+          "constantNonNull": false,
+          "definition": "idempotency_key uuid NOT NULL DEFAULT gen_random_uuid()",
           "description": "",
           "fk": []
         },
         {
           "name": "provider_refund_id",
-          "type": "VARCHAR(255)",
+          "type": "character varying(255)",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": true,
-          "definition": "provider_refund_id VARCHAR(255)",
+          "constantNonNull": false,
+          "definition": "provider_refund_id character varying(255)",
           "description": "",
           "fk": []
         },
         {
           "name": "requested_at",
-          "type": "TIMESTAMPTZ",
+          "type": "timestamp with time zone",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "requested_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP",
+          "constantNonNull": false,
+          "definition": "requested_at timestamp with time zone NOT NULL DEFAULT CURRENT_TIMESTAMP",
           "description": "",
           "fk": []
         },
         {
           "name": "completed_at",
-          "type": "TIMESTAMPTZ",
+          "type": "timestamp with time zone",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": true,
-          "definition": "completed_at TIMESTAMPTZ",
+          "constantNonNull": false,
+          "definition": "completed_at timestamp with time zone",
           "description": "",
           "fk": []
         },
         {
           "name": "next_attempt_at",
-          "type": "TIMESTAMPTZ",
+          "type": "timestamp with time zone",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": true,
-          "definition": "next_attempt_at TIMESTAMPTZ",
+          "constantNonNull": false,
+          "definition": "next_attempt_at timestamp with time zone",
           "description": "",
           "fk": []
         },
         {
           "name": "last_error",
-          "type": "TEXT",
+          "type": "text",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": true,
-          "definition": "last_error TEXT",
+          "constantNonNull": false,
+          "definition": "last_error text",
           "description": "",
           "fk": []
         }
@@ -3155,7 +3401,13 @@ const MODEL = {
           "childCard": "0..1"
         }
       ],
-      "special": [],
+      "special": [
+        "ck_payment_refund_amount: CHECK (((amount > (0)::numeric) AND (amount <> 'NaN'::numeric)))",
+        "ck_payment_refund_completion: CHECK ((((status = 'COMPLETED'::refund_status_t) AND (completed_at IS NOT NULL) AND isfinite(completed_at) AND (completed_at >= requested_at)) OR ((status <> 'COMPLETED'::refund_status_t) AND (completed_at IS NULL))))",
+        "ck_payment_refund_requested_at: CHECK (isfinite(requested_at))",
+        "ck_payment_refund_provider_refund_id_not_blank: CHECK (((provider_refund_id IS NULL) OR (btrim((provider_refund_id)::text) <> ''::text)))",
+        "ck_payment_refund_next_attempt: CHECK (((next_attempt_at IS NULL) OR isfinite(next_attempt_at)))"
+      ],
       "main": [
         "id",
         "payment_id",
@@ -3172,23 +3424,25 @@ const MODEL = {
       "columns": [
         {
           "name": "id",
-          "type": "UUID",
+          "type": "uuid",
           "pk": true,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "id UUID PRIMARY KEY DEFAULT gen_random_uuid()",
+          "constantNonNull": false,
+          "definition": "id uuid NOT NULL DEFAULT gen_random_uuid()",
           "description": "",
           "fk": []
         },
         {
           "name": "estimated_volume_liters",
-          "type": "DECIMAL(8,2)",
+          "type": "numeric(8,2)",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "estimated_volume_liters DECIMAL(8,2) NOT NULL",
+          "constantNonNull": false,
+          "definition": "estimated_volume_liters numeric(8,2) NOT NULL",
           "description": "",
           "fk": []
         },
@@ -3199,51 +3453,56 @@ const MODEL = {
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "status request_status_t NOT NULL DEFAULT 'PENDING'",
+          "constantNonNull": false,
+          "definition": "status request_status_t NOT NULL DEFAULT 'PENDING'::request_status_t",
           "description": "",
           "fk": []
         },
         {
           "name": "observation",
-          "type": "TEXT",
+          "type": "text",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": true,
-          "definition": "observation TEXT",
+          "constantNonNull": false,
+          "definition": "observation text",
           "description": "",
           "fk": []
         },
         {
           "name": "request_at",
-          "type": "TIMESTAMPTZ",
+          "type": "timestamp with time zone",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "request_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP",
+          "constantNonNull": false,
+          "definition": "request_at timestamp with time zone NOT NULL DEFAULT CURRENT_TIMESTAMP",
           "description": "",
           "fk": []
         },
         {
           "name": "updated_at",
-          "type": "TIMESTAMPTZ",
+          "type": "timestamp with time zone",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP",
+          "constantNonNull": false,
+          "definition": "updated_at timestamp with time zone NOT NULL DEFAULT CURRENT_TIMESTAMP",
           "description": "",
           "fk": []
         },
         {
           "name": "establishment_id",
-          "type": "UUID",
+          "type": "uuid",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "establishment_id UUID NOT NULL",
+          "constantNonNull": false,
+          "definition": "establishment_id uuid NOT NULL",
           "description": "",
           "fk": [
             "fk_request_cycle_owner"
@@ -3251,25 +3510,39 @@ const MODEL = {
         },
         {
           "name": "subscription_cycle_id",
-          "type": "UUID",
+          "type": "uuid",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "subscription_cycle_id UUID NOT NULL",
+          "constantNonNull": false,
+          "definition": "subscription_cycle_id uuid NOT NULL",
           "description": "",
           "fk": [
             "fk_request_cycle_owner"
           ]
         },
         {
+          "name": "idempotency_key",
+          "type": "uuid",
+          "pk": false,
+          "unique": false,
+          "generated": null,
+          "nullable": false,
+          "constantNonNull": false,
+          "definition": "idempotency_key uuid NOT NULL",
+          "description": "",
+          "fk": []
+        },
+        {
           "name": "approved_by",
-          "type": "UUID",
+          "type": "uuid",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": true,
-          "definition": "approved_by UUID",
+          "constantNonNull": false,
+          "definition": "approved_by uuid",
           "description": "",
           "fk": [
             "fk_request_admin"
@@ -3277,12 +3550,13 @@ const MODEL = {
         },
         {
           "name": "approved_at",
-          "type": "TIMESTAMPTZ",
+          "type": "timestamp with time zone",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": true,
-          "definition": "approved_at TIMESTAMPTZ",
+          "constantNonNull": false,
+          "definition": "approved_at timestamp with time zone",
           "description": "",
           "fk": []
         },
@@ -3291,8 +3565,9 @@ const MODEL = {
           "type": "user_type_t",
           "pk": false,
           "unique": false,
-          "generated": "ADMIN",
-          "nullable": false,
+          "generated": "'ADMIN'::user_type_t",
+          "nullable": true,
+          "constantNonNull": true,
           "definition": "admin_type user_type_t GENERATED ALWAYS AS ('ADMIN'::user_type_t) STORED",
           "description": "",
           "fk": [
@@ -3301,45 +3576,49 @@ const MODEL = {
         },
         {
           "name": "scheduled_at",
-          "type": "TIMESTAMPTZ",
+          "type": "timestamp with time zone",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": true,
-          "definition": "scheduled_at TIMESTAMPTZ",
+          "constantNonNull": false,
+          "definition": "scheduled_at timestamp with time zone",
           "description": "",
           "fk": []
         },
         {
           "name": "arrived_at",
-          "type": "TIMESTAMPTZ",
+          "type": "timestamp with time zone",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": true,
-          "definition": "arrived_at TIMESTAMPTZ",
+          "constantNonNull": false,
+          "definition": "arrived_at timestamp with time zone",
           "description": "",
           "fk": []
         },
         {
           "name": "arrival_recorded_at",
-          "type": "TIMESTAMPTZ",
+          "type": "timestamp with time zone",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": true,
-          "definition": "arrival_recorded_at TIMESTAMPTZ",
+          "constantNonNull": false,
+          "definition": "arrival_recorded_at timestamp with time zone",
           "description": "Momento registrado pelo backend; informar depois não penaliza retroativamente um cancelamento gratuito.",
           "fk": []
         },
         {
           "name": "arrival_driver_id",
-          "type": "UUID",
+          "type": "uuid",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": true,
-          "definition": "arrival_driver_id UUID",
+          "constantNonNull": false,
+          "definition": "arrival_driver_id uuid",
           "description": "",
           "fk": [
             "fk_request_arrival_driver"
@@ -3347,34 +3626,37 @@ const MODEL = {
         },
         {
           "name": "service_accepted_at",
-          "type": "TIMESTAMPTZ",
+          "type": "timestamp with time zone",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": true,
-          "definition": "service_accepted_at TIMESTAMPTZ",
+          "constantNonNull": false,
+          "definition": "service_accepted_at timestamp with time zone",
           "description": "Aceite do estabelecimento para início do atendimento; após chegada atrasada, encerra a opção de cancelar gratuitamente.",
           "fk": []
         },
         {
           "name": "service_acceptance_recorded_at",
-          "type": "TIMESTAMPTZ",
+          "type": "timestamp with time zone",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": true,
-          "definition": "service_acceptance_recorded_at TIMESTAMPTZ",
+          "constantNonNull": false,
+          "definition": "service_acceptance_recorded_at timestamp with time zone",
           "description": "",
           "fk": []
         },
         {
           "name": "service_accepted_by",
-          "type": "UUID",
+          "type": "uuid",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": true,
-          "definition": "service_accepted_by UUID",
+          "constantNonNull": false,
+          "definition": "service_accepted_by uuid",
           "description": "",
           "fk": [
             "fk_request_service_accepted_by"
@@ -3382,34 +3664,37 @@ const MODEL = {
         },
         {
           "name": "cancelled_at",
-          "type": "TIMESTAMPTZ",
+          "type": "timestamp with time zone",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": true,
-          "definition": "cancelled_at TIMESTAMPTZ",
+          "constantNonNull": false,
+          "definition": "cancelled_at timestamp with time zone",
           "description": "Instante efetivo da decisão de cancelamento, validado pelo backend; não é horário livre informado pelo cliente.",
           "fk": []
         },
         {
           "name": "cancellation_recorded_at",
-          "type": "TIMESTAMPTZ",
+          "type": "timestamp with time zone",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": true,
-          "definition": "cancellation_recorded_at TIMESTAMPTZ",
+          "constantNonNull": false,
+          "definition": "cancellation_recorded_at timestamp with time zone",
           "description": "",
           "fk": []
         },
         {
           "name": "cancelled_by",
-          "type": "UUID",
+          "type": "uuid",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": true,
-          "definition": "cancelled_by UUID",
+          "constantNonNull": false,
+          "definition": "cancelled_by uuid",
           "description": "",
           "fk": [
             "fk_request_cancelled_by"
@@ -3422,6 +3707,7 @@ const MODEL = {
           "unique": false,
           "generated": null,
           "nullable": true,
+          "constantNonNull": false,
           "definition": "cancellation_initiative cancellation_initiative_t",
           "description": "",
           "fk": []
@@ -3433,40 +3719,44 @@ const MODEL = {
           "unique": false,
           "generated": null,
           "nullable": true,
+          "constantNonNull": false,
           "definition": "cancellation_policy cancellation_policy_t",
           "description": "",
           "fk": []
         },
         {
           "name": "cancellation_reason",
-          "type": "TEXT",
+          "type": "text",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": true,
-          "definition": "cancellation_reason TEXT",
+          "constantNonNull": false,
+          "definition": "cancellation_reason text",
           "description": "",
           "fk": []
         },
         {
           "name": "forfeited_volume_liters",
-          "type": "DECIMAL(8,2)",
+          "type": "numeric(8,2)",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "forfeited_volume_liters DECIMAL(8,2) NOT NULL DEFAULT 0",
+          "constantNonNull": false,
+          "definition": "forfeited_volume_liters numeric(8,2) NOT NULL DEFAULT 0",
           "description": "Franquia perdida por cancelamento tardio; não representa óleo recolhido, pontos ou volume ambiental.",
           "fk": []
         },
         {
           "name": "forfeited_collection_slots",
-          "type": "SMALLINT",
+          "type": "smallint",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "forfeited_collection_slots SMALLINT NOT NULL DEFAULT 0",
+          "constantNonNull": false,
+          "definition": "forfeited_collection_slots smallint NOT NULL DEFAULT 0",
           "description": "",
           "fk": []
         }
@@ -3481,6 +3771,13 @@ const MODEL = {
             "id",
             "establishment_id",
             "status"
+          ]
+        },
+        {
+          "name": "uq_request_idempotency",
+          "columns": [
+            "establishment_id",
+            "idempotency_key"
           ]
         }
       ],
@@ -3560,7 +3857,16 @@ const MODEL = {
           "childCard": "0..N"
         }
       ],
-      "special": [],
+      "special": [
+        "ck_collection_request_volume: CHECK (((estimated_volume_liters > (0)::numeric) AND (estimated_volume_liters <> 'NaN'::numeric)))",
+        "ck_collection_request_updated_at: CHECK ((isfinite(request_at) AND isfinite(updated_at) AND (updated_at >= request_at)))",
+        "ck_collection_request_approval: CHECK ((((approved_at IS NULL) = (approved_by IS NULL)) AND ((status <> 'APPROVED'::request_status_t) OR ((approved_at IS NOT NULL) AND (scheduled_at IS NOT NULL))) AND ((approved_at IS NULL) OR (isfinite(approved_at) AND (approved_at >= request_at))) AND ((scheduled_at IS NULL) OR (isfinite(scheduled_at) AND (scheduled_at >= request_at)))))",
+        "ck_collection_request_arrival: CHECK ((((arrived_at IS NULL) AND (arrival_recorded_at IS NULL) AND (arrival_driver_id IS NULL)) OR ((arrived_at IS NOT NULL) AND (arrival_recorded_at IS NOT NULL) AND (arrival_driver_id IS NOT NULL) AND isfinite(arrived_at) AND isfinite(arrival_recorded_at) AND (arrived_at >= request_at) AND (arrival_recorded_at >= arrived_at))))",
+        "ck_collection_request_arrival_approval: CHECK (((arrived_at IS NULL) OR ((approved_at IS NOT NULL) AND (scheduled_at IS NOT NULL))))",
+        "ck_collection_request_service_acceptance: CHECK ((((service_accepted_at IS NULL) AND (service_acceptance_recorded_at IS NULL) AND (service_accepted_by IS NULL)) OR ((service_accepted_at IS NOT NULL) AND (service_acceptance_recorded_at IS NOT NULL) AND (service_accepted_by IS NOT NULL) AND (service_accepted_by = establishment_id) AND isfinite(service_accepted_at) AND isfinite(service_acceptance_recorded_at) AND (arrived_at IS NOT NULL) AND (arrival_recorded_at IS NOT NULL) AND (service_accepted_at >= arrived_at) AND (service_acceptance_recorded_at >= service_accepted_at) AND (service_acceptance_recorded_at >= arrival_recorded_at) AND (status = 'APPROVED'::request_status_t))))",
+        "ck_collection_request_cancellation: CHECK ((((status <> 'CANCELLED'::request_status_t) AND (cancelled_at IS NULL) AND (cancellation_recorded_at IS NULL) AND (cancelled_by IS NULL) AND (cancellation_initiative IS NULL) AND (cancellation_policy IS NULL) AND (cancellation_reason IS NULL) AND (forfeited_volume_liters = (0)::numeric) AND (forfeited_collection_slots = 0)) OR ((status = 'CANCELLED'::request_status_t) AND (cancelled_at IS NOT NULL) AND (cancellation_recorded_at IS NOT NULL) AND (cancelled_by IS NOT NULL) AND (cancellation_initiative IS NOT NULL) AND (cancellation_policy IS NOT NULL) AND (cancellation_reason IS NOT NULL) AND (btrim(cancellation_reason) <> ''::text) AND isfinite(cancelled_at) AND isfinite(cancellation_recorded_at) AND (cancelled_at >= request_at) AND (cancellation_recorded_at >= cancelled_at) AND (((cancellation_policy = 'FREE'::cancellation_policy_t) AND (forfeited_volume_liters = (0)::numeric) AND (forfeited_collection_slots = 0)) OR ((cancellation_policy = 'LATE_FORFEITURE'::cancellation_policy_t) AND (cancellation_initiative = 'ESTABLISHMENT'::cancellation_initiative_t) AND (approved_at IS NOT NULL) AND (scheduled_at IS NOT NULL) AND (cancelled_at > (scheduled_at - '04:00:00'::interval)) AND (forfeited_volume_liters = estimated_volume_liters) AND (forfeited_collection_slots = 1))))))",
+        "ck_collection_request_cancellation_timing: CHECK (((status <> 'CANCELLED'::request_status_t) OR (((cancellation_policy = 'FREE'::cancellation_policy_t) AND ((cancellation_initiative = 'OPERATION'::cancellation_initiative_t) OR (approved_at IS NULL) OR (scheduled_at IS NULL) OR (cancelled_at <= (scheduled_at - '04:00:00'::interval)) OR ((cancelled_at >= (scheduled_at + '01:00:00'::interval)) AND ((arrived_at IS NULL) OR (arrival_recorded_at > cancellation_recorded_at) OR (arrived_at >= (scheduled_at + '01:00:00'::interval)))))) OR ((cancellation_policy = 'LATE_FORFEITURE'::cancellation_policy_t) AND ((cancelled_at < (scheduled_at + '01:00:00'::interval)) OR ((arrived_at IS NOT NULL) AND (arrival_recorded_at IS NOT NULL) AND (arrival_recorded_at <= cancellation_recorded_at) AND (arrived_at < (scheduled_at + '01:00:00'::interval))))))))"
+      ],
       "main": [
         "id",
         "subscription_cycle_id",
@@ -3577,23 +3883,25 @@ const MODEL = {
       "columns": [
         {
           "name": "id",
-          "type": "UUID",
+          "type": "uuid",
           "pk": true,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "id UUID PRIMARY KEY DEFAULT gen_random_uuid()",
+          "constantNonNull": false,
+          "definition": "id uuid NOT NULL DEFAULT gen_random_uuid()",
           "description": "",
           "fk": []
         },
         {
           "name": "collection_request_id",
-          "type": "UUID",
+          "type": "uuid",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "collection_request_id UUID NOT NULL",
+          "constantNonNull": false,
+          "definition": "collection_request_id uuid NOT NULL",
           "description": "",
           "fk": [
             "fk_schedule_request"
@@ -3601,56 +3909,61 @@ const MODEL = {
         },
         {
           "name": "previous_scheduled_at",
-          "type": "TIMESTAMPTZ",
+          "type": "timestamp with time zone",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": true,
-          "definition": "previous_scheduled_at TIMESTAMPTZ",
+          "constantNonNull": false,
+          "definition": "previous_scheduled_at timestamp with time zone",
           "description": "",
           "fk": []
         },
         {
           "name": "new_scheduled_at",
-          "type": "TIMESTAMPTZ",
+          "type": "timestamp with time zone",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "new_scheduled_at TIMESTAMPTZ NOT NULL",
+          "constantNonNull": false,
+          "definition": "new_scheduled_at timestamp with time zone NOT NULL",
           "description": "",
           "fk": []
         },
         {
           "name": "agreed_at",
-          "type": "TIMESTAMPTZ",
+          "type": "timestamp with time zone",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "agreed_at TIMESTAMPTZ NOT NULL",
+          "constantNonNull": false,
+          "definition": "agreed_at timestamp with time zone NOT NULL",
           "description": "",
           "fk": []
         },
         {
           "name": "changed_at",
-          "type": "TIMESTAMPTZ",
+          "type": "timestamp with time zone",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "changed_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP",
+          "constantNonNull": false,
+          "definition": "changed_at timestamp with time zone NOT NULL DEFAULT CURRENT_TIMESTAMP",
           "description": "",
           "fk": []
         },
         {
           "name": "changed_by",
-          "type": "UUID",
+          "type": "uuid",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "changed_by UUID NOT NULL",
+          "constantNonNull": false,
+          "definition": "changed_by uuid NOT NULL",
           "description": "",
           "fk": [
             "fk_schedule_admin"
@@ -3661,8 +3974,9 @@ const MODEL = {
           "type": "user_type_t",
           "pk": false,
           "unique": false,
-          "generated": "ADMIN",
-          "nullable": false,
+          "generated": "'ADMIN'::user_type_t",
+          "nullable": true,
+          "constantNonNull": true,
           "definition": "admin_type user_type_t GENERATED ALWAYS AS ('ADMIN'::user_type_t) STORED",
           "description": "",
           "fk": [
@@ -3671,12 +3985,13 @@ const MODEL = {
         },
         {
           "name": "reason",
-          "type": "TEXT",
+          "type": "text",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "reason TEXT NOT NULL",
+          "constantNonNull": false,
+          "definition": "reason text NOT NULL",
           "description": "",
           "fk": []
         }
@@ -3717,7 +4032,10 @@ const MODEL = {
           "childCard": "0..N"
         }
       ],
-      "special": [],
+      "special": [
+        "ck_collection_schedule_history_dates: CHECK ((isfinite(new_scheduled_at) AND isfinite(agreed_at) AND isfinite(changed_at) AND (agreed_at <= changed_at) AND ((previous_scheduled_at IS NULL) OR (isfinite(previous_scheduled_at) AND (previous_scheduled_at <> new_scheduled_at)))))",
+        "ck_collection_schedule_history_reason: CHECK ((btrim(reason) <> ''::text))"
+      ],
       "main": [
         "id",
         "collection_request_id",
@@ -3734,34 +4052,37 @@ const MODEL = {
       "columns": [
         {
           "name": "id",
-          "type": "UUID",
+          "type": "uuid",
           "pk": true,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "id UUID PRIMARY KEY DEFAULT gen_random_uuid()",
+          "constantNonNull": false,
+          "definition": "id uuid NOT NULL DEFAULT gen_random_uuid()",
           "description": "",
           "fk": []
         },
         {
           "name": "collected_volume_liters",
-          "type": "DECIMAL(8,2)",
+          "type": "numeric(8,2)",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "collected_volume_liters DECIMAL(8,2) NOT NULL",
+          "constantNonNull": false,
+          "definition": "collected_volume_liters numeric(8,2) NOT NULL",
           "description": "",
           "fk": []
         },
         {
           "name": "presented_volume_liters",
-          "type": "DECIMAL(8,2)",
+          "type": "numeric(8,2)",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "presented_volume_liters DECIMAL(8,2) NOT NULL",
+          "constantNonNull": false,
+          "definition": "presented_volume_liters numeric(8,2) NOT NULL",
           "description": "",
           "fk": []
         },
@@ -3772,18 +4093,20 @@ const MODEL = {
           "unique": false,
           "generated": null,
           "nullable": false,
+          "constantNonNull": false,
           "definition": "oil_condition oil_condition_t NOT NULL",
           "description": "",
           "fk": []
         },
         {
           "name": "has_compromising_occurrence",
-          "type": "BOOLEAN",
+          "type": "boolean",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "has_compromising_occurrence BOOLEAN NOT NULL",
+          "constantNonNull": false,
+          "definition": "has_compromising_occurrence boolean NOT NULL",
           "description": "",
           "fk": []
         },
@@ -3794,62 +4117,68 @@ const MODEL = {
           "unique": false,
           "generated": null,
           "nullable": false,
+          "constantNonNull": false,
           "definition": "result collection_result_t NOT NULL",
           "description": "",
           "fk": []
         },
         {
           "name": "points_earned",
-          "type": "BIGINT",
+          "type": "bigint",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "points_earned BIGINT NOT NULL",
+          "constantNonNull": false,
+          "definition": "points_earned bigint NOT NULL",
           "description": "",
           "fk": []
         },
         {
           "name": "observation",
-          "type": "TEXT",
+          "type": "text",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": true,
-          "definition": "observation TEXT",
+          "constantNonNull": false,
+          "definition": "observation text",
           "description": "",
           "fk": []
         },
         {
           "name": "collection_date",
-          "type": "TIMESTAMPTZ",
+          "type": "timestamp with time zone",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "collection_date TIMESTAMPTZ NOT NULL",
+          "constantNonNull": false,
+          "definition": "collection_date timestamp with time zone NOT NULL",
           "description": "",
           "fk": []
         },
         {
           "name": "created_at",
-          "type": "TIMESTAMPTZ",
+          "type": "timestamp with time zone",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP",
+          "constantNonNull": false,
+          "definition": "created_at timestamp with time zone NOT NULL DEFAULT CURRENT_TIMESTAMP",
           "description": "",
           "fk": []
         },
         {
           "name": "collection_request_id",
-          "type": "UUID",
+          "type": "uuid",
           "pk": false,
           "unique": true,
           "generated": null,
           "nullable": false,
-          "definition": "collection_request_id UUID NOT NULL UNIQUE",
+          "constantNonNull": false,
+          "definition": "collection_request_id uuid NOT NULL",
           "description": "",
           "fk": [
             "fk_collection_request_owner"
@@ -3860,8 +4189,9 @@ const MODEL = {
           "type": "request_status_t",
           "pk": false,
           "unique": false,
-          "generated": "APPROVED",
-          "nullable": false,
+          "generated": "'APPROVED'::request_status_t",
+          "nullable": true,
+          "constantNonNull": true,
           "definition": "request_status request_status_t GENERATED ALWAYS AS ('APPROVED'::request_status_t) STORED",
           "description": "",
           "fk": [
@@ -3870,12 +4200,13 @@ const MODEL = {
         },
         {
           "name": "establishment_id",
-          "type": "UUID",
+          "type": "uuid",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "establishment_id UUID NOT NULL",
+          "constantNonNull": false,
+          "definition": "establishment_id uuid NOT NULL",
           "description": "",
           "fk": [
             "fk_collection_request_owner"
@@ -3883,23 +4214,25 @@ const MODEL = {
         },
         {
           "name": "processing_order",
-          "type": "BIGINT",
+          "type": "bigint",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "processing_order BIGINT NOT NULL",
+          "constantNonNull": false,
+          "definition": "processing_order bigint NOT NULL",
           "description": "Ordem fixa por estabelecimento para reconstruir pontos e piso zero, independente da data física da visita.",
           "fk": []
         },
         {
           "name": "driver_id",
-          "type": "UUID",
+          "type": "uuid",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "driver_id UUID NOT NULL",
+          "constantNonNull": false,
+          "definition": "driver_id uuid NOT NULL",
           "description": "",
           "fk": [
             "fk_collection_driver"
@@ -3912,40 +4245,44 @@ const MODEL = {
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "record_status record_status_t NOT NULL DEFAULT 'RECORDED'",
+          "constantNonNull": false,
+          "definition": "record_status record_status_t NOT NULL DEFAULT 'RECORDED'::record_status_t",
           "description": "",
           "fk": []
         },
         {
           "name": "revision",
-          "type": "INTEGER",
+          "type": "integer",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "revision INTEGER NOT NULL DEFAULT 1",
+          "constantNonNull": false,
+          "definition": "revision integer NOT NULL DEFAULT 1",
           "description": "",
           "fk": []
         },
         {
           "name": "corrected_at",
-          "type": "TIMESTAMPTZ",
+          "type": "timestamp with time zone",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": true,
-          "definition": "corrected_at TIMESTAMPTZ",
+          "constantNonNull": false,
+          "definition": "corrected_at timestamp with time zone",
           "description": "",
           "fk": []
         },
         {
           "name": "corrected_by",
-          "type": "UUID",
+          "type": "uuid",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": true,
-          "definition": "corrected_by UUID",
+          "constantNonNull": false,
+          "definition": "corrected_by uuid",
           "description": "",
           "fk": [
             "fk_collection_correction_admin"
@@ -3953,12 +4290,13 @@ const MODEL = {
         },
         {
           "name": "correction_reason",
-          "type": "TEXT",
+          "type": "text",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": true,
-          "definition": "correction_reason TEXT",
+          "constantNonNull": false,
+          "definition": "correction_reason text",
           "description": "",
           "fk": []
         },
@@ -3967,8 +4305,9 @@ const MODEL = {
           "type": "user_type_t",
           "pk": false,
           "unique": false,
-          "generated": "ADMIN",
-          "nullable": false,
+          "generated": "'ADMIN'::user_type_t",
+          "nullable": true,
+          "constantNonNull": true,
           "definition": "admin_type user_type_t GENERATED ALWAYS AS ('ADMIN'::user_type_t) STORED",
           "description": "",
           "fk": [
@@ -4051,7 +4390,16 @@ const MODEL = {
           "childCard": "0..N"
         }
       ],
-      "special": [],
+      "special": [
+        "ck_collection_volumes: CHECK (((presented_volume_liters >= (0)::numeric) AND (presented_volume_liters <> 'NaN'::numeric) AND (collected_volume_liters >= (0)::numeric) AND (collected_volume_liters <= presented_volume_liters)))",
+        "ck_collection_condition_presented: CHECK ((((presented_volume_liters = (0)::numeric) AND (oil_condition = 'NOT_ASSESSED'::oil_condition_t)) OR ((presented_volume_liters > (0)::numeric) AND (oil_condition = ANY (ARRAY['ACCEPTABLE'::oil_condition_t, 'UNACCEPTABLE'::oil_condition_t])))))",
+        "ck_collection_success_conditions: CHECK (((result <> 'SUCCESSFUL'::collection_result_t) OR ((collected_volume_liters > (0)::numeric) AND (oil_condition IS NOT NULL) AND (oil_condition = 'ACCEPTABLE'::oil_condition_t) AND (NOT has_compromising_occurrence))))",
+        "ck_collection_explanation: CHECK (((NOT ((presented_volume_liters = (0)::numeric) OR (oil_condition = 'UNACCEPTABLE'::oil_condition_t) OR has_compromising_occurrence)) OR ((observation IS NOT NULL) AND (btrim(observation) <> ''::text))))",
+        "ck_collection_points: CHECK ((((record_status = 'ANNULLED'::record_status_t) AND (points_earned = 0)) OR ((record_status = 'RECORDED'::record_status_t) AND (((result = 'UNSUCCESSFUL'::collection_result_t) AND (points_earned = '-50'::integer)) OR ((result = 'SUCCESSFUL'::collection_result_t) AND (points_earned >= ((floor(collected_volume_liters))::bigint + 50)) AND (points_earned <= ((floor(collected_volume_liters))::bigint + 150)) AND ((((points_earned - (floor(collected_volume_liters))::bigint) - 50) % (10)::bigint) = 0))))))",
+        "ck_collection_order: CHECK ((processing_order > 0))",
+        "ck_collection_dates: CHECK ((isfinite(collection_date) AND isfinite(created_at) AND (collection_date <= created_at)))",
+        "ck_collection_correction: CHECK ((((revision = 1) AND (record_status = 'RECORDED'::record_status_t) AND (corrected_at IS NULL) AND (corrected_by IS NULL) AND (correction_reason IS NULL)) OR ((revision > 1) AND (corrected_at IS NOT NULL) AND (corrected_by IS NOT NULL) AND (correction_reason IS NOT NULL) AND (btrim(correction_reason) <> ''::text) AND isfinite(corrected_at) AND (corrected_at >= created_at))))"
+      ],
       "main": [
         "id",
         "collection_request_id",
@@ -4070,45 +4418,49 @@ const MODEL = {
       "columns": [
         {
           "name": "id",
-          "type": "UUID",
+          "type": "uuid",
           "pk": true,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "id UUID PRIMARY KEY DEFAULT gen_random_uuid()",
+          "constantNonNull": false,
+          "definition": "id uuid NOT NULL DEFAULT gen_random_uuid()",
           "description": "",
           "fk": []
         },
         {
           "name": "code",
-          "type": "VARCHAR(50)",
+          "type": "character varying(50)",
           "pk": false,
           "unique": true,
           "generated": null,
           "nullable": false,
-          "definition": "code VARCHAR(50) NOT NULL UNIQUE",
+          "constantNonNull": false,
+          "definition": "code character varying(50) NOT NULL",
           "description": "",
           "fk": []
         },
         {
           "name": "name",
-          "type": "VARCHAR(150)",
+          "type": "character varying(150)",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "name VARCHAR(150) NOT NULL",
+          "constantNonNull": false,
+          "definition": "name character varying(150) NOT NULL",
           "description": "",
           "fk": []
         },
         {
           "name": "description",
-          "type": "TEXT",
+          "type": "text",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": true,
-          "definition": "description TEXT",
+          "constantNonNull": false,
+          "definition": "description text",
           "description": "",
           "fk": []
         },
@@ -4119,7 +4471,8 @@ const MODEL = {
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "status active_status_t NOT NULL DEFAULT 'ACTIVE'",
+          "constantNonNull": false,
+          "definition": "status active_status_t NOT NULL DEFAULT 'ACTIVE'::active_status_t",
           "description": "",
           "fk": []
         }
@@ -4136,7 +4489,10 @@ const MODEL = {
         }
       ],
       "fks": [],
-      "special": [],
+      "special": [
+        "ck_collection_failure_reason_name_not_blank: CHECK ((btrim((name)::text) <> ''::text))",
+        "ck_collection_failure_reason_code: CHECK ((btrim((code)::text) <> ''::text))"
+      ],
       "main": [
         "id",
         "code",
@@ -4151,12 +4507,13 @@ const MODEL = {
       "columns": [
         {
           "name": "collection_id",
-          "type": "UUID",
+          "type": "uuid",
           "pk": true,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "collection_id UUID NOT NULL",
+          "constantNonNull": false,
+          "definition": "collection_id uuid NOT NULL",
           "description": "",
           "fk": [
             "fk_failure_collection"
@@ -4164,12 +4521,13 @@ const MODEL = {
         },
         {
           "name": "failure_reason_id",
-          "type": "UUID",
+          "type": "uuid",
           "pk": true,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "failure_reason_id UUID NOT NULL",
+          "constantNonNull": false,
+          "definition": "failure_reason_id uuid NOT NULL",
           "description": "",
           "fk": [
             "fk_failure_reason"
@@ -4224,80 +4582,99 @@ const MODEL = {
       "columns": [
         {
           "name": "id",
-          "type": "UUID",
+          "type": "uuid",
           "pk": true,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "id UUID PRIMARY KEY DEFAULT gen_random_uuid()",
+          "constantNonNull": false,
+          "definition": "id uuid NOT NULL DEFAULT gen_random_uuid()",
           "description": "",
           "fk": []
         },
         {
           "name": "oil_volume_liters",
-          "type": "DECIMAL(8,2)",
+          "type": "numeric(8,2)",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "oil_volume_liters DECIMAL(8,2) NOT NULL",
+          "constantNonNull": false,
+          "definition": "oil_volume_liters numeric(8,2) NOT NULL",
           "description": "",
           "fk": []
         },
         {
           "name": "points_earned",
-          "type": "BIGINT",
+          "type": "bigint",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "points_earned BIGINT NOT NULL",
+          "constantNonNull": false,
+          "definition": "points_earned bigint NOT NULL",
           "description": "",
           "fk": []
         },
         {
           "name": "delivery_date",
-          "type": "TIMESTAMPTZ",
+          "type": "timestamp with time zone",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "delivery_date TIMESTAMPTZ NOT NULL",
+          "constantNonNull": false,
+          "definition": "delivery_date timestamp with time zone NOT NULL",
           "description": "",
           "fk": []
         },
         {
           "name": "created_at",
-          "type": "TIMESTAMPTZ",
+          "type": "timestamp with time zone",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP",
+          "constantNonNull": false,
+          "definition": "created_at timestamp with time zone NOT NULL DEFAULT CURRENT_TIMESTAMP",
           "description": "",
           "fk": []
         },
         {
           "name": "citizen_id",
-          "type": "UUID",
+          "type": "uuid",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "citizen_id UUID NOT NULL",
+          "constantNonNull": false,
+          "definition": "citizen_id uuid NOT NULL",
           "description": "",
           "fk": [
             "fk_delivery_citizen"
           ]
         },
         {
-          "name": "pev_id",
-          "type": "UUID",
+          "name": "processing_order",
+          "type": "bigint",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "pev_id UUID NOT NULL",
+          "constantNonNull": false,
+          "definition": "processing_order bigint NOT NULL",
+          "description": "Ordem fixa por cidadão para reconstruir pontos e saldos, independente da data física da entrega. Atribuída sob bloqueio do cidadão e preservada nas correções.",
+          "fk": []
+        },
+        {
+          "name": "pev_id",
+          "type": "uuid",
+          "pk": false,
+          "unique": false,
+          "generated": null,
+          "nullable": false,
+          "constantNonNull": false,
+          "definition": "pev_id uuid NOT NULL",
           "description": "",
           "fk": [
             "fk_delivery_pev"
@@ -4305,16 +4682,29 @@ const MODEL = {
         },
         {
           "name": "validated_by",
-          "type": "UUID",
+          "type": "uuid",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "validated_by UUID NOT NULL",
+          "constantNonNull": false,
+          "definition": "validated_by uuid NOT NULL",
           "description": "",
           "fk": [
             "fk_delivery_validator"
           ]
+        },
+        {
+          "name": "idempotency_key",
+          "type": "uuid",
+          "pk": false,
+          "unique": true,
+          "generated": null,
+          "nullable": false,
+          "constantNonNull": false,
+          "definition": "idempotency_key uuid NOT NULL",
+          "description": "",
+          "fk": []
         },
         {
           "name": "record_status",
@@ -4323,40 +4713,44 @@ const MODEL = {
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "record_status record_status_t NOT NULL DEFAULT 'RECORDED'",
+          "constantNonNull": false,
+          "definition": "record_status record_status_t NOT NULL DEFAULT 'RECORDED'::record_status_t",
           "description": "",
           "fk": []
         },
         {
           "name": "revision",
-          "type": "INTEGER",
+          "type": "integer",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "revision INTEGER NOT NULL DEFAULT 1",
+          "constantNonNull": false,
+          "definition": "revision integer NOT NULL DEFAULT 1",
           "description": "",
           "fk": []
         },
         {
           "name": "corrected_at",
-          "type": "TIMESTAMPTZ",
+          "type": "timestamp with time zone",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": true,
-          "definition": "corrected_at TIMESTAMPTZ",
+          "constantNonNull": false,
+          "definition": "corrected_at timestamp with time zone",
           "description": "",
           "fk": []
         },
         {
           "name": "corrected_by",
-          "type": "UUID",
+          "type": "uuid",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": true,
-          "definition": "corrected_by UUID",
+          "constantNonNull": false,
+          "definition": "corrected_by uuid",
           "description": "",
           "fk": [
             "fk_delivery_correction_admin"
@@ -4364,12 +4758,13 @@ const MODEL = {
         },
         {
           "name": "correction_reason",
-          "type": "TEXT",
+          "type": "text",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": true,
-          "definition": "correction_reason TEXT",
+          "constantNonNull": false,
+          "definition": "correction_reason text",
           "description": "",
           "fk": []
         },
@@ -4378,8 +4773,9 @@ const MODEL = {
           "type": "user_type_t",
           "pk": false,
           "unique": false,
-          "generated": "ADMIN",
-          "nullable": false,
+          "generated": "'ADMIN'::user_type_t",
+          "nullable": true,
+          "constantNonNull": true,
           "definition": "admin_type user_type_t GENERATED ALWAYS AS ('ADMIN'::user_type_t) STORED",
           "description": "",
           "fk": [
@@ -4396,6 +4792,19 @@ const MODEL = {
           "columns": [
             "id",
             "citizen_id"
+          ]
+        },
+        {
+          "name": "uq_delivery_order",
+          "columns": [
+            "citizen_id",
+            "processing_order"
+          ]
+        },
+        {
+          "name": "uq_delivery_idempotency",
+          "columns": [
+            "idempotency_key"
           ]
         }
       ],
@@ -4459,7 +4868,13 @@ const MODEL = {
           "childCard": "0..N"
         }
       ],
-      "special": [],
+      "special": [
+        "ck_delivery_pev_volume: CHECK (((oil_volume_liters > (0)::numeric) AND (oil_volume_liters <> 'NaN'::numeric)))",
+        "ck_delivery_pev_points: CHECK ((points_earned =\nCASE\n    WHEN (record_status = 'ANNULLED'::record_status_t) THEN (0)::bigint\n    ELSE (floor(oil_volume_liters))::bigint\nEND))",
+        "ck_delivery_pev_dates: CHECK ((isfinite(delivery_date) AND isfinite(created_at) AND (delivery_date <= created_at)))",
+        "ck_delivery_pev_order: CHECK ((processing_order > 0))",
+        "ck_delivery_pev_correction: CHECK ((((revision = 1) AND (record_status = 'RECORDED'::record_status_t) AND (corrected_at IS NULL) AND (corrected_by IS NULL) AND (correction_reason IS NULL)) OR ((revision > 1) AND (corrected_at IS NOT NULL) AND (corrected_by IS NOT NULL) AND (correction_reason IS NOT NULL) AND (btrim(correction_reason) <> ''::text) AND isfinite(corrected_at) AND (corrected_at >= created_at))))"
+      ],
       "main": [
         "id",
         "citizen_id",
@@ -4477,23 +4892,25 @@ const MODEL = {
       "columns": [
         {
           "name": "id",
-          "type": "UUID",
+          "type": "uuid",
           "pk": true,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "id UUID PRIMARY KEY DEFAULT gen_random_uuid()",
+          "constantNonNull": false,
+          "definition": "id uuid NOT NULL DEFAULT gen_random_uuid()",
           "description": "",
           "fk": []
         },
         {
           "name": "user_id",
-          "type": "UUID",
+          "type": "uuid",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "user_id UUID NOT NULL",
+          "constantNonNull": false,
+          "definition": "user_id uuid NOT NULL",
           "description": "",
           "fk": [
             "fk_point_calculation_user",
@@ -4503,12 +4920,13 @@ const MODEL = {
         },
         {
           "name": "collection_id",
-          "type": "UUID",
+          "type": "uuid",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": true,
-          "definition": "collection_id UUID",
+          "constantNonNull": false,
+          "definition": "collection_id uuid",
           "description": "",
           "fk": [
             "fk_point_calculation_collection"
@@ -4516,12 +4934,13 @@ const MODEL = {
         },
         {
           "name": "delivery_pev_id",
-          "type": "UUID",
+          "type": "uuid",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": true,
-          "definition": "delivery_pev_id UUID",
+          "constantNonNull": false,
+          "definition": "delivery_pev_id uuid",
           "description": "",
           "fk": [
             "fk_point_calculation_delivery"
@@ -4529,89 +4948,97 @@ const MODEL = {
         },
         {
           "name": "revision",
-          "type": "INTEGER",
+          "type": "integer",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "revision INTEGER NOT NULL",
+          "constantNonNull": false,
+          "definition": "revision integer NOT NULL",
           "description": "Revisão do cálculo, inclusive por correção de evento anterior; não precisa coincidir com a revisão da coleta.",
           "fk": []
         },
         {
           "name": "is_current",
-          "type": "BOOLEAN",
+          "type": "boolean",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "is_current BOOLEAN NOT NULL DEFAULT TRUE",
+          "constantNonNull": false,
+          "definition": "is_current boolean NOT NULL DEFAULT true",
           "description": "",
           "fk": []
         },
         {
           "name": "points_total",
-          "type": "BIGINT",
+          "type": "bigint",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "points_total BIGINT NOT NULL",
+          "constantNonNull": false,
+          "definition": "points_total bigint NOT NULL",
           "description": "",
           "fk": []
         },
         {
           "name": "balance_before",
-          "type": "BIGINT",
+          "type": "bigint",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "balance_before BIGINT NOT NULL",
+          "constantNonNull": false,
+          "definition": "balance_before bigint NOT NULL",
           "description": "",
           "fk": []
         },
         {
           "name": "balance_after",
-          "type": "BIGINT",
+          "type": "bigint",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "balance_after BIGINT NOT NULL",
+          "constantNonNull": false,
+          "definition": "balance_after bigint NOT NULL",
           "description": "",
           "fk": []
         },
         {
           "name": "successful_collections_count",
-          "type": "BIGINT",
+          "type": "bigint",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": true,
-          "definition": "successful_collections_count BIGINT",
+          "constantNonNull": false,
+          "definition": "successful_collections_count bigint",
           "description": "",
           "fk": []
         },
         {
           "name": "calculated_at",
-          "type": "TIMESTAMPTZ",
+          "type": "timestamp with time zone",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "calculated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP",
+          "constantNonNull": false,
+          "definition": "calculated_at timestamp with time zone NOT NULL DEFAULT CURRENT_TIMESTAMP",
           "description": "",
           "fk": []
         },
         {
           "name": "recalculated_by",
-          "type": "UUID",
+          "type": "uuid",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": true,
-          "definition": "recalculated_by UUID",
+          "constantNonNull": false,
+          "definition": "recalculated_by uuid",
           "description": "",
           "fk": [
             "fk_point_calculation_admin"
@@ -4619,12 +5046,13 @@ const MODEL = {
         },
         {
           "name": "recalculation_reason",
-          "type": "TEXT",
+          "type": "text",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": true,
-          "definition": "recalculation_reason TEXT",
+          "constantNonNull": false,
+          "definition": "recalculation_reason text",
           "description": "",
           "fk": []
         },
@@ -4633,8 +5061,9 @@ const MODEL = {
           "type": "user_type_t",
           "pk": false,
           "unique": false,
-          "generated": "ADMIN",
-          "nullable": false,
+          "generated": "'ADMIN'::user_type_t",
+          "nullable": true,
+          "constantNonNull": true,
           "definition": "admin_type user_type_t GENERATED ALWAYS AS ('ADMIN'::user_type_t) STORED",
           "description": "",
           "fk": [
@@ -4726,8 +5155,12 @@ const MODEL = {
         }
       ],
       "special": [
-        "UNIQUE (collection_id) WHERE is_current AND collection_id IS NOT NULL",
-        "UNIQUE (delivery_pev_id) WHERE is_current AND delivery_pev_id IS NOT NULL"
+        "ck_point_calculation_source: CHECK (((collection_id IS NOT NULL) <> (delivery_pev_id IS NOT NULL)))",
+        "ck_point_calculation_balance: CHECK (((balance_before >= 0) AND (balance_after >= 0) AND ((balance_after)::numeric = GREATEST((0)::numeric, ((balance_before)::numeric + (points_total)::numeric)))))",
+        "ck_point_calculation_success_count: CHECK ((((collection_id IS NOT NULL) AND (successful_collections_count IS NOT NULL) AND (successful_collections_count >= 0)) OR ((delivery_pev_id IS NOT NULL) AND (successful_collections_count IS NULL) AND (points_total >= 0))))",
+        "ck_point_calculation_revision: CHECK ((isfinite(calculated_at) AND (((revision = 1) AND (recalculated_by IS NULL) AND (recalculation_reason IS NULL)) OR ((revision > 1) AND (recalculated_by IS NOT NULL) AND (recalculation_reason IS NOT NULL) AND (btrim(recalculation_reason) <> ''::text)))))",
+        "CREATE UNIQUE INDEX uq_point_collection_current ON public.point_calculation USING btree (collection_id) WHERE (is_current AND (collection_id IS NOT NULL))",
+        "CREATE UNIQUE INDEX uq_point_delivery_current ON public.point_calculation USING btree (delivery_pev_id) WHERE (is_current AND (delivery_pev_id IS NOT NULL))"
       ],
       "main": [
         "id",
@@ -4746,23 +5179,25 @@ const MODEL = {
       "columns": [
         {
           "name": "id",
-          "type": "UUID",
+          "type": "uuid",
           "pk": true,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "id UUID PRIMARY KEY DEFAULT gen_random_uuid()",
+          "constantNonNull": false,
+          "definition": "id uuid NOT NULL DEFAULT gen_random_uuid()",
           "description": "",
           "fk": []
         },
         {
           "name": "point_calculation_id",
-          "type": "UUID",
+          "type": "uuid",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "point_calculation_id UUID NOT NULL",
+          "constantNonNull": false,
+          "definition": "point_calculation_id uuid NOT NULL",
           "description": "",
           "fk": [
             "fk_point_transaction_calculation"
@@ -4775,29 +5210,32 @@ const MODEL = {
           "unique": false,
           "generated": null,
           "nullable": false,
+          "constantNonNull": false,
           "definition": "component point_component_t NOT NULL",
           "description": "",
           "fk": []
         },
         {
           "name": "points",
-          "type": "BIGINT",
+          "type": "bigint",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "points BIGINT NOT NULL",
+          "constantNonNull": false,
+          "definition": "points bigint NOT NULL",
           "description": "",
           "fk": []
         },
         {
           "name": "created_at",
-          "type": "TIMESTAMPTZ",
+          "type": "timestamp with time zone",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP",
+          "constantNonNull": false,
+          "definition": "created_at timestamp with time zone NOT NULL DEFAULT CURRENT_TIMESTAMP",
           "description": "",
           "fk": []
         }
@@ -4830,7 +5268,9 @@ const MODEL = {
           "childCard": "0..N"
         }
       ],
-      "special": [],
+      "special": [
+        "ck_point_transaction_component: CHECK ((((component = 'VOLUME'::point_component_t) AND (points >= 0)) OR ((component = 'SUCCESS_BONUS'::point_component_t) AND (points = 50)) OR ((component = 'FAILURE_PENALTY'::point_component_t) AND (points = '-50'::integer)) OR ((component = 'RECURRENCE_BONUS'::point_component_t) AND ((points >= 10) AND (points <= 100)) AND ((points % (10)::bigint) = 0))))"
+      ],
       "main": [
         "id",
         "point_calculation_id",
@@ -4845,78 +5285,85 @@ const MODEL = {
       "columns": [
         {
           "name": "id",
-          "type": "UUID",
+          "type": "uuid",
           "pk": true,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "id UUID PRIMARY KEY DEFAULT gen_random_uuid()",
+          "constantNonNull": false,
+          "definition": "id uuid NOT NULL DEFAULT gen_random_uuid()",
           "description": "",
           "fk": []
         },
         {
           "name": "name",
-          "type": "VARCHAR(100)",
+          "type": "character varying(100)",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "name VARCHAR(100) NOT NULL",
+          "constantNonNull": false,
+          "definition": "name character varying(100) NOT NULL",
           "description": "",
           "fk": []
         },
         {
           "name": "description",
-          "type": "TEXT",
+          "type": "text",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": true,
-          "definition": "description TEXT",
+          "constantNonNull": false,
+          "definition": "description text",
           "description": "",
           "fk": []
         },
         {
           "name": "required_liters",
-          "type": "DECIMAL(8,2)",
+          "type": "numeric(8,2)",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "required_liters DECIMAL(8,2) NOT NULL",
+          "constantNonNull": false,
+          "definition": "required_liters numeric(8,2) NOT NULL",
           "description": "",
           "fk": []
         },
         {
           "name": "badge_image_url",
-          "type": "VARCHAR(500)",
+          "type": "character varying(500)",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": true,
-          "definition": "badge_image_url VARCHAR(500)",
+          "constantNonNull": false,
+          "definition": "badge_image_url character varying(500)",
           "description": "",
           "fk": []
         },
         {
           "name": "created_at",
-          "type": "TIMESTAMPTZ",
+          "type": "timestamp with time zone",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP",
+          "constantNonNull": false,
+          "definition": "created_at timestamp with time zone NOT NULL DEFAULT CURRENT_TIMESTAMP",
           "description": "",
           "fk": []
         },
         {
           "name": "updated_at",
-          "type": "TIMESTAMPTZ",
+          "type": "timestamp with time zone",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP",
+          "constantNonNull": false,
+          "definition": "updated_at timestamp with time zone NOT NULL DEFAULT CURRENT_TIMESTAMP",
           "description": "",
           "fk": []
         }
@@ -4926,7 +5373,11 @@ const MODEL = {
       ],
       "uniques": [],
       "fks": [],
-      "special": [],
+      "special": [
+        "ck_certificate_level_name_not_blank: CHECK ((btrim((name)::text) <> ''::text))",
+        "ck_certificate_level_volume: CHECK (((required_liters > (0)::numeric) AND (required_liters <> 'NaN'::numeric)))",
+        "ck_certificate_level_timestamps: CHECK ((isfinite(created_at) AND isfinite(updated_at) AND (updated_at >= created_at)))"
+      ],
       "main": [
         "id",
         "name",
@@ -4940,78 +5391,85 @@ const MODEL = {
       "columns": [
         {
           "name": "id",
-          "type": "UUID",
+          "type": "uuid",
           "pk": true,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "id UUID PRIMARY KEY DEFAULT gen_random_uuid()",
+          "constantNonNull": false,
+          "definition": "id uuid NOT NULL DEFAULT gen_random_uuid()",
           "description": "",
           "fk": []
         },
         {
           "name": "certificate_code",
-          "type": "VARCHAR(64)",
+          "type": "character varying(64)",
           "pk": false,
           "unique": true,
           "generated": null,
           "nullable": false,
-          "definition": "certificate_code VARCHAR(64) NOT NULL UNIQUE",
+          "constantNonNull": false,
+          "definition": "certificate_code character varying(64) NOT NULL",
           "description": "",
           "fk": []
         },
         {
           "name": "pdf_url",
-          "type": "VARCHAR(500)",
+          "type": "character varying(500)",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": true,
-          "definition": "pdf_url VARCHAR(500)",
+          "constantNonNull": false,
+          "definition": "pdf_url character varying(500)",
           "description": "",
           "fk": []
         },
         {
           "name": "issued_at",
-          "type": "TIMESTAMPTZ",
+          "type": "timestamp with time zone",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "issued_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP",
+          "constantNonNull": false,
+          "definition": "issued_at timestamp with time zone NOT NULL DEFAULT CURRENT_TIMESTAMP",
           "description": "",
           "fk": []
         },
         {
           "name": "created_at",
-          "type": "TIMESTAMPTZ",
+          "type": "timestamp with time zone",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP",
+          "constantNonNull": false,
+          "definition": "created_at timestamp with time zone NOT NULL DEFAULT CURRENT_TIMESTAMP",
           "description": "",
           "fk": []
         },
         {
           "name": "updated_at",
-          "type": "TIMESTAMPTZ",
+          "type": "timestamp with time zone",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP",
+          "constantNonNull": false,
+          "definition": "updated_at timestamp with time zone NOT NULL DEFAULT CURRENT_TIMESTAMP",
           "description": "",
           "fk": []
         },
         {
           "name": "certificate_level_id",
-          "type": "UUID",
+          "type": "uuid",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "certificate_level_id UUID NOT NULL",
+          "constantNonNull": false,
+          "definition": "certificate_level_id uuid NOT NULL",
           "description": "",
           "fk": [
             "fk_certificate_level"
@@ -5019,12 +5477,13 @@ const MODEL = {
         },
         {
           "name": "establishment_id",
-          "type": "UUID",
+          "type": "uuid",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "establishment_id UUID NOT NULL",
+          "constantNonNull": false,
+          "definition": "establishment_id uuid NOT NULL",
           "description": "",
           "fk": [
             "fk_certificate_establishment"
@@ -5037,40 +5496,44 @@ const MODEL = {
           "unique": false,
           "generated": null,
           "nullable": false,
-          "definition": "status certificate_status_t NOT NULL DEFAULT 'ACTIVE'",
+          "constantNonNull": false,
+          "definition": "status certificate_status_t NOT NULL DEFAULT 'ACTIVE'::certificate_status_t",
           "description": "",
           "fk": []
         },
         {
           "name": "revoked_at",
-          "type": "TIMESTAMPTZ",
+          "type": "timestamp with time zone",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": true,
-          "definition": "revoked_at TIMESTAMPTZ",
+          "constantNonNull": false,
+          "definition": "revoked_at timestamp with time zone",
           "description": "",
           "fk": []
         },
         {
           "name": "reactivated_at",
-          "type": "TIMESTAMPTZ",
+          "type": "timestamp with time zone",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": true,
-          "definition": "reactivated_at TIMESTAMPTZ",
+          "constantNonNull": false,
+          "definition": "reactivated_at timestamp with time zone",
           "description": "",
           "fk": []
         },
         {
           "name": "status_reason",
-          "type": "TEXT",
+          "type": "text",
           "pk": false,
           "unique": false,
           "generated": null,
           "nullable": true,
-          "definition": "status_reason TEXT",
+          "constantNonNull": false,
+          "definition": "status_reason text",
           "description": "",
           "fk": []
         }
@@ -5123,7 +5586,12 @@ const MODEL = {
           "childCard": "0..N"
         }
       ],
-      "special": [],
+      "special": [
+        "ck_certificate_code: CHECK ((btrim((certificate_code)::text) <> ''::text))",
+        "ck_certificate_dates: CHECK ((isfinite(issued_at) AND (issued_at <= created_at) AND ((revoked_at IS NULL) OR (isfinite(revoked_at) AND (revoked_at >= issued_at))) AND ((reactivated_at IS NULL) OR (isfinite(reactivated_at) AND (reactivated_at >= issued_at)))))",
+        "ck_certificate_revocation: CHECK (((status <> 'REVOKED'::certificate_status_t) OR ((revoked_at IS NOT NULL) AND (status_reason IS NOT NULL) AND (btrim(status_reason) <> ''::text))))",
+        "ck_certificate_timestamps: CHECK ((isfinite(created_at) AND isfinite(updated_at) AND (updated_at >= created_at)))"
+      ],
       "main": [
         "id",
         "establishment_id",
@@ -5131,13 +5599,519 @@ const MODEL = {
         "certificate_code",
         "status"
       ]
+    },
+    "auth_session": {
+      "name": "auth_session",
+      "domain": "cadastros",
+      "description": "Login independente por dispositivo. Validade deriva do usuário ativo, prazo e revogação; não armazena JWT.",
+      "columns": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "pk": true,
+          "unique": false,
+          "generated": null,
+          "nullable": false,
+          "constantNonNull": false,
+          "definition": "id uuid NOT NULL DEFAULT gen_random_uuid()",
+          "description": "",
+          "fk": []
+        },
+        {
+          "name": "user_id",
+          "type": "uuid",
+          "pk": false,
+          "unique": false,
+          "generated": null,
+          "nullable": false,
+          "constantNonNull": false,
+          "definition": "user_id uuid NOT NULL",
+          "description": "",
+          "fk": [
+            "fk_auth_session_user"
+          ]
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "pk": false,
+          "unique": false,
+          "generated": null,
+          "nullable": false,
+          "constantNonNull": false,
+          "definition": "created_at timestamp with time zone NOT NULL",
+          "description": "",
+          "fk": []
+        },
+        {
+          "name": "last_renewed_at",
+          "type": "timestamp with time zone",
+          "pk": false,
+          "unique": false,
+          "generated": null,
+          "nullable": false,
+          "constantNonNull": false,
+          "definition": "last_renewed_at timestamp with time zone NOT NULL",
+          "description": "Login inicial ou última rotação bem-sucedida; consultas comuns não prorrogam a sessão.",
+          "fk": []
+        },
+        {
+          "name": "idle_expires_at",
+          "type": "timestamp with time zone",
+          "pk": false,
+          "unique": false,
+          "generated": null,
+          "nullable": false,
+          "constantNonNull": false,
+          "definition": "idle_expires_at timestamp with time zone NOT NULL",
+          "description": "",
+          "fk": []
+        },
+        {
+          "name": "revoked_at",
+          "type": "timestamp with time zone",
+          "pk": false,
+          "unique": false,
+          "generated": null,
+          "nullable": true,
+          "constantNonNull": false,
+          "definition": "revoked_at timestamp with time zone",
+          "description": "",
+          "fk": []
+        },
+        {
+          "name": "revocation_reason",
+          "type": "auth_revocation_reason_t",
+          "pk": false,
+          "unique": false,
+          "generated": null,
+          "nullable": true,
+          "constantNonNull": false,
+          "definition": "revocation_reason auth_revocation_reason_t",
+          "description": "",
+          "fk": []
+        },
+        {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "pk": false,
+          "unique": false,
+          "generated": null,
+          "nullable": false,
+          "constantNonNull": false,
+          "definition": "updated_at timestamp with time zone NOT NULL",
+          "description": "",
+          "fk": []
+        }
+      ],
+      "pk": [
+        "id"
+      ],
+      "uniques": [],
+      "fks": [
+        {
+          "name": "fk_auth_session_user",
+          "child": "auth_session",
+          "parent": "users",
+          "columns": [
+            "user_id"
+          ],
+          "references": [
+            "id"
+          ],
+          "actions": "ON UPDATE RESTRICT ON DELETE RESTRICT",
+          "parentCard": "1",
+          "childCard": "0..N"
+        }
+      ],
+      "special": [
+        "ck_auth_session_dates: CHECK ((isfinite(created_at) AND isfinite(last_renewed_at) AND isfinite(idle_expires_at) AND isfinite(updated_at) AND (last_renewed_at >= created_at) AND (idle_expires_at > last_renewed_at) AND (updated_at >= created_at) AND ((revoked_at IS NULL) OR (isfinite(revoked_at) AND (revoked_at >= created_at)))))",
+        "ck_auth_session_revocation: CHECK (((revoked_at IS NULL) = (revocation_reason IS NULL)))"
+      ],
+      "main": [
+        "id",
+        "user_id",
+        "idle_expires_at",
+        "revoked_at"
+      ]
+    },
+    "auth_refresh_token": {
+      "name": "auth_refresh_token",
+      "domain": "cadastros",
+      "description": "Histórico operacional imutável de hashes SHA-256; o segredo aleatório é gerado e entregue somente pela Core.",
+      "columns": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "pk": true,
+          "unique": false,
+          "generated": null,
+          "nullable": false,
+          "constantNonNull": false,
+          "definition": "id uuid NOT NULL DEFAULT gen_random_uuid()",
+          "description": "",
+          "fk": []
+        },
+        {
+          "name": "session_id",
+          "type": "uuid",
+          "pk": false,
+          "unique": false,
+          "generated": null,
+          "nullable": false,
+          "constantNonNull": false,
+          "definition": "session_id uuid NOT NULL",
+          "description": "",
+          "fk": [
+            "fk_auth_refresh_session"
+          ]
+        },
+        {
+          "name": "token_hash",
+          "type": "bytea",
+          "pk": false,
+          "unique": true,
+          "generated": null,
+          "nullable": false,
+          "constantNonNull": false,
+          "definition": "token_hash bytea NOT NULL",
+          "description": "",
+          "fk": []
+        },
+        {
+          "name": "generation",
+          "type": "bigint",
+          "pk": false,
+          "unique": false,
+          "generated": null,
+          "nullable": false,
+          "constantNonNull": false,
+          "definition": "generation bigint NOT NULL",
+          "description": "",
+          "fk": []
+        },
+        {
+          "name": "issued_at",
+          "type": "timestamp with time zone",
+          "pk": false,
+          "unique": false,
+          "generated": null,
+          "nullable": false,
+          "constantNonNull": false,
+          "definition": "issued_at timestamp with time zone NOT NULL",
+          "description": "",
+          "fk": []
+        },
+        {
+          "name": "expires_at",
+          "type": "timestamp with time zone",
+          "pk": false,
+          "unique": false,
+          "generated": null,
+          "nullable": false,
+          "constantNonNull": false,
+          "definition": "expires_at timestamp with time zone NOT NULL",
+          "description": "Prazo congelado na emissão. Preservar tokens consumidos para detectar reutilização.",
+          "fk": []
+        },
+        {
+          "name": "consumed_at",
+          "type": "timestamp with time zone",
+          "pk": false,
+          "unique": false,
+          "generated": null,
+          "nullable": true,
+          "constantNonNull": false,
+          "definition": "consumed_at timestamp with time zone",
+          "description": "",
+          "fk": []
+        }
+      ],
+      "pk": [
+        "id"
+      ],
+      "uniques": [
+        {
+          "name": "uq_auth_refresh_hash",
+          "columns": [
+            "token_hash"
+          ]
+        },
+        {
+          "name": "uq_auth_refresh_generation",
+          "columns": [
+            "session_id",
+            "generation"
+          ]
+        }
+      ],
+      "fks": [
+        {
+          "name": "fk_auth_refresh_session",
+          "child": "auth_refresh_token",
+          "parent": "auth_session",
+          "columns": [
+            "session_id"
+          ],
+          "references": [
+            "id"
+          ],
+          "actions": "ON UPDATE RESTRICT ON DELETE RESTRICT",
+          "parentCard": "1",
+          "childCard": "0..N"
+        }
+      ],
+      "special": [
+        "ck_auth_refresh_hash: CHECK ((octet_length(token_hash) = 32))",
+        "ck_auth_refresh_generation: CHECK ((generation > 0))",
+        "ck_auth_refresh_dates: CHECK ((isfinite(issued_at) AND isfinite(expires_at) AND (expires_at > issued_at) AND ((consumed_at IS NULL) OR (isfinite(consumed_at) AND (consumed_at >= issued_at) AND (consumed_at < expires_at)))))",
+        "CREATE UNIQUE INDEX uq_auth_refresh_unconsumed ON public.auth_refresh_token USING btree (session_id) WHERE (consumed_at IS NULL)"
+      ],
+      "main": [
+        "id",
+        "session_id",
+        "generation",
+        "expires_at",
+        "consumed_at"
+      ]
+    },
+    "admin_invitation": {
+      "name": "admin_invitation",
+      "domain": "cadastros",
+      "description": "Convite de ADMIN válido por 24 horas, de uso único. users só é criado no aceite; reenvio revoga o convite anterior.",
+      "columns": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "pk": true,
+          "unique": false,
+          "generated": null,
+          "nullable": false,
+          "constantNonNull": false,
+          "definition": "id uuid NOT NULL DEFAULT gen_random_uuid()",
+          "description": "Identificador UUID do convite.",
+          "fk": []
+        },
+        {
+          "name": "name",
+          "type": "character varying(150)",
+          "pk": false,
+          "unique": false,
+          "generated": null,
+          "nullable": false,
+          "constantNonNull": false,
+          "definition": "name character varying(150) NOT NULL",
+          "description": "Nome do futuro administrador, preservado para o aceite.",
+          "fk": []
+        },
+        {
+          "name": "email",
+          "type": "character varying(255)",
+          "pk": false,
+          "unique": false,
+          "generated": null,
+          "nullable": false,
+          "constantNonNull": false,
+          "definition": "email character varying(255) NOT NULL",
+          "description": "E-mail do destinatário normalizado em minúsculas, sem espaços externos.",
+          "fk": []
+        },
+        {
+          "name": "token_hash",
+          "type": "bytea",
+          "pk": false,
+          "unique": true,
+          "generated": null,
+          "nullable": false,
+          "constantNonNull": false,
+          "definition": "token_hash bytea NOT NULL",
+          "description": "SHA-256 de 32 bytes do segredo aleatório; não é o token enviado por e-mail.",
+          "fk": []
+        },
+        {
+          "name": "issued_at",
+          "type": "timestamp with time zone",
+          "pk": false,
+          "unique": false,
+          "generated": null,
+          "nullable": false,
+          "constantNonNull": false,
+          "definition": "issued_at timestamp with time zone NOT NULL",
+          "description": "Instante da emissão, definido pelo banco.",
+          "fk": []
+        },
+        {
+          "name": "expires_at",
+          "type": "timestamp with time zone",
+          "pk": false,
+          "unique": false,
+          "generated": null,
+          "nullable": false,
+          "constantNonNull": false,
+          "definition": "expires_at timestamp with time zone NOT NULL",
+          "description": "Prazo fixo de 24 horas após a emissão.",
+          "fk": []
+        },
+        {
+          "name": "invited_by",
+          "type": "uuid",
+          "pk": false,
+          "unique": false,
+          "generated": null,
+          "nullable": true,
+          "constantNonNull": false,
+          "definition": "invited_by uuid",
+          "description": "ADMIN emissor; NULL somente no bootstrap restrito de implantação.",
+          "fk": [
+            "admin_invitation_invited_by_fkey"
+          ]
+        },
+        {
+          "name": "is_bootstrap",
+          "type": "boolean",
+          "pk": false,
+          "unique": false,
+          "generated": null,
+          "nullable": false,
+          "constantNonNull": false,
+          "definition": "is_bootstrap boolean NOT NULL DEFAULT false",
+          "description": "Indica emissão de implantação enquanto nenhum ADMIN está cadastrado.",
+          "fk": []
+        },
+        {
+          "name": "accepted_at",
+          "type": "timestamp with time zone",
+          "pk": false,
+          "unique": false,
+          "generated": null,
+          "nullable": true,
+          "constantNonNull": false,
+          "definition": "accepted_at timestamp with time zone",
+          "description": "Instante de consumo único, anterior à expiração.",
+          "fk": []
+        },
+        {
+          "name": "accepted_user_id",
+          "type": "uuid",
+          "pk": false,
+          "unique": false,
+          "generated": null,
+          "nullable": true,
+          "constantNonNull": false,
+          "definition": "accepted_user_id uuid",
+          "description": "ADMIN criado atomicamente no aceite.",
+          "fk": [
+            "admin_invitation_accepted_user_id_fkey"
+          ]
+        },
+        {
+          "name": "revoked_at",
+          "type": "timestamp with time zone",
+          "pk": false,
+          "unique": false,
+          "generated": null,
+          "nullable": true,
+          "constantNonNull": false,
+          "definition": "revoked_at timestamp with time zone",
+          "description": "Instante da revogação ou substituição no reenvio.",
+          "fk": []
+        },
+        {
+          "name": "revoked_by",
+          "type": "uuid",
+          "pk": false,
+          "unique": false,
+          "generated": null,
+          "nullable": true,
+          "constantNonNull": false,
+          "definition": "revoked_by uuid",
+          "description": "ADMIN que revogou/substituiu; NULL no bootstrap SYSTEM.",
+          "fk": [
+            "admin_invitation_revoked_by_fkey"
+          ]
+        }
+      ],
+      "pk": [
+        "id"
+      ],
+      "uniques": [
+        {
+          "name": "admin_invitation_token_hash_key",
+          "columns": [
+            "token_hash"
+          ]
+        }
+      ],
+      "fks": [
+        {
+          "name": "admin_invitation_invited_by_fkey",
+          "child": "admin_invitation",
+          "parent": "users",
+          "columns": [
+            "invited_by"
+          ],
+          "references": [
+            "id"
+          ],
+          "actions": "ON DELETE RESTRICT",
+          "parentCard": "0..1",
+          "childCard": "0..N"
+        },
+        {
+          "name": "admin_invitation_accepted_user_id_fkey",
+          "child": "admin_invitation",
+          "parent": "users",
+          "columns": [
+            "accepted_user_id"
+          ],
+          "references": [
+            "id"
+          ],
+          "actions": "ON DELETE RESTRICT",
+          "parentCard": "0..1",
+          "childCard": "0..N"
+        },
+        {
+          "name": "admin_invitation_revoked_by_fkey",
+          "child": "admin_invitation",
+          "parent": "users",
+          "columns": [
+            "revoked_by"
+          ],
+          "references": [
+            "id"
+          ],
+          "actions": "ON DELETE RESTRICT",
+          "parentCard": "0..1",
+          "childCard": "0..N"
+        }
+      ],
+      "special": [
+        "ck_admin_invitation_identity: CHECK (((btrim((name)::text) <> ''::text) AND ((email)::text = lower(btrim((email)::text))) AND (POSITION(('@'::text) IN (email)) > 1)))",
+        "ck_admin_invitation_hash: CHECK ((octet_length(token_hash) = 32))",
+        "ck_admin_invitation_validity: CHECK ((expires_at = (issued_at + '24:00:00'::interval)))",
+        "ck_admin_invitation_author: CHECK ((is_bootstrap = (invited_by IS NULL)))",
+        "ck_admin_invitation_acceptance: CHECK (((accepted_at IS NULL) = (accepted_user_id IS NULL)))",
+        "ck_admin_invitation_terminal: CHECK ((NOT ((accepted_at IS NOT NULL) AND (revoked_at IS NOT NULL))))",
+        "ck_admin_invitation_dates: CHECK ((((accepted_at IS NULL) OR ((accepted_at >= issued_at) AND (accepted_at < expires_at))) AND ((revoked_at IS NULL) OR (revoked_at >= issued_at))))",
+        "ck_admin_invitation_revoker: CHECK (((revoked_at IS NOT NULL) OR (revoked_by IS NULL)))",
+        "CREATE UNIQUE INDEX uq_admin_invitation_open_email ON public.admin_invitation USING btree (email) WHERE ((accepted_at IS NULL) AND (revoked_at IS NULL))"
+      ],
+      "main": [
+        "id",
+        "email",
+        "invited_by",
+        "expires_at",
+        "accepted_user_id",
+        "revoked_at"
+      ]
     }
   },
   "domains": [
     {
       "id": "cadastros",
       "title": "Cadastros e identidade",
-      "subtitle": "Usuários, perfis, QR e endereço",
+      "subtitle": "Perfis, QR, sessões e convites ADMIN",
       "tables": [
         "users",
         "citizens",
@@ -5145,7 +6119,10 @@ const MODEL = {
         "user_qr_code",
         "telephone",
         "addresses",
-        "establishment_type"
+        "establishment_type",
+        "auth_session",
+        "auth_refresh_token",
+        "admin_invitation"
       ]
     },
     {
@@ -5367,6 +6344,34 @@ const MODEL = {
       "edges": [
         "fk_certificate_establishment",
         "fk_certificate_level"
+      ]
+    },
+    {
+      "id": "sessoes",
+      "title": "09 · Sessões e tokens",
+      "domain": "cadastros",
+      "nodes": [
+        "users",
+        "auth_session",
+        "auth_refresh_token"
+      ],
+      "edges": [
+        "fk_auth_session_user",
+        "fk_auth_refresh_session"
+      ]
+    },
+    {
+      "id": "administradores",
+      "title": "10 · Convites ADMIN",
+      "domain": "cadastros",
+      "nodes": [
+        "users",
+        "admin_invitation"
+      ],
+      "edges": [
+        "admin_invitation_invited_by_fkey",
+        "admin_invitation_accepted_user_id_fkey",
+        "admin_invitation_revoked_by_fkey"
       ]
     }
   ],
@@ -6216,161 +7221,259 @@ const MODEL = {
       "actions": "ON UPDATE RESTRICT ON DELETE RESTRICT",
       "parentCard": "1",
       "childCard": "0..N"
+    },
+    {
+      "name": "fk_auth_session_user",
+      "child": "auth_session",
+      "parent": "users",
+      "columns": [
+        "user_id"
+      ],
+      "references": [
+        "id"
+      ],
+      "actions": "ON UPDATE RESTRICT ON DELETE RESTRICT",
+      "parentCard": "1",
+      "childCard": "0..N"
+    },
+    {
+      "name": "fk_auth_refresh_session",
+      "child": "auth_refresh_token",
+      "parent": "auth_session",
+      "columns": [
+        "session_id"
+      ],
+      "references": [
+        "id"
+      ],
+      "actions": "ON UPDATE RESTRICT ON DELETE RESTRICT",
+      "parentCard": "1",
+      "childCard": "0..N"
+    },
+    {
+      "name": "admin_invitation_invited_by_fkey",
+      "child": "admin_invitation",
+      "parent": "users",
+      "columns": [
+        "invited_by"
+      ],
+      "references": [
+        "id"
+      ],
+      "actions": "ON DELETE RESTRICT",
+      "parentCard": "0..1",
+      "childCard": "0..N"
+    },
+    {
+      "name": "admin_invitation_accepted_user_id_fkey",
+      "child": "admin_invitation",
+      "parent": "users",
+      "columns": [
+        "accepted_user_id"
+      ],
+      "references": [
+        "id"
+      ],
+      "actions": "ON DELETE RESTRICT",
+      "parentCard": "0..1",
+      "childCard": "0..N"
+    },
+    {
+      "name": "admin_invitation_revoked_by_fkey",
+      "child": "admin_invitation",
+      "parent": "users",
+      "columns": [
+        "revoked_by"
+      ],
+      "references": [
+        "id"
+      ],
+      "actions": "ON DELETE RESTRICT",
+      "parentCard": "0..1",
+      "childCard": "0..N"
     }
   ],
   "excluded": [
+    {
+      "name": "addresses_log",
+      "reason": "Auditoria técnica; excluída dos diagramas de negócio."
+    },
+    {
+      "name": "admin_guard_state",
+      "reason": "Coordenação transacional interna; não representa entidade de negócio."
+    },
+    {
+      "name": "admin_invitation_log",
+      "reason": "Auditoria técnica; excluída dos diagramas de negócio."
+    },
+    {
+      "name": "auth_session_log",
+      "reason": "Auditoria técnica; excluída dos diagramas de negócio."
+    },
+    {
+      "name": "billing_charge_log",
+      "reason": "Auditoria técnica; excluída dos diagramas de negócio."
+    },
+    {
+      "name": "billing_order_log",
+      "reason": "Auditoria técnica; excluída dos diagramas de negócio."
+    },
+    {
+      "name": "certificate_level_log",
+      "reason": "Auditoria técnica; excluída dos diagramas de negócio."
+    },
+    {
+      "name": "certificate_log",
+      "reason": "Auditoria técnica; excluída dos diagramas de negócio."
+    },
+    {
+      "name": "citizens_log",
+      "reason": "Auditoria técnica; excluída dos diagramas de negócio."
+    },
+    {
+      "name": "collection_failure_log",
+      "reason": "Auditoria técnica; excluída dos diagramas de negócio."
+    },
+    {
+      "name": "collection_failure_reason_log",
+      "reason": "Auditoria técnica; excluída dos diagramas de negócio."
+    },
+    {
+      "name": "collection_log",
+      "reason": "Auditoria técnica; excluída dos diagramas de negócio."
+    },
+    {
+      "name": "collection_request_log",
+      "reason": "Auditoria técnica; excluída dos diagramas de negócio."
+    },
+    {
+      "name": "delivery_pev_log",
+      "reason": "Auditoria técnica; excluída dos diagramas de negócio."
+    },
+    {
+      "name": "establishment_log",
+      "reason": "Auditoria técnica; excluída dos diagramas de negócio."
+    },
+    {
+      "name": "establishment_subscription_log",
+      "reason": "Auditoria técnica; excluída dos diagramas de negócio."
+    },
+    {
+      "name": "payment_application_log",
+      "reason": "Auditoria técnica; excluída dos diagramas de negócio."
+    },
+    {
+      "name": "payment_log",
+      "reason": "Auditoria técnica; excluída dos diagramas de negócio."
+    },
+    {
+      "name": "payment_provider_event",
+      "reason": "Recepção e reprocessamento técnico de eventos do provedor."
+    },
     {
       "name": "payment_refund_attempt",
       "reason": "Tentativas técnicas de execução do reembolso."
     },
     {
-      "name": "payment_provider_event",
-      "reason": "Recepção, deduplicação e reprocessamento de eventos do provedor."
-    },
-    {
-      "name": "users_log",
-      "reason": "Retratos tipados de auditoria (BEFORE/AFTER)."
-    },
-    {
-      "name": "addresses_log",
-      "reason": "Retratos tipados de auditoria (BEFORE/AFTER)."
-    },
-    {
-      "name": "user_qr_code_log",
-      "reason": "Retratos tipados de auditoria (BEFORE/AFTER)."
-    },
-    {
-      "name": "citizens_log",
-      "reason": "Retratos tipados de auditoria (BEFORE/AFTER)."
-    },
-    {
-      "name": "establishment_log",
-      "reason": "Retratos tipados de auditoria (BEFORE/AFTER)."
+      "name": "payment_refund_log",
+      "reason": "Auditoria técnica; excluída dos diagramas de negócio."
     },
     {
       "name": "pev_log",
-      "reason": "Retratos tipados de auditoria (BEFORE/AFTER)."
-    },
-    {
-      "name": "subscription_plan_log",
-      "reason": "Retratos tipados de auditoria (BEFORE/AFTER)."
-    },
-    {
-      "name": "establishment_subscription_log",
-      "reason": "Retratos tipados de auditoria (BEFORE/AFTER)."
-    },
-    {
-      "name": "subscription_cycle_log",
-      "reason": "Retratos tipados de auditoria (BEFORE/AFTER)."
-    },
-    {
-      "name": "billing_order_log",
-      "reason": "Retratos tipados de auditoria (BEFORE/AFTER)."
-    },
-    {
-      "name": "billing_charge_log",
-      "reason": "Retratos tipados de auditoria (BEFORE/AFTER)."
-    },
-    {
-      "name": "payment_log",
-      "reason": "Retratos tipados de auditoria (BEFORE/AFTER)."
-    },
-    {
-      "name": "payment_application_log",
-      "reason": "Retratos tipados de auditoria (BEFORE/AFTER)."
-    },
-    {
-      "name": "payment_refund_log",
-      "reason": "Retratos tipados de auditoria (BEFORE/AFTER)."
-    },
-    {
-      "name": "collection_request_log",
-      "reason": "Retratos tipados de auditoria (BEFORE/AFTER)."
-    },
-    {
-      "name": "collection_log",
-      "reason": "Retratos tipados de auditoria (BEFORE/AFTER)."
-    },
-    {
-      "name": "collection_failure_reason_log",
-      "reason": "Retratos tipados de auditoria (BEFORE/AFTER)."
-    },
-    {
-      "name": "collection_failure_log",
-      "reason": "Retratos tipados de auditoria (BEFORE/AFTER)."
-    },
-    {
-      "name": "delivery_pev_log",
-      "reason": "Retratos tipados de auditoria (BEFORE/AFTER)."
+      "reason": "Auditoria técnica; excluída dos diagramas de negócio."
     },
     {
       "name": "point_calculation_log",
-      "reason": "Retratos tipados de auditoria (BEFORE/AFTER)."
+      "reason": "Auditoria técnica; excluída dos diagramas de negócio."
     },
     {
-      "name": "certificate_level_log",
-      "reason": "Retratos tipados de auditoria (BEFORE/AFTER)."
+      "name": "subscription_cycle_log",
+      "reason": "Auditoria técnica; excluída dos diagramas de negócio."
     },
     {
-      "name": "certificate_log",
-      "reason": "Retratos tipados de auditoria (BEFORE/AFTER)."
+      "name": "subscription_plan_log",
+      "reason": "Auditoria técnica; excluída dos diagramas de negócio."
+    },
+    {
+      "name": "user_qr_code_log",
+      "reason": "Auditoria técnica; excluída dos diagramas de negócio."
+    },
+    {
+      "name": "users_log",
+      "reason": "Auditoria técnica; excluída dos diagramas de negócio."
     }
   ],
   "source": {
     "file": "01_structure.sql",
-    "sha256": "af17e505f8ef4c52aff6ffb87348ef5f840029235d598c85876737e381027d0a",
-    "revision": "10/09/2026",
-    "analyzed": "13/09/2026",
-    "checks_sha256": "51c32b61c580c8df3ab327df8485fd3b55110ccfd76b1ae983fb2745a45b9bf6"
+    "sha256": "8400d617881d9658c44126b3ea83606df663ad8507808b8dd218ff750e198571",
+    "revision": "20/10/2026",
+    "analyzed": "20/10/2026",
+    "checks_sha256": "fc8d5ec45af3305c8c4e6fc585e58079d1a828a91aab1108900c0cae4379acbf",
+    "indexes_sha256": "beb34aa1a7f55633b0dd75b965da39ca8df9a3cfa217d495e815d38aad467adb",
+    "functions_sha256": "84b3ce08645cade18db20b0b1550da4fc371dbe6620a5bf90a89b98a4f2871d0",
+    "triggers_sha256": "95dafc54bc2913f93def8bd4b66ea83e2ed7de691509c2c1dfd428486fda6275",
+    "table_count": 58
   },
   "partial": [
     {
       "name": "uq_subscription_active",
       "table": "establishment_subscription",
       "columns": "establishment_id",
-      "predicate": "status = 'ACTIVE'"
+      "predicate": "(status = 'ACTIVE'::subscription_status_t)"
     },
     {
       "name": "uq_order_initial_subscription",
       "table": "billing_order",
       "columns": "subscription_id",
-      "predicate": "purpose = 'INITIAL'"
+      "predicate": "(purpose = 'INITIAL'::billing_purpose_t)"
     },
     {
       "name": "uq_order_renewal_previous_cycle",
       "table": "billing_order",
       "columns": "previous_cycle_id",
-      "predicate": "purpose = 'RENEWAL'"
+      "predicate": "(purpose = 'RENEWAL'::billing_purpose_t)"
     },
     {
       "name": "uq_charge_open_period",
       "table": "billing_charge",
       "columns": "establishment_id",
-      "predicate": "purpose IN ('INITIAL','RENEWAL') AND status IN ('OPEN','CANCELLATION_PENDING')"
+      "predicate": "((purpose = ANY (ARRAY['INITIAL'::billing_purpose_t, 'RENEWAL'::billing_purpose_t])) AND (status = ANY (ARRAY['OPEN'::charge_status_t, 'CANCELLATION_PENDING'::charge_status_t])))"
     },
     {
       "name": "uq_charge_open_upgrade",
       "table": "billing_charge",
       "columns": "target_cycle_id",
-      "predicate": "purpose = 'UPGRADE' AND status IN ('OPEN','CANCELLATION_PENDING')"
+      "predicate": "((purpose = 'UPGRADE'::billing_purpose_t) AND (status = ANY (ARRAY['OPEN'::charge_status_t, 'CANCELLATION_PENDING'::charge_status_t])))"
     },
     {
       "name": "uq_application_initial_cycle",
       "table": "payment_application",
       "columns": "cycle_id",
-      "predicate": "purpose IN ('INITIAL','RENEWAL')"
+      "predicate": "(purpose = ANY (ARRAY['INITIAL'::billing_purpose_t, 'RENEWAL'::billing_purpose_t]))"
     },
     {
       "name": "uq_point_collection_current",
       "table": "point_calculation",
       "columns": "collection_id",
-      "predicate": "is_current AND collection_id IS NOT NULL"
+      "predicate": "(is_current AND (collection_id IS NOT NULL))"
     },
     {
       "name": "uq_point_delivery_current",
       "table": "point_calculation",
       "columns": "delivery_pev_id",
-      "predicate": "is_current AND delivery_pev_id IS NOT NULL"
+      "predicate": "(is_current AND (delivery_pev_id IS NOT NULL))"
+    },
+    {
+      "name": "uq_auth_refresh_unconsumed",
+      "table": "auth_refresh_token",
+      "columns": "session_id",
+      "predicate": "(consumed_at IS NULL)"
+    },
+    {
+      "name": "uq_admin_invitation_open_email",
+      "table": "admin_invitation",
+      "columns": "email",
+      "predicate": "((accepted_at IS NULL) AND (revoked_at IS NULL))"
     }
   ],
   "journeys": [
@@ -6935,9 +8038,10 @@ const MODEL = {
                 "estimated_volume_liters",
                 "status",
                 "observation",
-                "request_at"
+                "request_at",
+                "idempotency_key"
               ],
-              "why": "Registrar PENDING e a estimativa positiva no ciclo de origem."
+              "why": "Registrar PENDING e a estimativa positiva no ciclo de origem. Reenvios reutilizam a mesma chave de idempotência."
             }
           ],
           "rules": [
@@ -7525,9 +8629,10 @@ const MODEL = {
                 "points_earned",
                 "delivery_date",
                 "record_status",
-                "revision"
+                "revision",
+                "idempotency_key"
               ],
-              "why": "Registrar volume aceito, autor, data física, RECORDED e revisão inicial."
+              "why": "Registrar volume aceito, autor, data física, RECORDED e revisão inicial. Reenvios reutilizam a mesma chave de idempotência."
             },
             {
               "table": "point_calculation",
@@ -7942,6 +9047,354 @@ const MODEL = {
           "transaction": null
         }
       ]
+    },
+    {
+      "id": "administradores",
+      "title": "Convidar e gerenciar ADMIN",
+      "profile": "Identidade e acesso",
+      "goal": "Do convite ao novo administrador, preservando pelo menos um ADMIN ativo.",
+      "prerequisite": "ADMIN ativo autenticado. Primeiro convite: operador de implantação e ausência de qualquer ADMIN, inclusive inativo.",
+      "outcome": "Conta criada somente no aceite; convite consumido e mudanças auditadas.",
+      "references": "Scripts atuais 01–05 e access_control/01_roles.sql; contrato administrativo aprovado.",
+      "scope": "Fluxo documental. Tokens originais e senhas não são exemplos de dados desta página.",
+      "steps": [
+        {
+          "id": "emitir",
+          "title": "Emitir ou reenviar o convite",
+          "actor": "Core API · PostgreSQL",
+          "domain": "cadastros",
+          "result": "Convite válido por 24 horas; reenvio revoga o anterior do mesmo e-mail.",
+          "operations": [
+            {
+              "table": "users",
+              "action": "Consultar",
+              "fields": [
+                "id",
+                "user_type",
+                "status",
+                "email"
+              ],
+              "why": "Validar autor ativo e impedir promoção de e-mail já cadastrado."
+            },
+            {
+              "table": "admin_invitation",
+              "action": "Criar",
+              "fields": [
+                "id",
+                "name",
+                "email",
+                "token_hash",
+                "issued_at",
+                "expires_at",
+                "invited_by",
+                "is_bootstrap"
+              ],
+              "why": "Persistir somente o hash SHA-256 do segredo gerado pela Core."
+            },
+            {
+              "table": "admin_invitation",
+              "action": "Atualizar",
+              "fields": [
+                "revoked_at",
+                "revoked_by"
+              ],
+              "why": "Invalidar o convite anterior no reenvio."
+            }
+          ],
+          "rules": [
+            "issue_admin_invitation exige autor ADMIN ativo.",
+            "Bootstrap não é endpoint público e encerra quando existir qualquer ADMIN."
+          ],
+          "routine": "Core gera segredo seguro e envia e-mail após commit. Banco usa issue_admin_invitation ou bootstrap restrito.",
+          "branches": [],
+          "transaction": "Emissão, revogação anterior e auditoria são atômicas."
+        },
+        {
+          "id": "aceitar",
+          "title": "Aceitar e definir a senha",
+          "actor": "Core API · PostgreSQL",
+          "domain": "cadastros",
+          "result": "Usuário ACTIVE/ADMIN criado sem login automático.",
+          "operations": [
+            {
+              "table": "admin_invitation",
+              "action": "Consultar",
+              "fields": [
+                "token_hash",
+                "expires_at",
+                "accepted_at",
+                "revoked_at",
+                "invited_by",
+                "is_bootstrap"
+              ],
+              "why": "Validar segredo, prazo, uso, revogação e emissor ainda ativo."
+            },
+            {
+              "table": "users",
+              "action": "Criar",
+              "fields": [
+                "id",
+                "name",
+                "email",
+                "password_hash",
+                "user_type",
+                "status"
+              ],
+              "why": "Usar nome/e-mail do convite e hash de senha calculado pela Core."
+            },
+            {
+              "table": "admin_invitation",
+              "action": "Atualizar",
+              "fields": [
+                "accepted_at",
+                "accepted_user_id"
+              ],
+              "why": "Consumir o convite uma única vez e vincular a conta criada."
+            }
+          ],
+          "rules": [
+            "Sem promoção automática de conta existente.",
+            "Aceites simultâneos não criam duas contas."
+          ],
+          "routine": "accept_admin_invitation; Core valida a senha e não registra os segredos nos logs.",
+          "branches": [],
+          "transaction": "Criação, aceite e auditoria confirmam juntos ou são revertidos."
+        },
+        {
+          "id": "revogar",
+          "title": "Revogar um convite pendente",
+          "actor": "Core API · PostgreSQL",
+          "domain": "cadastros",
+          "result": "Convite não aceito perde a possibilidade de uso.",
+          "operations": [
+            {
+              "table": "users",
+              "action": "Consultar",
+              "fields": [
+                "id",
+                "user_type",
+                "status"
+              ],
+              "why": "Confirmar ADMIN autor ativo."
+            },
+            {
+              "table": "admin_invitation",
+              "action": "Atualizar",
+              "fields": [
+                "revoked_at",
+                "revoked_by"
+              ],
+              "why": "Marcar revogação sem apagar o registro."
+            }
+          ],
+          "rules": [
+            "Convite aceito não pode ser revogado."
+          ],
+          "routine": "revoke_admin_invitation; chamada repetida não reabre o convite.",
+          "branches": [],
+          "transaction": null
+        },
+        {
+          "id": "status",
+          "title": "Gerenciar status administrativo",
+          "actor": "Core API · PostgreSQL",
+          "domain": "cadastros",
+          "result": "Inativação preserva outro ADMIN ativo e revoga as sessões da conta.",
+          "operations": [
+            {
+              "table": "users",
+              "action": "Consultar",
+              "fields": [
+                "id",
+                "user_type",
+                "status"
+              ],
+              "why": "Validar autor e verificar os demais administradores."
+            },
+            {
+              "table": "users",
+              "action": "Atualizar",
+              "fields": [
+                "status",
+                "updated_at"
+              ],
+              "why": "Ativar/inativar por set_admin_status."
+            },
+            {
+              "table": "auth_session",
+              "action": "Atualizar",
+              "fields": [
+                "revoked_at",
+                "revocation_reason",
+                "updated_at"
+              ],
+              "why": "Revogar sessões na inativação pelo mecanismo existente."
+            }
+          ],
+          "rules": [
+            "Último ADMIN ativo não pode ser inativado, excluído ou perder o perfil.",
+            "A proteção também vale sob concorrência."
+          ],
+          "routine": "set_admin_status e triggers de users. A linha técnica de coordenação fica fora do diagrama.",
+          "branches": [],
+          "transaction": null
+        }
+      ]
+    },
+    {
+      "id": "autenticacao",
+      "title": "Abrir, renovar e encerrar sessão",
+      "profile": "Identidade e acesso",
+      "goal": "Relacionar usuário, sessão por dispositivo e rotação dos tokens de renovação.",
+      "prerequisite": "Core verifica credenciais e status, gera segredos e chama as funções autorizadas.",
+      "outcome": "Sessão validada no banco; tokens consumidos são preservados para detectar reutilização.",
+      "references": "Scripts atuais 01–05 e access_control/01_roles.sql; contrato administrativo aprovado.",
+      "scope": "Fluxo documental. Tokens originais e senhas não são exemplos de dados desta página.",
+      "steps": [
+        {
+          "id": "login",
+          "title": "Abrir a sessão",
+          "actor": "Core API · PostgreSQL",
+          "domain": "cadastros",
+          "result": "Sessão e primeira geração do refresh registradas.",
+          "operations": [
+            {
+              "table": "users",
+              "action": "Consultar",
+              "fields": [
+                "id",
+                "password_hash",
+                "status"
+              ],
+              "why": "Core confere credenciais e usuário ativo."
+            },
+            {
+              "table": "auth_session",
+              "action": "Criar",
+              "fields": [
+                "id",
+                "user_id",
+                "created_at",
+                "last_renewed_at",
+                "idle_expires_at",
+                "updated_at"
+              ],
+              "why": "Representar um login independente por dispositivo."
+            },
+            {
+              "table": "auth_refresh_token",
+              "action": "Criar",
+              "fields": [
+                "id",
+                "session_id",
+                "token_hash",
+                "generation",
+                "issued_at",
+                "expires_at"
+              ],
+              "why": "Armazenar hash, geração e prazo; nunca o segredo original."
+            }
+          ],
+          "rules": [
+            "JWT não é armazenado nessas tabelas."
+          ],
+          "routine": "Core emite credenciais e utiliza as funções de sessão; não escreve livremente nas tabelas.",
+          "branches": [],
+          "transaction": null
+        },
+        {
+          "id": "rotacao",
+          "title": "Renovar com rotação",
+          "actor": "Core API · PostgreSQL",
+          "domain": "cadastros",
+          "result": "Token anterior consumido e nova geração emitida na mesma sessão.",
+          "operations": [
+            {
+              "table": "auth_session",
+              "action": "Consultar",
+              "fields": [
+                "id",
+                "user_id",
+                "idle_expires_at",
+                "revoked_at"
+              ],
+              "why": "Verificar sessão válida e titular ativo."
+            },
+            {
+              "table": "auth_refresh_token",
+              "action": "Atualizar",
+              "fields": [
+                "consumed_at"
+              ],
+              "why": "Consumir somente o token válido apresentado."
+            },
+            {
+              "table": "auth_refresh_token",
+              "action": "Criar",
+              "fields": [
+                "id",
+                "session_id",
+                "token_hash",
+                "generation",
+                "issued_at",
+                "expires_at"
+              ],
+              "why": "Persistir o hash da nova geração."
+            },
+            {
+              "table": "auth_session",
+              "action": "Atualizar",
+              "fields": [
+                "last_renewed_at",
+                "idle_expires_at",
+                "updated_at"
+              ],
+              "why": "Registrar renovação bem-sucedida."
+            }
+          ],
+          "rules": [
+            "No máximo um refresh não consumido por sessão; isso não garante que esteja válido.",
+            "Reutilização detectada revoga a sessão; conservar tokens consumidos."
+          ],
+          "routine": "Rotinas de autenticação controlam concorrência e reutilização; Core entrega o novo segredo apenas no sucesso.",
+          "branches": [],
+          "transaction": "Consumo e nova geração são coordenados pelo banco."
+        },
+        {
+          "id": "encerrar",
+          "title": "Encerrar ou revogar",
+          "actor": "Core API · PostgreSQL",
+          "domain": "cadastros",
+          "result": "Sessão deixa de autorizar novas operações e renovações.",
+          "operations": [
+            {
+              "table": "auth_session",
+              "action": "Atualizar",
+              "fields": [
+                "revoked_at",
+                "revocation_reason",
+                "updated_at"
+              ],
+              "why": "Logout, conta inativa ou reutilização de refresh revogam a sessão."
+            },
+            {
+              "table": "users",
+              "action": "Consultar",
+              "fields": [
+                "id",
+                "status"
+              ],
+              "why": "Verificar conta ativa juntamente com a sessão."
+            }
+          ],
+          "rules": [
+            "Consultas comuns não prorrogam o prazo da sessão."
+          ],
+          "routine": "Core valida sessão/usuário, além da assinatura do JWT.",
+          "branches": [],
+          "transaction": null
+        }
+      ]
     }
   ]
 };
@@ -8014,7 +9467,7 @@ function inspect() {
   if(detailTab==='fields') {
     html+='<p class="empty">Todos os '+t.columns.length+' campos · G = valor gerado</p>';
     t.columns.forEach(c=> {
-      html+='<div class="field"><div class="field-top"><span class="field-name">'+esc(c.name)+'</span><span class="badges">'+(c.pk?'<span class="pk">PK</span> ':'')+(c.fk.length?'<span class="fk">FK</span> ':'')+(c.unique?'UQ ':'')+(c.generated?'G':'')+'</span></div><div class="field-type">'+esc(c.type)+' · <span class="nullable">'+(c.nullable?'aceita NULL':'não nulo')+'</span></div>'+(c.generated?'<div class="field-desc">Gerado: '+esc(c.generated)+'</div>':'')+(c.description?'<div class="field-desc">'+esc(c.description)+'</div>':'')+'</div>';
+      html+='<div class="field"><div class="field-top"><span class="field-name">'+esc(c.name)+'</span><span class="badges">'+(c.pk?'<span class="pk">PK</span> ':'')+(c.fk.length?'<span class="fk">FK</span> ':'')+(c.unique?'UQ ':'')+(c.generated?'G':'')+'</span></div><div class="field-type">'+esc(c.type)+' · <span class="nullable">'+(c.constantNonNull?'constante não nula':c.nullable?'aceita NULL':'não nulo')+'</span></div>'+(c.generated?'<div class="field-desc">Gerado: '+esc(c.generated)+'</div>':'')+(c.description?'<div class="field-desc">'+esc(c.description)+'</div>':'')+'</div>';
     });
   }
   if(detailTab==='relations') {
@@ -8031,7 +9484,7 @@ function inspect() {
     if(t.name==='establishment_subscription')html+='<p class="desc">Pode haver várias assinaturas ao longo do tempo. O índice parcial permite no máximo uma ACTIVE por estabelecimento.</p>';
     if(t.name==='subscription_cycle')html+='<p class="desc">EXCLUDE impede sobreposição de períodos por estabelecimento. [início, fim) admite que um ciclo comece exatamente quando outro termina.</p>';
     if(t.name==='point_calculation')html+='<p class="desc">Várias revisões são possíveis. Os índices parciais limitam a uma revisão is_current por coleta ou entrega.</p>';
-    html+='<p class="empty">CHECKs do script 02 e rotinas não fazem parte desta extração.</p>';
+    html+='<p class="empty">CHECKs e índices únicos parciais dos scripts 01–03 estão acima. Regras entre tabelas também dependem das rotinas e triggers; o diagrama não executa SQL.</p>';
   }
   $('inspector').innerHTML=html;
   decorateInspector();
@@ -8233,13 +9686,13 @@ function overview() {
   const pos= {
   };
   let y=45;
-  MODEL.domains.forEach((d,i)=> {
-    const row=Math.floor(i/2),col=i%2;
-    pos[d.id]= {
-      x:col?545:55,y:45+row*350,w:340,h:270,col
-    };
-  });
-  createSVG(1070,'Visão geral dos seis domínios do OLIUS');
+  for(let i=0;i<MODEL.domains.length;i+=2) {
+    const row=MODEL.domains.slice(i,i+2);
+    const height=Math.max(...row.map(d=>110+d.tables.length*23));
+    row.forEach((d,col)=> { pos[d.id]={x:col?545:55,y,w:340,h:height,col}; });
+    y+=height+80;
+  }
+  createSVG(y-35,'Visão geral dos domínios do OLIUS');
   const links=F.filter(f=>T[f.child].domain!==T[f.parent].domain).map(f=>( {
     ...f,child:T[f.child].domain,parent:T[f.parent].domain
   }));
@@ -8279,7 +9732,7 @@ function overview() {
     });
     svg.append(g);
   });
-  $('diagram-title').textContent='28 tabelas · 6 domínios';
+  $('diagram-title').textContent=Object.keys(T).length+' tabelas · '+MODEL.domains.length+' domínios';
   $('diagram-caption').textContent='Cada seta liga domínios com FKs reais; o número conta essas FKs. Selecione uma tabela para abrir seu diagrama.';
 }
 function show(id) {
@@ -8335,7 +9788,7 @@ function initJourneys() {
     if(b.dataset.section==='journeys')showJourney(currentJourney,currentStep);
     else show(b.dataset.section==='overview'?'overview':(active==='overview'?'identidade':active));
   });
-  const groups=[['B2B',['contratacao','coleta']],['B2C',['entrega']],['Compartilhado',['reembolso']]];
+  const groups=[['B2B',['contratacao','coleta']],['B2C',['entrega']],['Compartilhado',['reembolso']],['Identidade',['administradores','autenticacao']]];
   $('journey-picker').innerHTML=groups.map(([label,ids])=>'<div class="journey-group"><span class="journey-group-label">'+esc(label)+'</span>'+ids.map(id=>'<button type="button" data-journey="'+id+'">'+esc(journeyById(id).title)+'</button>').join('')+'</div>').join('');
   $('journey-picker').querySelectorAll('[data-journey]').forEach(b=>b.onclick=()=>showJourney(b.dataset.journey));
 }
@@ -8360,7 +9813,7 @@ function showJourney(id,stepId) {
   $('journey-picker').querySelectorAll('[data-journey]').forEach(b=>b.setAttribute('aria-pressed',b.dataset.journey===id));
   $('diagram-title').textContent=j.title;
   $('diagram-caption').textContent='Acompanhe as ações e suas tabelas. Selecione uma etapa para ver campos, regras e dependências.';
-  $('journey-intro').innerHTML='<p><span class="tag">'+esc(j.profile)+'</span> '+esc(j.goal)+'</p><details><summary>Condições, resultado e fontes</summary><p><b>Antes de começar:</b> '+esc(j.prerequisite)+'</p><p><b>Resultado:</b> '+esc(j.outcome)+'</p><p><b>Recorte:</b> '+esc(j.scope)+'</p><p><b>Fontes:</b> '+esc(j.references)+'</p></details><p class="flow-global-note">Comportamento previsto pelas regras e pelos scripts; não comprova que as rotinas já foram implementadas. As setas abaixo indicam sequência de negócio, não FKs. As quatro jornadas são o recorte inicial.</p>';
+  $('journey-intro').innerHTML='<p><span class="tag">'+esc(j.profile)+'</span> '+esc(j.goal)+'</p><details><summary>Condições, resultado e fontes</summary><p><b>Antes de começar:</b> '+esc(j.prerequisite)+'</p><p><b>Resultado:</b> '+esc(j.outcome)+'</p><p><b>Recorte:</b> '+esc(j.scope)+'</p><p><b>Fontes:</b> '+esc(j.references)+'</p></details><p class="flow-global-note">Comportamento previsto pelas regras e pelos scripts; não comprova que as rotinas já foram implementadas. As setas abaixo indicam sequência de negócio, não FKs. As jornadas mostram os processos selecionados e suas tabelas.</p>';
   let html='<div class="flow-legend"><span class="action-consultar">Consultar · ler dados</span><span class="action-criar">Criar · novo registro</span><span class="action-atualizar">Atualizar · alterar registro existente</span></div><ol class="flow-list">';
   j.steps.forEach((s,i)=> {
     const actions=['Consultar','Criar','Atualizar'].filter(a=>s.operations.some(o=>o.action===a));
@@ -8458,14 +9911,14 @@ function decorateInspector() {
   box.className='related-journeys';
   box.innerHTML='<h3>Participa destas jornadas</h3>'+(entries.length?entries.map(( {
     j,steps
-  })=>'<button type="button" class="table-link" data-related-journey="'+j.id+'" data-related-step="'+steps[0].id+'">'+esc(j.title)+' · '+steps.length+' etapa'+(steps.length>1?'s':'')+'</button>').join(''):'<p class="empty">Tabela ainda não utilizada nas quatro jornadas deste recorte. Sua ficha estrutural continua disponível.</p>');
+  })=>'<button type="button" class="table-link" data-related-journey="'+j.id+'" data-related-step="'+steps[0].id+'">'+esc(j.title)+' · '+steps.length+' etapa'+(steps.length>1?'s':'')+'</button>').join(''):'<p class="empty">Tabela ainda não utilizada nas jornadas deste recorte. Sua ficha estrutural continua disponível.</p>');
   inspector.append(box);
   box.querySelectorAll('[data-related-journey]').forEach(b=>b.onclick=()=>showJourney(b.dataset.relatedJourney,b.dataset.relatedStep));
 }
 // Inicialização da documentação e apresentação das fontes.
-$('excluded').innerHTML=MODEL.excluded.map(e=>'<div>'+esc(e.name)+'</div>').join('');
-$('exclusion-title').textContent='Escopo: 52 tabelas analisadas · 28 incluídas · 24 excluídas';
-$('provenance').textContent='Estrutura: 01_structure.sql · '+F.length+' FKs · SHA-256: '+MODEL.source.sha256+' · Jornadas: regras aprovadas (revisão 2), scripts 01 e 02. Documentação de consulta; não executa SQL.';
+$('excluded').innerHTML=MODEL.excluded.map(e=>'<div>'+esc(e.name)+'<br><small>'+esc(e.reason)+'</small></div>').join('');
+$('exclusion-title').textContent='Escopo: '+MODEL.source.table_count+' tabelas analisadas · '+Object.keys(T).length+' incluídas · '+MODEL.excluded.length+' excluídas';
+$('provenance').textContent='Estrutura: 01_structure.sql · '+F.length+' FKs · SHA-256: '+MODEL.source.sha256+' · CHECKs e índices: scripts 02 e 03 · Fluxos: scripts 04 e 05 e decisões aprovadas · Sincronizado em '+MODEL.source.analyzed+'. Documentação de consulta; não executa SQL.';
 nav();
 initJourneys();
 show('overview');
