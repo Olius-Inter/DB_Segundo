@@ -78,6 +78,9 @@ def main():
         sql_file("PostgreSQL/tests/ci_auth_bootstrap.sql")
         print("NOTA: permissões de auth são fixture de teste; configuração de produção será testada quando access_control estiver presente.")
 
+    # O teste da carga oficial usa outro banco e não mistura catálogos com fixtures.
+    execute("initial-data-regression", [sys.executable, str(TESTS / "initial_data_regression.py")])
+
     # Registra somente o código de aplicação, antes de criar helpers dos testes.
     inventory = query("routine-inventory", """
         SELECT coalesce(json_agg(row_to_json(r)), '[]'::json) FROM (

@@ -665,7 +665,7 @@ id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
-COMMENT ON TABLE certificate_level IS 'Metas e nomes definitivos pendentes; não inserir níveis fictícios.';
+COMMENT ON TABLE certificate_level IS 'Níveis oficiais por volume acumulado efetivamente coletado: Bronze 100 L, Prata 500 L e Ouro 1.000 L; sem reinício anual.';
 
 CREATE TABLE certificate (
 id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

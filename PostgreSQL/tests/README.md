@@ -14,6 +14,7 @@ Usa as variáveis `PGHOST`, `PGPORT`, `PGUSER`, `PGPASSWORD` e `PGDATABASE`.
 | Scripts principais | `procedures_regression.sql`, `functions_negative.sql`, `procedures_negative.sql` e `procedures_concurrency.py` |
 | Views de pontuação e ranking | `annual_views_regression.sql`, após instalação de 06 e 07 |
 | Sessões e tokens | `auth_sessions_regression.sql`, `auth_sessions_edges.sql`, `operational_regression.sql` e `auth_sessions_concurrency.py` |
+| Carga oficial inicial | `initial_data_regression.py`, em banco próprio descartável: instalação, concorrência, reexecução, registros preexistentes, divergências e rollback |
 | Catálogo | Instalação 01–04 e verificação `05_validate.sql` |
 | Controle de acesso, catálogo, sessões e Data Mart | Também `catalog_access_regression.sql`, `api_access_regression.sql` e `data_mart_access_regression.sql` |
 

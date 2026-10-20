@@ -4841,7 +4841,7 @@ const MODEL = {
     "certificate_level": {
       "name": "certificate_level",
       "domain": "pontos",
-      "description": "Metas e nomes definitivos pendentes; não inserir níveis fictícios.",
+      "description": "Níveis oficiais por volume acumulado efetivamente coletado: Bronze 100 L, Prata 500 L e Ouro 1.000 L; sem reinício anual.",
       "columns": [
         {
           "name": "id",
