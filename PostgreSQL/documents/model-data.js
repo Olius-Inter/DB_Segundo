@@ -7411,7 +7411,7 @@ const OLIUS_MODEL_JSON = `
     "analyzed": "20/10/2026",
     "checks_sha256": "fc8d5ec45af3305c8c4e6fc585e58079d1a828a91aab1108900c0cae4379acbf",
     "indexes_sha256": "beb34aa1a7f55633b0dd75b965da39ca8df9a3cfa217d495e815d38aad467adb",
-    "functions_sha256": "84b3ce08645cade18db20b0b1550da4fc371dbe6620a5bf90a89b98a4f2871d0",
+    "functions_sha256": "884e814c1918d972b03349dd8c56e174ab8f73cfe3834d5faa94c734e3092cd1",
     "triggers_sha256": "95dafc54bc2913f93def8bd4b66ea83e2ed7de691509c2c1dfd428486fda6275",
     "table_count": 58
   },
