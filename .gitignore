@@ -1,4 +1,8 @@
-# Relatórios e arquivos temporários dos testes.
-/coverage/
+.env
+.venv/
+venv/
 __pycache__/
 *.pyc
+
+# Relatórios e arquivos temporários dos testes.
+/coverage/
