@@ -52,6 +52,7 @@ def main():
         raise RuntimeError("Defina OLIUS_CI_DISPOSABLE=1 somente em uma base descartável vazia.")
     if query("empty-database", "SELECT count(*) FROM pg_tables WHERE schemaname='public';").strip() != "0":
         raise RuntimeError("A base de teste deve estar vazia; nenhum objeto será apagado pelo runner.")
+    execute("non-superuser-install-regression", [sys.executable, str(TESTS / "auth_non_superuser_install.py")])
     for name in ("01_structure.sql", "02_check_constraints.sql", "03_indexes.sql",
                  "04_functions_procedures.sql", "05_triggers.sql",
                  "06_ctes.sql", "07_window_functions.sql", "08_materialized_views.sql"):
@@ -99,6 +100,7 @@ def main():
     if has_auth:
         sql_file("PostgreSQL/tests/auth_sessions_regression.sql")
         sql_file("PostgreSQL/tests/auth_sessions_edges.sql")
+        sql_file("PostgreSQL/tests/auth_audit_context_regression.sql")
         sql_file("PostgreSQL/tests/operational_regression.sql")
     if has_catalog:
         sql_file("PostgreSQL/data_catalog/05_validate.sql")

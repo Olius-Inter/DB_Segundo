@@ -103,3 +103,17 @@ auditoria sem hash, sessões revogadas e proteção do último ADMIN.
 `admin_management_concurrency.py` cria outro banco descartável e usa duas
 conexões reais para inativação simultânea e aceite duplicado. Confere espera
 por lock e recusa segura em READ COMMITTED (55000) e REPEATABLE READ (40001).
+
+
+## Instalação sem superusuário e isolamento da autoria
+
+`auth_non_superuser_install.py` cria um banco e papel exclusivos em servidor
+explicitamente descartável. Confirma a ausência de SUPERUSER e de SET nos quatro
+parâmetros app.*, reproduz a recusa 42501 da definição antiga e instala 01–05
+com a identidade restrita. Remove somente os recursos criados pelo teste.
+
+`auth_audit_context_regression.sql` valida as quatro funções de escrita sob
+olius_api: contexto vazio e preenchido, sucesso, retornos antecipados e falhas
+injetadas durante a escrita. Confere restauração dos quatro parâmetros,
+autoria USER/SYSTEM e ausência de gravações parciais. As fixtures são revertidas.
+Ambos são executados por `run_ci.py`; nenhum teste conecta ao Aiven.
