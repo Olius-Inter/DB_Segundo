@@ -69,26 +69,17 @@ da sessão/usuário, não apenas a assinatura do JWT. A autorização de cada en
 continua no backend; p_admin_id vem da identidade autenticada, nunca de um campo
 livre do cliente. A conta SQL atende usuários distintos e não há RLS por usuário.
 
-## Implantação nova e atualização existente
+## Instalação
 
-Em um banco **novo**, instalar scripts principais 01–08, catálogo e controle de
-acesso na ordem documentada. As alterações estão nos arquivos canônicos 01–05;
-não existe script paralelo com outra definição das mesmas tabelas ou funções.
+O procedimento adotado pelo projeto é a instalação em banco recriado. Executar
+os scripts principais 01–08, catálogo e controle de acesso na ordem documentada.
+As estruturas, funções e triggers administrativas já pertencem aos scripts
+principais 01–05; as permissões são aplicadas por access_control/01_roles.sql.
 
-Em um banco **já instalado**, não executar novamente 01_structure.sql. Gerar:
-
-```powershell
-python PostgreSQL/admin_management/build_upgrade.py
-```
-
-O comando não se conecta ao banco. Produz `upgrade.generated.sql` nesta pasta,
-ignorado pelo Git, extraindo os blocos novos dos scripts oficiais e as matrizes
-atuais de catálogo/permissões. Revisar o SQL gerado, confirmar o banco/backup e
-executar inteiramente com a conta de implantação, fora de outra transação.
-A migração bloqueia users durante a atualização e confirma todos os objetos e
-privilégios numa única transação. Requer a entrega anterior completa, incluindo
-Data Mart e catálogo; recusa reaplicação quando a entrega administrativa já está
-presente. Em erro: ROLLBACK. Nenhuma migração é executada automaticamente.
+Esta pasta contém somente a documentação da funcionalidade; não precisa ser
+executada na instalação. Não há gerador de migração nem script administrativo
+paralelo. Editar os arquivos principais não atualiza um banco já instalado;
+a execução de 01_structure.sql pressupõe um banco sem as tabelas do projeto.
 
 Depois, provisionar o convite do primeiro ADMIN **somente se não houver nenhum**.
 Se um banco antigo já tiver ADMIN, ele permanece e o bootstrap é recusado. Se
@@ -114,4 +105,11 @@ As regressões conferem permissões reais, bootstrap, aceite, reenvio, expiraç�
 revogação, autor inativo, e-mail ocupado, sessão revogada e ausência do hash no log.
 Dois processos reais testam a proteção do último ADMIN e o consumo único sob
 READ COMMITTED e REPEATABLE READ. A massa de desenvolvimento continua sendo fictícia.
-Detalhes e resultados ficam em `VALIDACAO.md` após a homologação desta entrega.
+A instalação completa, as regressões e a carga de demonstração foram verificadas
+em PostgreSQL 16.15 descartável. A carga integrada mantém 112 usuários fictícios,
+240 solicitações, 200 coletas, 400 entregas e 15 certificados.
+
+Os testes permanecem em `../tests/admin_management_regression.sql` e
+`../tests/admin_management_concurrency.py`, executados pelo CI via `run_ci.py`.
+A remoção da ferramenta de migração não remove essas verificações de negócio.
+Envio de e-mail, frontend e endpoints da Core exigem validação na aplicação.
