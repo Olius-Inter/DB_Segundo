@@ -197,4 +197,4 @@ atribuído à Core. olius_api recebe EXECUTE nas quatro operações administrati
 na coordenação técnica e SELECT apenas nos metadados do convite sem hash.
 O bootstrap recebe EXECUTE somente para olius_owner. Auditor lê snapshots de
 admin_invitation_log, sem token original ou hash. Não foram criados novos papéis
-ou logins nesta entrega. Contrato e atualização: ../admin_management/README.md.
+ou logins nesta entrega. Documentação da funcionalidade: ../admin_management/README.md.
