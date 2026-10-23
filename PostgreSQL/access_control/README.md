@@ -1,17 +1,17 @@
 # Controle de acesso — OLIUS
 
-Esta pasta centraliza os papéis PostgreSQL, as permissões sobre os objetos do banco e as contas da equipe e da Core API. A configuração corresponde aos scripts atuais e tem como alvo PostgreSQL 16.15.
+Esta pasta centraliza os papéis PostgreSQL, as permissões sobre os objetos do banco e as contas da equipe, Core API e integração BI. A configuração corresponde aos scripts atuais e tem como alvo PostgreSQL 16.15.
 
 ## Arquivos e ordem de execução
 
 | Arquivo | Responsabilidade |
 |---|---|
 | `01_roles.sql` | Cria e valida os papéis, aplica permissões, transfere a propriedade dos objetos previstos e configura os acessos de autenticação. |
-| `02_users.sql` | Cria as sete contas aprovadas e atribui seus papéis, sem definir senhas. |
+| `02_users.sql` | Cria as dez contas aprovadas e atribui seus papéis, sem definir senhas. |
 
 Executar nesta ordem, no banco do OLIUS do segundo ano:
 
-1. Os cinco scripts principais do banco, de `01_structure.sql` a `05_triggers.sql`.
+1. Scripts principais 01–07 e `08_materialized_views.sql`.
 2. Os scripts de estrutura, constraints, view e carga da pasta `data_catalog`.
 3. `access_control/01_roles.sql`.
 4. `access_control/02_users.sql`, quando for provisionar as contas.
@@ -22,7 +22,7 @@ Executar cada arquivo completo, fora de outra transação. Ambos utilizam BEGIN/
 
 ## Papéis e contas
 
-Os **sete papéis** abaixo são `NOLOGIN`: representam permissões ou propriedade técnica e não iniciam uma conexão. As contas da equipe e da API são `LOGIN` e recebem participação nesses papéis.
+Os **dez papéis** abaixo são `NOLOGIN`: representam permissões ou propriedade técnica e não iniciam uma conexão. As contas da equipe, API e integração BI são `LOGIN` e recebem participação nos grupos previstos.
 
 Os perfis ADMIN, CITIZENS e ESTABLISHMENT da aplicação são registros do sistema e não equivalem automaticamente a esses papéis PostgreSQL.
 
@@ -35,6 +35,9 @@ Os perfis ADMIN, CITIZENS e ESTABLISHMENT da aplicação são registros do siste
 | `olius_api` | Consultas de negócio, escrita cadastral/financeira por coluna e EXECUTE nas operações públicas. Sem escrita livre em fatos derivados, saldos, sessões ou logs; contrato completo em API_DATABASE_CONTRACT.md. |
 | `olius_auth_owner` | Proprietário interno das funções de autenticação, com os privilégios restritos necessários à sua execução. Não é um perfil atribuído às contas da equipe ou da API. |
 | `olius_business_owner` | Proprietário interno das procedures de negócio, entradas operacionais e triggers de auditoria/sincronização de PEV. Sem login, sem propriedade de tabelas e sem participação atribuída à Core ou à equipe. |
+| `olius_dm_owner` | Proprietário interno do schema dm, das 13 views materializadas, refresh_state e procedure de refresh; acessos às fontes necessários ao refresh. |
+| `olius_bi_reader_role` | SELECT somente nos 13 conjuntos materializados e dm.refresh_state. |
+| `olius_bi_refresh_role` | EXECUTE em dm.refresh_data_mart() e SELECT em dm.refresh_state; sem DML direto. |
 
 Os cinco perfis gerais recebem CONNECT no banco selecionado e USAGE no schema public. O proprietário interno recebe USAGE e os acessos necessários às suas funções. Nenhum desses grupos recebe SUPERUSER, CREATEDB, CREATEROLE, REPLICATION ou BYPASSRLS.
 
@@ -42,13 +45,13 @@ Os cinco perfis gerais recebem CONNECT no banco selecionado e USAGE no schema pu
 
 Recebe ALL PRIVILEGES WITH GRANT OPTION sobre os objetos da lista fechada do script. Além dos privilégios, o script transfere a propriedade de:
 
-- 55 tabelas da aplicação/auditoria, três tabelas documentais e `vw_data_catalog`;
+- 58 tabelas da aplicação/auditoria, três tabelas documentais, `vw_data_catalog`, `vw_annual_scores` e `vw_annual_ranking`;
 - 22 tipos enum do projeto;
 - 11 funções comuns explicitamente listadas. As dez procedures e duas funções de trigger de negócio passam ao proprietário interno.
 
 A propriedade permite manutenção estrutural, como ALTER e DROP, que GRANT ALL sozinho não concede. Banco, schema e objetos de extensões não têm sua propriedade transferida.
 
-O grupo também pode executar as cinco funções de integração de autenticação. As oito funções pertencentes a `olius_auth_owner` permanecem com esse proprietário restrito.
+O grupo também pode executar as cinco funções de integração de autenticação. As quinze funções pertencentes a `olius_auth_owner` permanecem com esse proprietário restrito.
 
 Pedro e Caio são administradores confiáveis dos dados: a propriedade das tabelas permite alterar sua estrutura e triggers. A separação do proprietário das funções de autenticação protege principalmente os acessos da API e dos leitores; não elimina os poderes de manutenção das tabelas concedidos aos administradores.
 
@@ -120,6 +123,12 @@ Nenhuma conta definida em `02_users.sql` recebe participação nesse papel. A Co
 
 ## Contas configuradas
 
+A propriedade do Data Mart permanece em olius_dm_owner (NOLOGIN). A conta
+olius_dm_admin recebe esse papel para manutenção, seguindo o padrão de
+olius_core_api → olius_api. Ela não substitui as contas restritas de consulta e refresh.
+olius_owner continua com consulta e execução do refresh em dm, sem herdar
+olius_dm_owner nem receber propriedade dos objetos desse schema.
+
 | Conta LOGIN | Papel recebido | Uso |
 |---|---|---|
 | `pedro` | `olius_owner` | Administração e manutenção do banco OLIUS. |
@@ -129,8 +138,27 @@ Nenhuma conta definida em `02_users.sql` recebe participação nesse papel. A Co
 | `david` | `olius_reader` | Consulta aos dados autorizados e à documentação. |
 | `erick` | `olius_reader` | Consulta aos dados autorizados e à documentação. |
 | `olius_core_api` | `olius_api` | Conexão exclusiva do backend da Core API. |
+| `olius_dm_admin` | `olius_dm_owner` | Administração da estrutura e dos dados do Data Mart; não usar na consulta cotidiana nem no Job. |
+| `olius_bi_reader` | `olius_bi_reader_role` | Leitura das views materializadas pela conexão federada do Databricks. |
+| `olius_bi_refresh` | `olius_bi_refresh_role` | Chamada do refresh coordenado e leitura do identificador da atualização. |
 
-As sete contas são criadas com LOGIN/INHERIT e sem privilégios administrativos globais. Membership usa INHERIT TRUE, SET TRUE e ADMIN FALSE: recebem os acessos do grupo, podem assumir o grupo, mas não recebem autorização para delegá-lo a outras contas.
+As dez contas são criadas com LOGIN/INHERIT e sem privilégios administrativos globais. Membership usa INHERIT TRUE, SET TRUE e ADMIN FALSE: recebem os acessos do grupo, podem assumir o grupo, mas não recebem autorização para delegá-lo a outras contas.
+
+Para criar novos objetos de manutenção como olius_dm_admin, usar SET ROLE
+olius_dm_owner e depois RESET ROLE: a propriedade deve ficar no grupo,
+não no login. Essa conta pode alterar/excluir objetos de dm e consultar as
+fontes autorizadas ao proprietário, mas não recebe edição das tabelas public,
+CREATEROLE ou CREATEDB. Sua senha também é configurada fora do Git.
+
+Provisionar esse login após 01_roles.sql não substitui os requisitos da conta
+de implantação para criar os grupos e transferir os objetos na instalação
+inicial. Esses requisitos continuam explicitamente verificados no script.
+
+Na conexão federada do Databricks, usar olius_bi_reader. O Job usa uma conexão
+Python direta separada com olius_bi_refresh, secrets e TLS; sua conectividade
+no serverless precisa de homologação. Não atribuir olius_dm_owner às contas BI
+nem conceder refresh ao reader. Senhas ficam fora dos scripts/Git; configuração
+no guia de Databricks/documents. Não há exportador de arquivos neste fluxo.
 
 Nenhuma conta é criada para o grupo auditor/editor nesta versão; esses papéis ficam disponíveis para atribuições futuras aprovadas. A segunda API também não tem uma conta definida nesta entrega.
 
@@ -159,3 +187,14 @@ A configuração foi testada em PostgreSQL 16.15 descartável: criação/reaplic
 Essas execuções foram locais, sem implantação no Aiven e sem integração dos testes novos ao CI. A existência dos scripts não significa que as contas já estejam criadas no servidor real.
 
 A ampliação do contrato da Core foi validada com as oito procedures públicas, pontos/certificados/auditoria derivados, entradas operacionais e bloqueios da conta olius_core_api. Novas funções operacionais estão no script principal 04; todas as concessões e atributos SECURITY DEFINER são centralizados em 01_roles.sql. Após reinstalar 04/05, reaplicar as permissões antes de liberar tráfego.
+
+
+## Convites administrativos
+
+olius_auth_owner passa a operar admin_invitation e admin_guard_state e a inserir
+usuários/alterar status pelas funções revisadas. Continua NOLOGIN e não é
+atribuído à Core. olius_api recebe EXECUTE nas quatro operações administrativas,
+na coordenação técnica e SELECT apenas nos metadados do convite sem hash.
+O bootstrap recebe EXECUTE somente para olius_owner. Auditor lê snapshots de
+admin_invitation_log, sem token original ou hash. Não foram criados novos papéis
+ou logins nesta entrega. Documentação da funcionalidade: ../admin_management/README.md.

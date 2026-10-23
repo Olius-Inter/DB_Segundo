@@ -9,6 +9,24 @@ O projeto utiliza diferentes tecnologias de armazenamento, cada uma destinada a 
 * **Redis** — Armazenamento em memória para dados temporários e operações de alta velocidade.
 * **Neo4j** — Banco de dados orientado a grafos.
 
+## Cargas de dados
+
+- [Configuração inicial oficial](PostgreSQL/initial_data/README.md): 16 registros de planos, níveis de certificados, tipos de estabelecimento e motivos de falha. Compartilhada entre produção e desenvolvimento.
+- [Data Load de demonstração](PostgreSQL/data_load/README.md): reutiliza a configuração oficial e cria dados fictícios exclusivamente em desenvolvimento/testes. Não executar em produção.
+
+## Data Mart e BI
+
+O recorte analítico de coletas, entregas e solicitações usa views materializadas
+em star schema no PostgreSQL. O ranking aprovado também é materializado.
+Os dashboards consultam diretamente o schema dm por conexão federada no
+Databricks. Um Job Python separado chama a procedure de refresh no PostgreSQL,
+com a conta restrita de atualização; não há cópia dos dados para Delta.
+
+* **PostgreSQL/08_materialized_views.sql** — instalação das fatos, dimensões e ranking.
+* **PostgreSQL/09_refresh_materialized_views.sql** — refresh manual coordenado.
+* **Databricks/** — notebook de refresh, seus testes e guias de configuração/execução.
+* [Guia do Data Mart](Databricks/documents/README.md) — conexão, sequência de execução, modelo e atualização.
+
 ---
 
 # 📌 Boas Práticas

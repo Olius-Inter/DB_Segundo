@@ -52,9 +52,10 @@ def main():
         raise RuntimeError("Defina OLIUS_CI_DISPOSABLE=1 somente em uma base descartável vazia.")
     if query("empty-database", "SELECT count(*) FROM pg_tables WHERE schemaname='public';").strip() != "0":
         raise RuntimeError("A base de teste deve estar vazia; nenhum objeto será apagado pelo runner.")
+    execute("non-superuser-install-regression", [sys.executable, str(TESTS / "auth_non_superuser_install.py")])
     for name in ("01_structure.sql", "02_check_constraints.sql", "03_indexes.sql",
                  "04_functions_procedures.sql", "05_triggers.sql",
-                 "06_ctes.sql", "07_window_functions.sql"):
+                 "06_ctes.sql", "07_window_functions.sql", "08_materialized_views.sql"):
         sql_file("PostgreSQL/" + name)
     query("profiler-init", "CREATE SCHEMA ci_metrics; CREATE EXTENSION plpgsql_check WITH SCHEMA ci_metrics;")
     enabled = query("profiler-enabled", "SELECT current_setting('plpgsql_check.profiler')='on' "
@@ -78,6 +79,9 @@ def main():
         sql_file("PostgreSQL/tests/ci_auth_bootstrap.sql")
         print("NOTA: permissões de auth são fixture de teste; configuração de produção será testada quando access_control estiver presente.")
 
+    # O teste da carga oficial usa outro banco e não mistura catálogos com fixtures.
+    execute("initial-data-regression", [sys.executable, str(TESTS / "initial_data_regression.py")])
+
     # Registra somente o código de aplicação, antes de criar helpers dos testes.
     inventory = query("routine-inventory", """
         SELECT coalesce(json_agg(row_to_json(r)), '[]'::json) FROM (
@@ -96,17 +100,21 @@ def main():
     if has_auth:
         sql_file("PostgreSQL/tests/auth_sessions_regression.sql")
         sql_file("PostgreSQL/tests/auth_sessions_edges.sql")
+        sql_file("PostgreSQL/tests/auth_audit_context_regression.sql")
         sql_file("PostgreSQL/tests/operational_regression.sql")
     if has_catalog:
         sql_file("PostgreSQL/data_catalog/05_validate.sql")
     if has_access:
         sql_file("PostgreSQL/tests/catalog_access_regression.sql")
         sql_file("PostgreSQL/tests/api_access_regression.sql")
+        sql_file("PostgreSQL/tests/data_mart_access_regression.sql")
+        sql_file("PostgreSQL/tests/admin_management_regression.sql")
     else:
         print("NOTA: testes de API/permissões e catálogo/permissões dependem da PR access_control; não executados nesta branch.")
 
     # Regressões SQL fazem ROLLBACK. Concorrência cria fixtures persistentes:
     # executar por último para não colidir com os schemas das regressões.
+    execute("admin-concurrency", [sys.executable, str(TESTS / "admin_management_concurrency.py")])
     execute("procedures-concurrency", [sys.executable, str(TESTS / "procedures_concurrency.py")])
     if has_auth:
         execute("auth-concurrency", [sys.executable, str(TESTS / "auth_sessions_concurrency.py")])

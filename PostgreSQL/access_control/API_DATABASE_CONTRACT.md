@@ -155,3 +155,48 @@ Contas novas continuam sem senha; provisionar credenciais fora do Git. As roles 
 A instalação recusa CREATE no schema public para outro papel não revisado e EXECUTE externo em rotinas que receberão privilégios elevados. Conferir essas concessões antes da implantação; o script não apaga direitos de terceiros automaticamente. A conta de implantação pode precisar de membership nos proprietários internos para administrar as rotinas; isso não autoriza atribuí-los às contas operacionais.
 
 Validação: instalação, reaplicação e regressões em PostgreSQL 16.15 descartável; teste da identidade olius_core_api com oito procedures, consultas, entradas operacionais e negações de acesso. Não há implantação automática no Aiven nem mudança no CI.
+
+
+## Administradores por convite — contrato de outubro/2026
+
+A concessão INSERT(user_type) continua necessária ao cadastro comum, mas a trigger
+nega INSERT de ADMIN diretamente por olius_api. UPDATE(status) direto de ADMIN
+com alteração de valor também é negado. A API deve utilizar as funções abaixo,
+sempre obtendo p_admin_id da identidade autenticada e validando a sessão ativa.
+
+| Função | Entrada | Retorno e contrato |
+|---|---|---|
+| issue_admin_invitation | p_admin_id UUID, p_name TEXT, p_email TEXT, p_token_hash BYTEA | UUID do convite; autor ADMIN ativo; 24 horas; reenvio para o mesmo e-mail revoga o anterior. |
+| revoke_admin_invitation | p_admin_id UUID, p_invitation_id UUID | BOOLEAN: TRUE se revogou, FALSE se já revogado; aceite anterior impede revogação. |
+| accept_admin_invitation | p_token_hash BYTEA, p_password_hash TEXT | UUID do ADMIN criado; posse do token autoriza esse aceite sem login; não abre sessão automaticamente. |
+| set_admin_status | p_admin_id UUID, p_target_id UUID, p_status active_status_t | VOID; gerencia apenas ADMIN e preserva ao menos um ADMIN ativo. |
+
+O banco recebe SHA-256 de 32 bytes do token e o hash da senha já calculado pela
+Core. A Core gera no mínimo 32 bytes aleatórios criptograficamente seguros para
+o segredo, envia o link somente após commit, valida a senha e seu hash conforme
+a autenticação existente e não registra tokens/senhas em logs. Não reutilizar
+refresh tokens. E-mails dos convites são normalizados em minúsculas; a API deve
+aplicar a mesma normalização no cadastro/login e validar o endereço completo.
+O banco compara o e-mail com os usuários existentes sem diferenciar maiúsculas,
+mas não altera a UNIQUE histórica case-sensitive de users.email nesta entrega.
+
+A Core pode listar os metadados aprovados de admin_invitation, sem token_hash.
+Deve restringir listagem/emissão/reenvio/revogação/status a ADMIN ativo. O aceite
+público usa somente token e nova senha, sem aceitar perfil, e-mail ou autor do
+cliente como substitutos dos dados congelados no convite. Expirado/revogado/
+consumido exige novo convite. Limitar tentativas e apresentar erros sem expor
+informações internas. Se o envio do e-mail falhar após commit, solicitar reenvio
+com novo segredo; não se presume atomicidade entre PostgreSQL e serviço de e-mail.
+
+lock_admin_registry() também tem EXECUTE para olius_api por ser usada pela trigger
+nos cadastros comuns. Só coordena a linha técnica; não cria ADMIN, não retorna
+dados e não substitui autorização. A aplicação não precisa chamá-la diretamente.
+create_admin_invitation_internal é privada; issue_bootstrap_admin_invitation é
+restrita ao proprietário de implantação e nunca deve ser exposta por endpoint
+público. A conta técnica não recebe memberships internos nem DML direto nos
+convites, controle ou logs. Rotinas usam olius_auth_owner como proprietário.
+
+Operações devem ser curtas e transacionais. Em 40001/40P01, reverter toda a
+transação e seguir política explícita de nova tentativa; o banco não faz retries.
+A inativação revoga sessões; a API precisa consultar/validar seu estado e o status
+do usuário, sem confiar somente na assinatura de um JWT antigo.

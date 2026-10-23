@@ -3,25 +3,18 @@ BEGIN;
 \ir 00_helpers.sql
 SELECT pg_temp.dl_actor('SYSTEM');
 
-INSERT INTO subscription_plan(id,name,description,monthly_price,volume_limit_liters,collection_limit)
-SELECT pg_temp.dl_id('plan',ordinality::INTEGER), p->>'name',
-       'Oferta oficial documentada; registro instalado para a demonstração.',
-       (p->>'monthly_price')::NUMERIC, (p->>'volume_limit_liters')::NUMERIC,
-       (p->>'collection_limit')::INTEGER
-FROM dl_config, jsonb_array_elements(value->'plans') WITH ORDINALITY AS x(p,ordinality);
--- Metas não definidas ficam vazias; jamais inferir metas a partir dos pontos.
-INSERT INTO certificate_level(id,name,required_liters)
-SELECT pg_temp.dl_id('level',ordinality::INTEGER), p->>'name', (p->>'required_liters')::NUMERIC
-FROM dl_config, jsonb_array_elements(value->'certificate_levels') WITH ORDINALITY AS x(p,ordinality);
-
-INSERT INTO establishment_type(id,name,description) VALUES
-(pg_temp.dl_id('type',1),'Restaurante','Categoria usada pelos estabelecimentos fictícios.'),
-(pg_temp.dl_id('type',2),'Lanchonete','Categoria usada pelos estabelecimentos fictícios.'),
-(pg_temp.dl_id('type',3),'Padaria','Categoria usada pelos estabelecimentos fictícios.');
-INSERT INTO collection_failure_reason(code,name) VALUES
-('VOLUME_OUT_OF_TOLERANCE','Volume fora da faixa'),
-('OIL_UNACCEPTABLE','Óleo inadequado'),
-('COMPROMISING_OCCURRENCE','Ocorrência comprometedora');
+-- Catálogos vêm de initial_data. Esta massa exige exatamente a configuração aprovada.
+SELECT pg_temp.dl_assert((SELECT count(*)=3 FROM subscription_plan)
+    AND (SELECT count(*)=3 FROM certificate_level)
+    AND (SELECT count(*)=7 FROM establishment_type)
+    AND (SELECT count(*)=3 FROM collection_failure_reason), 'catálogos exclusivos da configuração oficial');
+SELECT pg_temp.dl_assert(NOT EXISTS (
+    SELECT 1 FROM subscription_plan lower_plan JOIN subscription_plan higher_plan
+        ON lower_plan.monthly_price < higher_plan.monthly_price
+    WHERE lower_plan.volume_limit_liters >= higher_plan.volume_limit_liters
+       OR lower_plan.collection_limit >= higher_plan.collection_limit), 'upgrades exigem aumento de ambos os limites');
+SELECT pg_temp.dl_assert((SELECT collection_limit>=8 AND volume_limit_liters>=250
+    FROM subscription_plan ORDER BY monthly_price DESC LIMIT 1), 'capacidade para a distribuição da demonstração');
 
 INSERT INTO users(id,name,email,password_hash,user_type)
 SELECT pg_temp.dl_id(kind,i),
@@ -48,7 +41,7 @@ FROM (VALUES ('est_address','ESTABLISHMENT',30),('pev_address','PEV',8)) x(kind,
 CROSS JOIN LATERAL generate_series(1,quantity) n(i);
 INSERT INTO establishment(id,cnpj,qr_token,type_id,address_id,description)
 SELECT pg_temp.dl_id('est',i),pg_temp.dl_document(i,TRUE),md5(pg_temp.dl_id('est',i)::TEXT || ':demonstration-qr'),
-       pg_temp.dl_id('type',1+(i%3)),pg_temp.dl_id('est_address',i),'Estabelecimento artificial para testes de volume.'
+       pg_temp.dl_id('type',1+(i%7)),pg_temp.dl_id('est_address',i),'Estabelecimento artificial para testes de volume.'
 FROM generate_series(1,30) n(i);
 INSERT INTO telephone(telephone,user_id)
 SELECT '119' || lpad(n::TEXT,8,'0'),id FROM (

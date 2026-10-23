@@ -37,7 +37,7 @@ Nenhum arquivo se conecta automaticamente ao Aiven. Nesta revisão, a execução
 
 ## Cobertura atual
 
-**58 tabelas e 828 colunas documentadas:** 55 tabelas da aplicação/auditoria e três do catálogo. A view exclui as três tabelas documentais e apresenta **55 tabelas e 808 colunas distintas**. Existem 23 tabelas de auditoria no banco.
+**58 tabelas e 828 colunas documentadas:** 58 tabelas da aplicação/auditoria e três do catálogo. A view exclui as três tabelas documentais e apresenta **55 tabelas e 808 colunas distintas**. Existem 23 tabelas de auditoria no banco.
 
 Não conte linhas da view para medir colunas: uma coluna pode aparecer uma vez para cada papel com acesso. A validação verifica ausência física, renomeações, metadados faltantes e campos pendentes. Novos objetos continuam sendo descobertos como PENDING até revisão; não recebem descrições de negócio inventadas.
 
@@ -53,7 +53,7 @@ O catálogo documenta tabelas e colunas. O comportamento das rotinas de sessão 
 | `olius_catalog_editor` | SELECT/INSERT/UPDATE/DELETE nas três tabelas documentais e leitura da view. |
 | `olius_api` | Consultas de negócio, escrita limitada por coluna e EXECUTE nas operações públicas. Contrato completo em ../access_control/API_DATABASE_CONTRACT.md. |
 
-`olius_auth_owner` é um proprietário interno NOLOGIN, não um sexto perfil da equipe. Mantém oito funções de autenticação: a auxiliar de prazo, cinco de integração e duas de trigger SECURITY DEFINER. Nenhuma das sete contas recebe participação nesse papel. `olius_owner` pode executar as cinco funções de integração, sem poder redefini-las por sua associação ao grupo comum.
+`olius_auth_owner` é um proprietário interno NOLOGIN, não um sexto perfil da equipe. Mantém as oito funções de sessões e sete rotinas administrativas revisadas (15 no total). Nenhuma das sete contas recebe participação nesse papel. `olius_owner` pode executar as cinco funções de integração, sem poder redefini-las por sua associação ao grupo comum.
 
 access_control/01_roles.sql transfere a propriedade dos objetos listados para `olius_owner`: GRANT ALL sozinho não concede ALTER/DROP. Ele não usa REASSIGN OWNED, não transfere banco/schema/extensões e não assume controle de objetos arbitrários com base no catálogo documental editável.
 
@@ -93,7 +93,7 @@ access_control/02_users.sql apresenta um relatório de CONNECT para as sete cont
 
 `access_status` mostra uma role documental por linha, se ela existir e tiver USAGE no schema e acesso de dados à coluna/tabela. Considera SELECT/INSERT/UPDATE por coluna ou tabela e DELETE/TRUNCATE por tabela, inclusive herança efetiva e PUBLIC. REFERENCES/TRIGGER sozinhos não são acesso aos dados.
 
-Sem role elegível, a coluna permanece com NULL. EXECUTE em função SECURITY DEFINER não é acesso direto à tabela e não faz olius_api aparecer como leitor de hashes de refresh tokens/sessões. Os proprietários internos de auth e negócio não são listados entre os cinco perfis documentais. A Core lê users.password_hash para login; isso é distinto de acesso a refresh tokens.
+Sem role elegível, a coluna permanece com NULL. EXECUTE em função SECURITY DEFINER não é acesso direto à tabela e não faz olius_api aparecer como leitor de hashes de refresh tokens/sessões. Os proprietários internos de auth e negócio não são listados entre os perfis documentais. A Core lê users.password_hash para login; isso é distinto de acesso a refresh tokens. A carga inicial registra cinco perfis; access_control acrescenta os três papéis do Data Mart, totalizando oito.
 
 A descrição do papel informa sua finalidade geral; os privilégios concretos variam por objeto. A view não simula políticas RLS nem autenticação. Por usar security_invoker, exige leitura da view e das três tabelas documentais.
 
@@ -105,4 +105,4 @@ Consulte `validation_report.md`, `../tests/catalog_access_regression.sql`. A rev
 
 Referências: [privilégios e membership no PostgreSQL 16](https://www.postgresql.org/docs/16/sql-grant.html), [alteração da propriedade de funções](https://www.postgresql.org/docs/16/sql-alterfunction.html).
 
-O proprietário interno olius_business_owner e as permissões detalhadas da Core são documentados em [../access_control/README.md](../access_control/README.md) e [../access_control/API_DATABASE_CONTRACT.md](../access_control/API_DATABASE_CONTRACT.md). O catálogo mantém cinco perfis documentais; não concede privilégios por seus registros.
+O proprietário interno olius_business_owner e as permissões detalhadas da Core são documentados em [../access_control/README.md](../access_control/README.md) e [../access_control/API_DATABASE_CONTRACT.md](../access_control/API_DATABASE_CONTRACT.md). O catálogo tem cinco perfis na carga inicial e oito após access_control, incluindo o Data Mart; seus registros não concedem privilégios.

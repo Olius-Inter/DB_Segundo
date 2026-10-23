@@ -1941,8 +1941,9 @@ COMMIT;
    REFRESH_REUSED exige COMMIT antes do erro HTTP; rollback desfaz a revogação.
    Política estrita: reenvio após resposta perdida pode exigir novo login.
    Somente a Core autenticadora recebe EXECUTE; UUID informado não autentica.
-   SET de contexto nas funções restaura o contexto anterior ao sair, inclusive
-   em exceções. set_config(..., true) nunca deixa contexto no pool após COMMIT.
+   Contexto de auditoria é salvo/restaurado no corpo, inclusive em retornos e
+   exceções: dispensa SET app.* na definição, restrito na instalação sem superuser.
+   set_config(..., true) também limita o contexto à transação.
 */
 BEGIN;
 
@@ -1963,31 +1964,42 @@ CREATE OR REPLACE FUNCTION public.open_auth_session(p_user_id UUID, p_token_hash
 RETURNS TABLE (result_code TEXT, session_id UUID, expires_at TIMESTAMPTZ)
 LANGUAGE plpgsql SECURITY DEFINER
 SET search_path = pg_catalog, pg_temp
-SET app.audit_actor = 'SYSTEM'
-SET app.current_user_id = ''
-SET app.operational_driver_id = ''
-SET app.audit_reason = ''
 AS $$
 DECLARE v_user RECORD; v_now TIMESTAMPTZ; v_expiry TIMESTAMPTZ; v_id UUID;
+        v_login_context JSONB;
 BEGIN
-    IF p_token_hash IS NULL OR octet_length(p_token_hash) <> 32 THEN
-        RETURN QUERY SELECT 'INVALID_INPUT'::TEXT, NULL::UUID, NULL::TIMESTAMPTZ; RETURN;
-    END IF;
-    SELECT u.id, u.status, u.user_type INTO v_user FROM public.users u
-    WHERE u.id = p_user_id FOR UPDATE;
-    IF NOT FOUND OR v_user.status <> 'ACTIVE'::public.active_status_t THEN
-        RETURN QUERY SELECT 'USER_UNAVAILABLE'::TEXT, NULL::UUID, NULL::TIMESTAMPTZ; RETURN;
-    END IF;
-    v_now := clock_timestamp();
-    v_expiry := v_now + public.auth_idle_duration(v_user.user_type);
-    PERFORM set_config('app.audit_actor', 'USER', true);
-    PERFORM set_config('app.current_user_id', p_user_id::TEXT, true);
-    PERFORM set_config('app.audit_reason', 'Login autenticado pela Core', true);
-    INSERT INTO public.auth_session(user_id, created_at, last_renewed_at, idle_expires_at, updated_at)
-    VALUES(p_user_id, v_now, v_now, v_expiry, v_now) RETURNING id INTO v_id;
-    INSERT INTO public.auth_refresh_token(session_id, token_hash, generation, issued_at, expires_at)
-    VALUES(v_id, p_token_hash, 1, v_now, v_expiry);
-    RETURN QUERY SELECT 'OK'::TEXT, v_id, v_expiry;
+    SELECT jsonb_object_agg(setting_name, current_setting(setting_name, true)) INTO v_login_context
+    FROM unnest(ARRAY['app.audit_actor', 'app.current_user_id',
+                      'app.operational_driver_id', 'app.audit_reason']) AS settings(setting_name);
+    <<session_operation>>
+    BEGIN
+        PERFORM set_config(setting_name, setting_value, true)
+        FROM (VALUES ('app.audit_actor', 'SYSTEM'), ('app.current_user_id', ''),
+                     ('app.operational_driver_id', ''), ('app.audit_reason', '')) AS settings(setting_name, setting_value);
+        IF p_token_hash IS NULL OR octet_length(p_token_hash) <> 32 THEN
+            RETURN QUERY SELECT 'INVALID_INPUT'::TEXT, NULL::UUID, NULL::TIMESTAMPTZ; EXIT session_operation;
+        END IF;
+        SELECT u.id, u.status, u.user_type INTO v_user FROM public.users u
+        WHERE u.id = p_user_id FOR UPDATE;
+        IF NOT FOUND OR v_user.status <> 'ACTIVE'::public.active_status_t THEN
+            RETURN QUERY SELECT 'USER_UNAVAILABLE'::TEXT, NULL::UUID, NULL::TIMESTAMPTZ; EXIT session_operation;
+        END IF;
+        v_now := clock_timestamp();
+        v_expiry := v_now + public.auth_idle_duration(v_user.user_type);
+        PERFORM set_config('app.audit_actor', 'USER', true);
+        PERFORM set_config('app.current_user_id', p_user_id::TEXT, true);
+        PERFORM set_config('app.audit_reason', 'Login autenticado pela Core', true);
+        INSERT INTO public.auth_session(user_id, created_at, last_renewed_at, idle_expires_at, updated_at)
+        VALUES(p_user_id, v_now, v_now, v_expiry, v_now) RETURNING id INTO v_id;
+        INSERT INTO public.auth_refresh_token(session_id, token_hash, generation, issued_at, expires_at)
+        VALUES(v_id, p_token_hash, 1, v_now, v_expiry);
+        RETURN QUERY SELECT 'OK'::TEXT, v_id, v_expiry;
+    END session_operation;
+    PERFORM set_config(key, coalesce(value, ''), true) FROM jsonb_each_text(v_login_context);
+    RETURN;
+EXCEPTION WHEN OTHERS THEN
+    PERFORM set_config(key, coalesce(value, ''), true) FROM jsonb_each_text(v_login_context);
+    RAISE;
 END;
 $$;
 
@@ -1995,69 +2007,80 @@ CREATE OR REPLACE FUNCTION public.rotate_auth_refresh_token(p_token_hash BYTEA, 
 RETURNS TABLE (result_code TEXT, session_id UUID, user_id UUID, expires_at TIMESTAMPTZ)
 LANGUAGE plpgsql SECURITY DEFINER
 SET search_path = pg_catalog, pg_temp
-SET app.audit_actor = 'SYSTEM'
-SET app.current_user_id = ''
-SET app.operational_driver_id = ''
-SET app.audit_reason = ''
 AS $$
 DECLARE v_uid UUID; v_sid UUID; v_tid UUID; v_user RECORD;
         v_session public.auth_session%ROWTYPE; v_token public.auth_refresh_token%ROWTYPE;
         v_now TIMESTAMPTZ; v_expiry TIMESTAMPTZ;
+        v_rotation_context JSONB;
 BEGIN
-    IF p_token_hash IS NULL OR octet_length(p_token_hash) <> 32 THEN
-        RETURN QUERY SELECT 'INVALID_INPUT'::TEXT, NULL::UUID, NULL::UUID, NULL::TIMESTAMPTZ; RETURN;
-    END IF;
-    SELECT s.user_id, s.id, t.id INTO v_uid, v_sid, v_tid
-    FROM public.auth_refresh_token t JOIN public.auth_session s ON s.id = t.session_id
-    WHERE t.token_hash = p_token_hash;
-    IF NOT FOUND THEN
-        RETURN QUERY SELECT 'INVALID_TOKEN'::TEXT, NULL::UUID, NULL::UUID, NULL::TIMESTAMPTZ; RETURN;
-    END IF;
-    -- Mesma hierarquia de login, logout e UPDATE de inativação: usuário → sessão → token.
-    SELECT u.id, u.status, u.user_type INTO v_user FROM public.users u WHERE u.id = v_uid FOR UPDATE;
-    IF NOT FOUND THEN
-        RETURN QUERY SELECT 'INVALID_TOKEN'::TEXT, NULL::UUID, NULL::UUID, NULL::TIMESTAMPTZ; RETURN;
-    END IF;
-    SELECT s.* INTO v_session FROM public.auth_session s
-    WHERE s.id = v_sid AND s.user_id = v_uid FOR UPDATE;
-    IF NOT FOUND THEN
-        RETURN QUERY SELECT 'INVALID_TOKEN'::TEXT, NULL::UUID, NULL::UUID, NULL::TIMESTAMPTZ; RETURN;
-    END IF;
-    SELECT t.* INTO v_token FROM public.auth_refresh_token t
-    WHERE t.id = v_tid AND t.session_id = v_sid AND t.token_hash = p_token_hash FOR UPDATE;
-    IF NOT FOUND THEN
-        RETURN QUERY SELECT 'INVALID_TOKEN'::TEXT, NULL::UUID, NULL::UUID, NULL::TIMESTAMPTZ; RETURN;
-    END IF;
-    v_now := clock_timestamp();
-    IF v_user.status <> 'ACTIVE'::public.active_status_t THEN
-        RETURN QUERY SELECT 'USER_INACTIVE'::TEXT, NULL::UUID, NULL::UUID, NULL::TIMESTAMPTZ; RETURN;
-    ELSIF v_session.revoked_at IS NOT NULL THEN
-        RETURN QUERY SELECT 'SESSION_REVOKED'::TEXT, NULL::UUID, NULL::UUID, NULL::TIMESTAMPTZ; RETURN;
-    ELSIF v_now >= v_session.idle_expires_at THEN
-        RETURN QUERY SELECT 'SESSION_EXPIRED'::TEXT, NULL::UUID, NULL::UUID, NULL::TIMESTAMPTZ; RETURN;
-    ELSIF v_token.consumed_at IS NOT NULL THEN
-        -- Posse de segredo já consumido não comprova autoria do titular.
-        PERFORM set_config('app.audit_reason', 'Reutilização de refresh token consumido', true);
-        UPDATE public.auth_session SET revoked_at = v_now, revocation_reason = 'REFRESH_REUSE'
-        WHERE id = v_sid;
-        RETURN QUERY SELECT 'REFRESH_REUSED'::TEXT, NULL::UUID, NULL::UUID, NULL::TIMESTAMPTZ; RETURN;
-    ELSIF v_now >= v_token.expires_at THEN
-        RETURN QUERY SELECT 'TOKEN_EXPIRED'::TEXT, NULL::UUID, NULL::UUID, NULL::TIMESTAMPTZ; RETURN;
-    END IF;
-    -- Mesmo sucessor inválido não pode mascarar reutilização de token consumido.
-    IF p_next_token_hash IS NULL OR octet_length(p_next_token_hash) <> 32
-       OR p_token_hash = p_next_token_hash THEN
-        RETURN QUERY SELECT 'INVALID_INPUT'::TEXT, NULL::UUID, NULL::UUID, NULL::TIMESTAMPTZ; RETURN;
-    END IF;
-    v_expiry := v_now + public.auth_idle_duration(v_user.user_type);
-    PERFORM set_config('app.audit_actor', 'USER', true);
-    PERFORM set_config('app.current_user_id', v_uid::TEXT, true);
-    PERFORM set_config('app.audit_reason', 'Rotação válida de refresh token', true);
-    UPDATE public.auth_refresh_token SET consumed_at = v_now WHERE id = v_tid;
-    INSERT INTO public.auth_refresh_token(session_id, token_hash, generation, issued_at, expires_at)
-    VALUES(v_sid, p_next_token_hash, v_token.generation + 1, v_now, v_expiry);
-    UPDATE public.auth_session SET last_renewed_at = v_now, idle_expires_at = v_expiry WHERE id = v_sid;
-    RETURN QUERY SELECT 'OK'::TEXT, v_sid, v_uid, v_expiry;
+    SELECT jsonb_object_agg(setting_name, current_setting(setting_name, true)) INTO v_rotation_context
+    FROM unnest(ARRAY['app.audit_actor', 'app.current_user_id',
+                      'app.operational_driver_id', 'app.audit_reason']) AS settings(setting_name);
+    <<session_operation>>
+    BEGIN
+        PERFORM set_config(setting_name, setting_value, true)
+        FROM (VALUES ('app.audit_actor', 'SYSTEM'), ('app.current_user_id', ''),
+                     ('app.operational_driver_id', ''), ('app.audit_reason', '')) AS settings(setting_name, setting_value);
+        IF p_token_hash IS NULL OR octet_length(p_token_hash) <> 32 THEN
+            RETURN QUERY SELECT 'INVALID_INPUT'::TEXT, NULL::UUID, NULL::UUID, NULL::TIMESTAMPTZ; EXIT session_operation;
+        END IF;
+        SELECT s.user_id, s.id, t.id INTO v_uid, v_sid, v_tid
+        FROM public.auth_refresh_token t JOIN public.auth_session s ON s.id = t.session_id
+        WHERE t.token_hash = p_token_hash;
+        IF NOT FOUND THEN
+            RETURN QUERY SELECT 'INVALID_TOKEN'::TEXT, NULL::UUID, NULL::UUID, NULL::TIMESTAMPTZ; EXIT session_operation;
+        END IF;
+        -- Mesma hierarquia de login, logout e UPDATE de inativação: usuário → sessão → token.
+        SELECT u.id, u.status, u.user_type INTO v_user FROM public.users u WHERE u.id = v_uid FOR UPDATE;
+        IF NOT FOUND THEN
+            RETURN QUERY SELECT 'INVALID_TOKEN'::TEXT, NULL::UUID, NULL::UUID, NULL::TIMESTAMPTZ; EXIT session_operation;
+        END IF;
+        SELECT s.* INTO v_session FROM public.auth_session s
+        WHERE s.id = v_sid AND s.user_id = v_uid FOR UPDATE;
+        IF NOT FOUND THEN
+            RETURN QUERY SELECT 'INVALID_TOKEN'::TEXT, NULL::UUID, NULL::UUID, NULL::TIMESTAMPTZ; EXIT session_operation;
+        END IF;
+        SELECT t.* INTO v_token FROM public.auth_refresh_token t
+        WHERE t.id = v_tid AND t.session_id = v_sid AND t.token_hash = p_token_hash FOR UPDATE;
+        IF NOT FOUND THEN
+            RETURN QUERY SELECT 'INVALID_TOKEN'::TEXT, NULL::UUID, NULL::UUID, NULL::TIMESTAMPTZ; EXIT session_operation;
+        END IF;
+        v_now := clock_timestamp();
+        IF v_user.status <> 'ACTIVE'::public.active_status_t THEN
+            RETURN QUERY SELECT 'USER_INACTIVE'::TEXT, NULL::UUID, NULL::UUID, NULL::TIMESTAMPTZ; EXIT session_operation;
+        ELSIF v_session.revoked_at IS NOT NULL THEN
+            RETURN QUERY SELECT 'SESSION_REVOKED'::TEXT, NULL::UUID, NULL::UUID, NULL::TIMESTAMPTZ; EXIT session_operation;
+        ELSIF v_now >= v_session.idle_expires_at THEN
+            RETURN QUERY SELECT 'SESSION_EXPIRED'::TEXT, NULL::UUID, NULL::UUID, NULL::TIMESTAMPTZ; EXIT session_operation;
+        ELSIF v_token.consumed_at IS NOT NULL THEN
+            -- Posse de segredo já consumido não comprova autoria do titular.
+            PERFORM set_config('app.audit_reason', 'Reutilização de refresh token consumido', true);
+            UPDATE public.auth_session SET revoked_at = v_now, revocation_reason = 'REFRESH_REUSE'
+            WHERE id = v_sid;
+            RETURN QUERY SELECT 'REFRESH_REUSED'::TEXT, NULL::UUID, NULL::UUID, NULL::TIMESTAMPTZ; EXIT session_operation;
+        ELSIF v_now >= v_token.expires_at THEN
+            RETURN QUERY SELECT 'TOKEN_EXPIRED'::TEXT, NULL::UUID, NULL::UUID, NULL::TIMESTAMPTZ; EXIT session_operation;
+        END IF;
+        -- Mesmo sucessor inválido não pode mascarar reutilização de token consumido.
+        IF p_next_token_hash IS NULL OR octet_length(p_next_token_hash) <> 32
+           OR p_token_hash = p_next_token_hash THEN
+            RETURN QUERY SELECT 'INVALID_INPUT'::TEXT, NULL::UUID, NULL::UUID, NULL::TIMESTAMPTZ; EXIT session_operation;
+        END IF;
+        v_expiry := v_now + public.auth_idle_duration(v_user.user_type);
+        PERFORM set_config('app.audit_actor', 'USER', true);
+        PERFORM set_config('app.current_user_id', v_uid::TEXT, true);
+        PERFORM set_config('app.audit_reason', 'Rotação válida de refresh token', true);
+        UPDATE public.auth_refresh_token SET consumed_at = v_now WHERE id = v_tid;
+        INSERT INTO public.auth_refresh_token(session_id, token_hash, generation, issued_at, expires_at)
+        VALUES(v_sid, p_next_token_hash, v_token.generation + 1, v_now, v_expiry);
+        UPDATE public.auth_session SET last_renewed_at = v_now, idle_expires_at = v_expiry WHERE id = v_sid;
+        RETURN QUERY SELECT 'OK'::TEXT, v_sid, v_uid, v_expiry;
+    END session_operation;
+    PERFORM set_config(key, coalesce(value, ''), true) FROM jsonb_each_text(v_rotation_context);
+    RETURN;
+EXCEPTION WHEN OTHERS THEN
+    PERFORM set_config(key, coalesce(value, ''), true) FROM jsonb_each_text(v_rotation_context);
+    RAISE;
 END;
 $$;
 
@@ -2065,25 +2088,37 @@ CREATE OR REPLACE FUNCTION public.revoke_auth_session(p_user_id UUID, p_session_
 RETURNS TEXT
 LANGUAGE plpgsql SECURITY DEFINER
 SET search_path = pg_catalog, pg_temp
-SET app.audit_actor = 'SYSTEM'
-SET app.current_user_id = ''
-SET app.operational_driver_id = ''
-SET app.audit_reason = ''
 AS $$
 DECLARE v_session public.auth_session%ROWTYPE;
+        v_logout_context JSONB;
+        v_logout_result TEXT;
 BEGIN
-    PERFORM 1 FROM public.users u WHERE u.id = p_user_id FOR UPDATE;
-    IF NOT FOUND THEN RETURN 'INVALID_SESSION'; END IF;
-    SELECT s.* INTO v_session FROM public.auth_session s
-    WHERE s.id = p_session_id AND s.user_id = p_user_id FOR UPDATE;
-    IF NOT FOUND THEN RETURN 'INVALID_SESSION'; END IF;
-    IF v_session.revoked_at IS NOT NULL THEN RETURN 'ALREADY_REVOKED'; END IF;
-    PERFORM set_config('app.audit_actor', 'USER', true);
-    PERFORM set_config('app.current_user_id', p_user_id::TEXT, true);
-    PERFORM set_config('app.audit_reason', 'Logout autenticado pela Core', true);
-    UPDATE public.auth_session SET revoked_at = clock_timestamp(), revocation_reason = 'LOGOUT'
-    WHERE id = p_session_id;
-    RETURN 'OK';
+    SELECT jsonb_object_agg(setting_name, current_setting(setting_name, true)) INTO v_logout_context
+    FROM unnest(ARRAY['app.audit_actor', 'app.current_user_id',
+                      'app.operational_driver_id', 'app.audit_reason']) AS settings(setting_name);
+    <<session_operation>>
+    BEGIN
+        PERFORM set_config(setting_name, setting_value, true)
+        FROM (VALUES ('app.audit_actor', 'SYSTEM'), ('app.current_user_id', ''),
+                     ('app.operational_driver_id', ''), ('app.audit_reason', '')) AS settings(setting_name, setting_value);
+        PERFORM 1 FROM public.users u WHERE u.id = p_user_id FOR UPDATE;
+        IF NOT FOUND THEN v_logout_result := 'INVALID_SESSION'; EXIT session_operation; END IF;
+        SELECT s.* INTO v_session FROM public.auth_session s
+        WHERE s.id = p_session_id AND s.user_id = p_user_id FOR UPDATE;
+        IF NOT FOUND THEN v_logout_result := 'INVALID_SESSION'; EXIT session_operation; END IF;
+        IF v_session.revoked_at IS NOT NULL THEN v_logout_result := 'ALREADY_REVOKED'; EXIT session_operation; END IF;
+        PERFORM set_config('app.audit_actor', 'USER', true);
+        PERFORM set_config('app.current_user_id', p_user_id::TEXT, true);
+        PERFORM set_config('app.audit_reason', 'Logout autenticado pela Core', true);
+        UPDATE public.auth_session SET revoked_at = clock_timestamp(), revocation_reason = 'LOGOUT'
+        WHERE id = p_session_id;
+        v_logout_result := 'OK'; EXIT session_operation;
+    END session_operation;
+    PERFORM set_config(key, coalesce(value, ''), true) FROM jsonb_each_text(v_logout_context);
+    RETURN v_logout_result;
+EXCEPTION WHEN OTHERS THEN
+    PERFORM set_config(key, coalesce(value, ''), true) FROM jsonb_each_text(v_logout_context);
+    RAISE;
 END;
 $$;
 
@@ -2091,22 +2126,33 @@ CREATE OR REPLACE FUNCTION public.revoke_user_auth_sessions(p_user_id UUID)
 RETURNS TABLE (result_code TEXT, revoked_count BIGINT)
 LANGUAGE plpgsql SECURITY DEFINER
 SET search_path = pg_catalog, pg_temp
-SET app.audit_actor = 'SYSTEM'
-SET app.current_user_id = ''
-SET app.operational_driver_id = ''
-SET app.audit_reason = ''
 AS $$
 DECLARE v_count BIGINT;
+        v_bulk_logout_context JSONB;
 BEGIN
-    PERFORM 1 FROM public.users u WHERE u.id = p_user_id FOR UPDATE;
-    IF NOT FOUND THEN RETURN QUERY SELECT 'USER_UNAVAILABLE'::TEXT, 0::BIGINT; RETURN; END IF;
-    PERFORM set_config('app.audit_actor', 'USER', true);
-    PERFORM set_config('app.current_user_id', p_user_id::TEXT, true);
-    PERFORM set_config('app.audit_reason', 'Logout das sessões do titular autenticado', true);
-    UPDATE public.auth_session SET revoked_at = clock_timestamp(), revocation_reason = 'LOGOUT'
-    WHERE user_id = p_user_id AND revoked_at IS NULL;
-    GET DIAGNOSTICS v_count = ROW_COUNT;
-    RETURN QUERY SELECT 'OK'::TEXT, v_count;
+    SELECT jsonb_object_agg(setting_name, current_setting(setting_name, true)) INTO v_bulk_logout_context
+    FROM unnest(ARRAY['app.audit_actor', 'app.current_user_id',
+                      'app.operational_driver_id', 'app.audit_reason']) AS settings(setting_name);
+    <<session_operation>>
+    BEGIN
+        PERFORM set_config(setting_name, setting_value, true)
+        FROM (VALUES ('app.audit_actor', 'SYSTEM'), ('app.current_user_id', ''),
+                     ('app.operational_driver_id', ''), ('app.audit_reason', '')) AS settings(setting_name, setting_value);
+        PERFORM 1 FROM public.users u WHERE u.id = p_user_id FOR UPDATE;
+        IF NOT FOUND THEN RETURN QUERY SELECT 'USER_UNAVAILABLE'::TEXT, 0::BIGINT; EXIT session_operation; END IF;
+        PERFORM set_config('app.audit_actor', 'USER', true);
+        PERFORM set_config('app.current_user_id', p_user_id::TEXT, true);
+        PERFORM set_config('app.audit_reason', 'Logout das sessões do titular autenticado', true);
+        UPDATE public.auth_session SET revoked_at = clock_timestamp(), revocation_reason = 'LOGOUT'
+        WHERE user_id = p_user_id AND revoked_at IS NULL;
+        GET DIAGNOSTICS v_count = ROW_COUNT;
+        RETURN QUERY SELECT 'OK'::TEXT, v_count;
+    END session_operation;
+    PERFORM set_config(key, coalesce(value, ''), true) FROM jsonb_each_text(v_bulk_logout_context);
+    RETURN;
+EXCEPTION WHEN OTHERS THEN
+    PERFORM set_config(key, coalesce(value, ''), true) FROM jsonb_each_text(v_bulk_logout_context);
+    RAISE;
 END;
 $$;
 
@@ -2228,4 +2274,141 @@ REVOKE ALL ON FUNCTION public.record_collection_arrival(uuid,uuid) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.accept_collection_service(uuid,uuid) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.reject_collection_request(uuid,uuid,text) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.set_billing_charge_external_status(uuid,public.charge_status_t) FROM PUBLIC;
+COMMIT;
+
+BEGIN;
+-- BEGIN ADMIN_MANAGEMENT
+-- Coordenação, inclusive INSERTs cadastrais/email, para evitar corrida com o aceite.
+CREATE OR REPLACE FUNCTION public.lock_admin_registry() RETURNS VOID
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,pg_temp AS $$
+BEGIN
+    UPDATE public.admin_guard_state SET revision=revision+1 WHERE singleton;
+    IF NOT FOUND THEN RAISE EXCEPTION 'Controle administrativo ausente.' USING ERRCODE='55000'; END IF;
+END $$;
+
+-- Helper privado compartilhado pela emissão normal e pelo bootstrap restrito.
+CREATE OR REPLACE FUNCTION public.create_admin_invitation_internal(p_admin_id UUID,p_name TEXT,p_email TEXT,p_token_hash BYTEA)
+RETURNS UUID LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,pg_temp AS $$
+DECLARE v_email TEXT:=lower(btrim(p_email)); v_now TIMESTAMPTZ; v_id UUID;
+BEGIN
+    PERFORM public.lock_admin_registry();
+    IF p_name IS NULL OR btrim(p_name)='' OR p_email IS NULL OR position('@' IN v_email)<=1
+       OR p_token_hash IS NULL OR octet_length(p_token_hash)<>32 THEN
+        RAISE EXCEPTION 'Nome, e-mail ou hash de convite inválido.' USING ERRCODE='22023';
+    END IF;
+    IF p_admin_id IS NULL THEN
+        IF EXISTS(SELECT 1 FROM public.users WHERE user_type='ADMIN') THEN
+            RAISE EXCEPTION 'Bootstrap encerrado: já existe administrador cadastrado.' USING ERRCODE='55000';
+        END IF;
+    ELSIF NOT EXISTS(SELECT 1 FROM public.users WHERE id=p_admin_id AND user_type='ADMIN' AND status='ACTIVE') THEN
+        RAISE EXCEPTION 'Emissão exige administrador ativo.' USING ERRCODE='42501';
+    END IF;
+    IF EXISTS(SELECT 1 FROM public.users WHERE lower(btrim(email))=v_email) THEN
+        RAISE EXCEPTION 'E-mail já cadastrado; não é permitido promover outra conta.' USING ERRCODE='23505';
+    END IF;
+    IF EXISTS(SELECT 1 FROM public.admin_invitation WHERE token_hash=p_token_hash) THEN
+        RAISE EXCEPTION 'Emita um novo segredo para cada convite.' USING ERRCODE='23505';
+    END IF;
+    PERFORM set_config('app.audit_actor',CASE WHEN p_admin_id IS NULL THEN 'SYSTEM' ELSE 'USER' END,true);
+    PERFORM set_config('app.current_user_id',coalesce(p_admin_id::TEXT,''),true);
+    PERFORM set_config('app.operational_driver_id','',true);
+    PERFORM set_config('app.audit_reason','Emissão ou reenvio de convite administrativo',true);
+    v_now:=clock_timestamp();
+    UPDATE public.admin_invitation SET revoked_at=v_now,revoked_by=p_admin_id
+        WHERE email=v_email AND accepted_at IS NULL AND revoked_at IS NULL;
+    INSERT INTO public.admin_invitation(name,email,token_hash,issued_at,expires_at,invited_by,is_bootstrap)
+        VALUES(btrim(p_name),v_email,p_token_hash,v_now,v_now+INTERVAL '24 hours',p_admin_id,p_admin_id IS NULL)
+        RETURNING id INTO v_id;
+    RETURN v_id;
+END $$;
+
+CREATE OR REPLACE FUNCTION public.issue_admin_invitation(p_admin_id UUID,p_name TEXT,p_email TEXT,p_token_hash BYTEA)
+RETURNS UUID LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,pg_temp AS $$
+BEGIN
+    IF p_admin_id IS NULL THEN RAISE EXCEPTION 'Administrador obrigatório.' USING ERRCODE='42501'; END IF;
+    RETURN public.create_admin_invitation_internal(p_admin_id,p_name,p_email,p_token_hash);
+END $$;
+
+CREATE OR REPLACE FUNCTION public.issue_bootstrap_admin_invitation(p_name TEXT,p_email TEXT,p_token_hash BYTEA)
+RETURNS UUID LANGUAGE sql SECURITY DEFINER SET search_path=pg_catalog,pg_temp AS $$
+    SELECT public.create_admin_invitation_internal(NULL,p_name,p_email,p_token_hash)
+$$;
+
+CREATE OR REPLACE FUNCTION public.revoke_admin_invitation(p_admin_id UUID,p_invitation_id UUID)
+RETURNS BOOLEAN LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,pg_temp AS $$
+DECLARE v_item public.admin_invitation%ROWTYPE;
+BEGIN
+    PERFORM public.lock_admin_registry();
+    IF NOT EXISTS(SELECT 1 FROM public.users WHERE id=p_admin_id AND user_type='ADMIN' AND status='ACTIVE') THEN
+        RAISE EXCEPTION 'Revogação exige administrador ativo.' USING ERRCODE='42501';
+    END IF;
+    SELECT * INTO v_item FROM public.admin_invitation WHERE id=p_invitation_id FOR UPDATE;
+    IF NOT FOUND THEN RAISE EXCEPTION 'Convite não encontrado.' USING ERRCODE='P0002'; END IF;
+    IF v_item.accepted_at IS NOT NULL THEN RAISE EXCEPTION 'Convite já aceito.' USING ERRCODE='55000'; END IF;
+    IF v_item.revoked_at IS NOT NULL THEN RETURN FALSE; END IF;
+    PERFORM set_config('app.audit_actor','USER',true);
+    PERFORM set_config('app.current_user_id',p_admin_id::TEXT,true);
+    PERFORM set_config('app.operational_driver_id','',true);
+    PERFORM set_config('app.audit_reason','Revogação de convite administrativo',true);
+    UPDATE public.admin_invitation SET revoked_at=clock_timestamp(),revoked_by=p_admin_id WHERE id=v_item.id;
+    RETURN TRUE;
+END $$;
+
+CREATE OR REPLACE FUNCTION public.accept_admin_invitation(p_token_hash BYTEA,p_password_hash TEXT)
+RETURNS UUID LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,pg_temp AS $$
+DECLARE v_item public.admin_invitation%ROWTYPE; v_now TIMESTAMPTZ; v_user UUID:=gen_random_uuid();
+BEGIN
+    PERFORM public.lock_admin_registry();
+    IF p_token_hash IS NULL OR octet_length(p_token_hash)<>32 OR p_password_hash IS NULL OR btrim(p_password_hash)='' THEN
+        RAISE EXCEPTION 'Hash de convite e hash de senha obrigatórios.' USING ERRCODE='22023';
+    END IF;
+    SELECT * INTO v_item FROM public.admin_invitation WHERE token_hash=p_token_hash FOR UPDATE;
+    v_now:=clock_timestamp();
+    IF NOT FOUND OR v_item.accepted_at IS NOT NULL OR v_item.revoked_at IS NOT NULL OR v_item.expires_at<=v_now THEN
+        RAISE EXCEPTION 'Convite inválido, expirado ou já utilizado.' USING ERRCODE='55000';
+    END IF;
+    IF v_item.is_bootstrap THEN
+        IF EXISTS(SELECT 1 FROM public.users WHERE user_type='ADMIN') THEN
+            RAISE EXCEPTION 'Bootstrap encerrado.' USING ERRCODE='55000';
+        END IF;
+    ELSIF NOT EXISTS(SELECT 1 FROM public.users WHERE id=v_item.invited_by AND user_type='ADMIN' AND status='ACTIVE') THEN
+        RAISE EXCEPTION 'Autor do convite não está ativo.' USING ERRCODE='42501';
+    END IF;
+    IF EXISTS(SELECT 1 FROM public.users WHERE lower(btrim(email))=v_item.email) THEN
+        RAISE EXCEPTION 'E-mail já cadastrado.' USING ERRCODE='23505';
+    END IF;
+    PERFORM set_config('app.audit_actor','SYSTEM',true);
+    PERFORM set_config('app.current_user_id','',true);
+    PERFORM set_config('app.operational_driver_id','',true);
+    PERFORM set_config('app.audit_reason','Criação de ADMIN por aceite de convite',true);
+    INSERT INTO public.users(id,name,email,password_hash,user_type)
+        VALUES(v_user,v_item.name,v_item.email,p_password_hash,'ADMIN');
+    PERFORM set_config('app.audit_actor','USER',true);
+    PERFORM set_config('app.current_user_id',v_user::TEXT,true);
+    UPDATE public.admin_invitation SET accepted_at=v_now,accepted_user_id=v_user WHERE id=v_item.id;
+    RETURN v_user;
+END $$;
+
+CREATE OR REPLACE FUNCTION public.set_admin_status(p_admin_id UUID,p_target_id UUID,p_status public.active_status_t)
+RETURNS VOID LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,pg_temp AS $$
+BEGIN
+    PERFORM public.lock_admin_registry();
+    IF NOT EXISTS(SELECT 1 FROM public.users WHERE id=p_admin_id AND user_type='ADMIN' AND status='ACTIVE') THEN
+        RAISE EXCEPTION 'Operação exige administrador ativo.' USING ERRCODE='42501';
+    END IF;
+    IF p_status IS NULL THEN RAISE EXCEPTION 'Status obrigatório.' USING ERRCODE='22023'; END IF;
+    PERFORM set_config('app.audit_actor','USER',true);
+    PERFORM set_config('app.current_user_id',p_admin_id::TEXT,true);
+    PERFORM set_config('app.operational_driver_id','',true);
+    PERFORM set_config('app.audit_reason','Gerenciamento de status administrativo',true);
+    UPDATE public.users SET status=p_status WHERE id=p_target_id AND user_type='ADMIN';
+    IF NOT FOUND THEN RAISE EXCEPTION 'Administrador alvo não encontrado.' USING ERRCODE='P0002'; END IF;
+END $$;
+REVOKE ALL ON FUNCTION public.lock_admin_registry(),
+    public.create_admin_invitation_internal(UUID,TEXT,TEXT,BYTEA),
+    public.issue_admin_invitation(UUID,TEXT,TEXT,BYTEA),
+    public.issue_bootstrap_admin_invitation(TEXT,TEXT,BYTEA),
+    public.revoke_admin_invitation(UUID,UUID), public.accept_admin_invitation(BYTEA,TEXT),
+    public.set_admin_status(UUID,UUID,public.active_status_t) FROM PUBLIC;
+-- END ADMIN_MANAGEMENT
 COMMIT;

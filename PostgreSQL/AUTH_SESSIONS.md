@@ -201,7 +201,19 @@ As cinco funções de integração usam SECURITY DEFINER. Após configurar `acce
 
 Nos scripts principais, EXECUTE público é retirado. Exclusivamente em `access_control/01_roles.sql`, `olius_api` recebe as cinco funções de integração e a propriedade das funções é transferida ao owner. CREATE no schema é concedido temporariamente para essa transferência e retirado ao final.
 
-As funções de escrita configuram autoria localmente e restauram o contexto anterior ao sair, inclusive em exceções. Isso evita deixar a identidade de uma chamada nas conexões reutilizadas pelo pool. Para outras operações, como inativação, a Core deve fornecer contexto coerente com SET LOCAL.
+As quatro funções de escrita salvam os valores recebidos de `app.audit_actor`,
+`app.current_user_id`, `app.operational_driver_id` e `app.audit_reason`, inicializam
+seu próprio contexto e restauram os valores antes de sair, inclusive em retornos
+antecipados e exceções. Valor ausente/vazio continua significando contexto não
+informado. A restauração é necessária também entre chamadas na mesma transação;
+apenas `set_config(..., true)` não fornece esse isolamento.
+
+Os parâmetros `app.*` não aparecem mais em cláusulas SET da definição dessas
+funções: sua inclusão exigia privilégios indisponíveis ao instalador no Aiven.
+O `SET search_path = pg_catalog, pg_temp`, SECURITY DEFINER, os proprietários e
+os acessos existentes permanecem. Não é necessário conceder SUPERUSER ou
+GRANT SET nesses parâmetros. Para outras operações, como inativação, a Core
+deve fornecer contexto coerente com SET LOCAL.
 
 ## 5. `05_triggers.sql` — proteções automáticas
 
@@ -284,3 +296,38 @@ Em PostgreSQL 16.15 descartável, os cinco scripts principais instalaram sem cri
 ## Contas pessoais e propriedade comum — entrega data_catalog
 
 O arquivo `data_catalog/08_users.sql` configura separadamente as seis contas pessoais aprovadas, sem senhas no código. Pedro/Caio recebem olius_owner; Matheus/Guilherme/David/Erick recebem olius_reader. Nenhuma dessas contas recebe olius_auth_owner. Os objetos comuns são transferidos para olius_owner pelo script 06; as oito funções de autenticação continuam com o proprietário restrito definido no script 07. A conta LOGIN da Core não é criada pelo script das pessoas. Consulte `data_catalog/README.md` e os relatórios de validação para implantação e limites no servidor compartilhado.
+
+
+## Evolução: administração por convites
+
+Os números da entrega original acima são históricos. Com a entrega administrativa,
+os scripts principais possuem 58 tabelas públicas, incluindo 24 logs, e
+olius_auth_owner mantém também sete funções de coordenação/convites/status.
+O mecanismo de sessões e os prazos de inatividade permanecem iguais.
+Ver admin_management/README.md e access_control/API_DATABASE_CONTRACT.md.
+
+
+### Retomada da instalação após erro 42501 no script 04
+
+A correção de 21/10/2026 preserva as assinaturas e os códigos de resultado das
+quatro funções; a API não precisa trocar suas chamadas por esse motivo.
+
+Se a instalação de uma base nova parou em `permission denied to set parameter
+"app.audit_actor"`, executar ROLLBACK na conexão e então executar o arquivo
+`04_functions_procedures.sql` corrigido por inteiro com a conta de implantação.
+O script contém vários blocos transacionais: definições anteriores ao bloco que
+falhou podem já existir. Não é necessário recriar o banco por esse erro nem
+reexecutar os scripts estruturais 01–03 sobre as tabelas existentes.
+
+Depois, seguir a sequência documentada de triggers, consultas/BI, catálogo e
+controle de acesso antes de liberar a Core. Em banco cujo controle de acesso
+já foi aplicado, usar uma conta autorizada para substituir as funções e reaplicar
+`access_control/01_roles.sql`, conforme o contrato de implantação existente.
+Não utilizar a conta operacional da API nem conceder privilégios amplos para
+contornar uma falha de instalação.
+
+O CI testa a instalação 01–05 em outro banco descartável, cujo dono não possui
+SUPERUSER nem SET nos parâmetros de auditoria. O teste confirma primeiro que a
+forma antiga gera 42501, depois instala os scripts atuais e exercita retornos.
+As regressões de contexto usam também a role real da Core e verificam sucesso,
+rejeições, exceções, rollback e chamadas consecutivas na mesma transação.

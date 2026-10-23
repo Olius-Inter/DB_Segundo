@@ -80,9 +80,16 @@ BEGIN
             AND pc.reserved_collection_slots+pc.consumed_collection_slots+pc.forfeited_collection_slots<=u.collection_limit,
             'consumo/reserva/perda ultrapassou o ciclo ' || u.id);
     END LOOP;
-    PERFORM pg_temp.dl_assert((SELECT count(*) FROM certificate_level)=
-        (SELECT jsonb_array_length(value->'certificate_levels') FROM dl_config),
-        'quantidade de metas deve corresponder à configuração');
+    -- Elegibilidade ambiental: litros RECORDED, inclusive malsucessos; sem saldo de pontos.
+    PERFORM pg_temp.dl_assert(NOT EXISTS (
+        SELECT 1 FROM establishment est CROSS JOIN certificate_level level
+        LEFT JOIN certificate cert ON cert.establishment_id=est.id AND cert.certificate_level_id=level.id
+        WHERE ((SELECT COALESCE(sum(collected_volume_liters),0) FROM collection
+                WHERE establishment_id=est.id AND record_status='RECORDED') >= level.required_liters)
+            IS DISTINCT FROM COALESCE(cert.status='ACTIVE',FALSE)),
+        'certificados ativos devem corresponder às metas oficiais e ao volume vigente');
+    PERFORM pg_temp.dl_assert(EXISTS(SELECT 1 FROM certificate WHERE status='ACTIVE'),
+        'a demonstração deve alcançar ao menos um nível oficial');
 END $$;
 
 -- Cada fato possui snapshot INSERT; correções exigem BEFORE/AFTER e autoria.

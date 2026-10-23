@@ -1,6 +1,6 @@
-/* Contas da equipe e da Core API — PostgreSQL 16.15.
+/* Contas da equipe, Core API e integração BI — PostgreSQL 16.15.
    Executar SEPARADAMENTE após 01_roles.sql no banco do
-   segundo ano. Requer CREATEROLE e ADMIN OPTION nos grupos owner/reader/api.
+   segundo ano. Requer CREATEROLE e ADMIN OPTION nos grupos atribuídos.
    Não altera senhas, contas do Aiven, privilégios de outros bancos.
    Contas novas têm LOGIN, mas nenhuma senha: configure-a fora do arquivo/Git.
    Roles são globais. Nomes preexistentes não gerenciados por este script
@@ -16,7 +16,10 @@ BEGIN
        OR to_regprocedure('public.open_auth_session(uuid,bytea)') IS NULL
        OR NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='olius_owner')
        OR NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='olius_reader')
-       OR NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='olius_api') THEN
+       OR NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='olius_api')
+       OR NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='olius_dm_owner')
+       OR NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='olius_bi_reader_role')
+       OR NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='olius_bi_refresh_role') THEN
         RAISE EXCEPTION 'Instale o banco, o catálogo e access_control/01_roles.sql antes das contas.';
     END IF;
     IF (SELECT pg_get_userbyid(relowner) FROM pg_class
@@ -26,13 +29,20 @@ BEGIN
         RAISE EXCEPTION 'Propriedade ainda não configurada; executar 01_roles.sql antes das contas.';
     END IF;
 
-    FOREACH member_name IN ARRAY ARRAY['pedro','caio','matheus','guilherme','david','erick','olius_core_api'] LOOP
+    FOREACH member_name IN ARRAY ARRAY['pedro','caio','matheus','guilherme','david','erick','olius_core_api','olius_dm_admin','olius_bi_reader','olius_bi_refresh'] LOOP
         group_name := CASE WHEN member_name IN ('pedro','caio') THEN 'olius_owner'
                            WHEN member_name='olius_core_api' THEN 'olius_api'
+                           WHEN member_name='olius_dm_admin' THEN 'olius_dm_owner'
+                           WHEN member_name='olius_bi_reader' THEN 'olius_bi_reader_role'
+                           WHEN member_name='olius_bi_refresh' THEN 'olius_bi_refresh_role'
                            ELSE 'olius_reader' END;
         -- Preserva a marca das contas pessoais já provisionadas.
         marker := CASE WHEN member_name='olius_core_api'
                        THEN 'OLIUS: conta técnica da Core gerenciada por access_control/02_users.sql'
+                       WHEN member_name='olius_dm_admin'
+                       THEN 'OLIUS: conta de manutenção do Data Mart gerenciada por access_control/02_users.sql'
+                       WHEN member_name IN ('olius_bi_reader','olius_bi_refresh')
+                       THEN 'OLIUS: conta técnica BI gerenciada por access_control/02_users.sql'
                        ELSE 'OLIUS: conta individual gerenciada por data_catalog/08_users.sql' END;
         SELECT * INTO account FROM pg_roles WHERE rolname=member_name;
         IF FOUND THEN
@@ -65,7 +75,7 @@ SELECT member.rolname AS login, granted.rolname AS role_name,
 FROM pg_catalog.pg_auth_members m
 JOIN pg_catalog.pg_roles member ON member.oid=m.member
 JOIN pg_catalog.pg_roles granted ON granted.oid=m.roleid
-WHERE member.rolname IN ('pedro','caio','matheus','guilherme','david','erick','olius_core_api')
+WHERE member.rolname IN ('pedro','caio','matheus','guilherme','david','erick','olius_core_api','olius_dm_admin','olius_bi_reader','olius_bi_refresh')
 ORDER BY login,role_name;
 
 -- Visibilidade de CONNECT em todos os bancos do servidor. PUBLIC pode conceder
@@ -74,6 +84,6 @@ ORDER BY login,role_name;
 SELECT r.rolname AS login, d.datname AS database_name,
        pg_catalog.has_database_privilege(r.oid,d.oid,'CONNECT') AS can_connect
 FROM pg_catalog.pg_roles r CROSS JOIN pg_catalog.pg_database d
-WHERE r.rolname IN ('pedro','caio','matheus','guilherme','david','erick','olius_core_api')
+WHERE r.rolname IN ('pedro','caio','matheus','guilherme','david','erick','olius_core_api','olius_dm_admin','olius_bi_reader','olius_bi_refresh')
   AND d.datallowconn AND NOT d.datistemplate
 ORDER BY login,database_name;

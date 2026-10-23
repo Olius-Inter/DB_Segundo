@@ -1,6 +1,6 @@
 # Testes PostgreSQL e cobertura
 
-O CI instala os scripts principais 01–07 em PostgreSQL 16.15 descartável e
+O CI instala os scripts principais 01–08 em PostgreSQL 16.15 descartável e
 executa regressões e disputas entre duas conexões. Qualquer erro interrompe a
 execução antes da análise do Sonar. Nenhum teste deve ser executado no Aiven.
 
@@ -14,8 +14,9 @@ Usa as variáveis `PGHOST`, `PGPORT`, `PGUSER`, `PGPASSWORD` e `PGDATABASE`.
 | Scripts principais | `procedures_regression.sql`, `functions_negative.sql`, `procedures_negative.sql` e `procedures_concurrency.py` |
 | Views de pontuação e ranking | `annual_views_regression.sql`, após instalação de 06 e 07 |
 | Sessões e tokens | `auth_sessions_regression.sql`, `auth_sessions_edges.sql`, `operational_regression.sql` e `auth_sessions_concurrency.py` |
+| Carga oficial inicial | `initial_data_regression.py`, em banco próprio descartável: instalação, concorrência, reexecução, registros preexistentes, divergências e rollback |
 | Catálogo | Instalação 01–04 e verificação `05_validate.sql` |
-| Controle de acesso, catálogo e sessões | Também `catalog_access_regression.sql` e `api_access_regression.sql` |
+| Controle de acesso, catálogo, sessões e Data Mart | Também `catalog_access_regression.sql`, `api_access_regression.sql` e `data_mart_access_regression.sql` |
 
 Enquanto a branch de sessões não contém `access_control`, o runner utiliza
 `ci_auth_bootstrap.sql`: uma fixture de permissões mínimas para exercitar as
@@ -33,6 +34,19 @@ corrente em São Paulo. `annual_views_regression.sql` usa as procedures e
 consulta as views para validar tipos, empates, piso zero, reenvios, correções,
 anulações, recorrência, revisões e fronteira anual. Termina com `ROLLBACK`.
 O Data Mart, Redis e Databricks não são dependências desses testes.
+
+## Data Mart e acessos BI
+
+`data_mart_access_regression.sql` usa as contas reais de leitura/refresh,
+confere acessos permitidos e negados, compara o ranking materializado à view
+aprovada e anula a coleta pela procedure oficial. Reverte todas as fixtures.
+O teste de catálogo espera os oito perfis documentais: cinco originais e três
+adicionados pelo controle de acesso do Data Mart.
+
+Os testes PostgreSQL não validam a rede do notebook nem os datasets no Databricks.
+Databricks/tests testa o controle do refresh com mocks, também executado no CI.
+A conexão Python, o Job, o catálogo federado e os dashboards exigem homologação
+no ambiente real; não há upload/ingestão de arquivos no fluxo atual.
 
 ## Medição de cobertura
 
@@ -79,3 +93,27 @@ O scanner espera o Quality Gate: se o Sonar reprovar, a etapa também falha.
 
 Referências: [profiler plpgsql_check](https://github.com/okbob/plpgsql_check#profiler)
 e [formato genérico de cobertura do Sonar](https://docs.sonarsource.com/sonarqube-server/2025.6/analyzing-source-code/test-coverage/generic-test-data).
+
+
+## Administração por convite
+
+`admin_management_regression.sql` cobre bootstrap restrito, aceite único,
+expiração, reenvio, revogação, autor inativo, e-mail ocupado, permissões,
+auditoria sem hash, sessões revogadas e proteção do último ADMIN.
+`admin_management_concurrency.py` cria outro banco descartável e usa duas
+conexões reais para inativação simultânea e aceite duplicado. Confere espera
+por lock e recusa segura em READ COMMITTED (55000) e REPEATABLE READ (40001).
+
+
+## Instalação sem superusuário e isolamento da autoria
+
+`auth_non_superuser_install.py` cria um banco e papel exclusivos em servidor
+explicitamente descartável. Confirma a ausência de SUPERUSER e de SET nos quatro
+parâmetros app.*, reproduz a recusa 42501 da definição antiga e instala 01–05
+com a identidade restrita. Remove somente os recursos criados pelo teste.
+
+`auth_audit_context_regression.sql` valida as quatro funções de escrita sob
+olius_api: contexto vazio e preenchido, sucesso, retornos antecipados e falhas
+injetadas durante a escrita. Confere restauração dos quatro parâmetros,
+autoria USER/SYSTEM e ausência de gravações parciais. As fixtures são revertidas.
+Ambos são executados por `run_ci.py`; nenhum teste conecta ao Aiven.
