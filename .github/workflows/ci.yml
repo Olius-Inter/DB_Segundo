@@ -10,6 +10,34 @@ permissions:
   contents: read
 
 jobs:
+  redis-api-tests:
+    name: Test Redis API (Java)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: redis-api
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      - name: Executar testes da API Redis
+        # O runner Ubuntu já traz o Temurin 21 em JAVA_HOME_21_X64.
+        run: |
+          export JAVA_HOME="$JAVA_HOME_21_X64"
+          chmod +x mvnw
+          ./mvnw -B test
+
+      - name: Publicar relatório dos testes da API Redis
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: redis-api-test-reports
+          path: redis-api/target/surefire-reports/
+          if-no-files-found: warn
+          retention-days: 14
+
   database-validation:
     name: Validate PostgreSQL and Sonar
     runs-on: ubuntu-latest
