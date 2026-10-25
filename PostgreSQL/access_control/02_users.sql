@@ -17,6 +17,7 @@ BEGIN
        OR NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='olius_owner')
        OR NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='olius_reader')
        OR NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='olius_api')
+       OR NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='olius_ranking_reader')
        OR NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='olius_dm_owner')
        OR NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='olius_bi_reader_role')
        OR NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='olius_bi_refresh_role') THEN
@@ -29,9 +30,10 @@ BEGIN
         RAISE EXCEPTION 'Propriedade ainda não configurada; executar 01_roles.sql antes das contas.';
     END IF;
 
-    FOREACH member_name IN ARRAY ARRAY['pedro','caio','matheus','guilherme','david','erick','olius_core_api','olius_dm_admin','olius_bi_reader','olius_bi_refresh'] LOOP
+    FOREACH member_name IN ARRAY ARRAY['pedro','caio','matheus','guilherme','david','erick','olius_core_api','olius_dm_admin','olius_bi_reader','olius_bi_refresh','olius_redis_api'] LOOP
         group_name := CASE WHEN member_name IN ('pedro','caio') THEN 'olius_owner'
                            WHEN member_name='olius_core_api' THEN 'olius_api'
+                           WHEN member_name='olius_redis_api' THEN 'olius_ranking_reader'
                            WHEN member_name='olius_dm_admin' THEN 'olius_dm_owner'
                            WHEN member_name='olius_bi_reader' THEN 'olius_bi_reader_role'
                            WHEN member_name='olius_bi_refresh' THEN 'olius_bi_refresh_role'
@@ -39,6 +41,8 @@ BEGIN
         -- Preserva a marca das contas pessoais já provisionadas.
         marker := CASE WHEN member_name='olius_core_api'
                        THEN 'OLIUS: conta técnica da Core gerenciada por access_control/02_users.sql'
+                       WHEN member_name='olius_redis_api'
+                       THEN 'OLIUS: conta técnica da API Redis gerenciada por access_control/02_users.sql'
                        WHEN member_name='olius_dm_admin'
                        THEN 'OLIUS: conta de manutenção do Data Mart gerenciada por access_control/02_users.sql'
                        WHEN member_name IN ('olius_bi_reader','olius_bi_refresh')
@@ -75,7 +79,7 @@ SELECT member.rolname AS login, granted.rolname AS role_name,
 FROM pg_catalog.pg_auth_members m
 JOIN pg_catalog.pg_roles member ON member.oid=m.member
 JOIN pg_catalog.pg_roles granted ON granted.oid=m.roleid
-WHERE member.rolname IN ('pedro','caio','matheus','guilherme','david','erick','olius_core_api','olius_dm_admin','olius_bi_reader','olius_bi_refresh')
+WHERE member.rolname IN ('pedro','caio','matheus','guilherme','david','erick','olius_core_api','olius_dm_admin','olius_bi_reader','olius_bi_refresh','olius_redis_api')
 ORDER BY login,role_name;
 
 -- Visibilidade de CONNECT em todos os bancos do servidor. PUBLIC pode conceder
@@ -84,6 +88,6 @@ ORDER BY login,role_name;
 SELECT r.rolname AS login, d.datname AS database_name,
        pg_catalog.has_database_privilege(r.oid,d.oid,'CONNECT') AS can_connect
 FROM pg_catalog.pg_roles r CROSS JOIN pg_catalog.pg_database d
-WHERE r.rolname IN ('pedro','caio','matheus','guilherme','david','erick','olius_core_api','olius_dm_admin','olius_bi_reader','olius_bi_refresh')
+WHERE r.rolname IN ('pedro','caio','matheus','guilherme','david','erick','olius_core_api','olius_dm_admin','olius_bi_reader','olius_bi_refresh','olius_redis_api')
   AND d.datallowconn AND NOT d.datistemplate
 ORDER BY login,database_name;

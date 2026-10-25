@@ -117,3 +117,6 @@ olius_api: contexto vazio e preenchido, sucesso, retornos antecipados e falhas
 injetadas durante a escrita. Confere restauração dos quatro parâmetros,
 autoria USER/SYSTEM e ausência de gravações parciais. As fixtures são revertidas.
 Ambos são executados por `run_ci.py`; nenhum teste conecta ao Aiven.
+
+
+`ranking_access_regression.sql` testa a conta Redis, a consulta completa, leituras proibidas, escrita/rotinas negadas e reaplicação de roles/users sem manter escrita manual.

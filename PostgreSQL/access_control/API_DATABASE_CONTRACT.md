@@ -200,3 +200,41 @@ Operações devem ser curtas e transacionais. Em 40001/40P01, reverter toda a
 transação e seguir política explícita de nova tentativa; o banco não faz retries.
 A inativação revoga sessões; a API precisa consultar/validar seu estado e o status
 do usuário, sem confiar somente na assinatura de um JWT antigo.
+
+
+## Identidade da API Redis
+
+A segunda API usa `olius_redis_api`, membro somente de `olius_ranking_reader`.
+O grupo consulta `public.vw_annual_scores` e as colunas users(id,name,status),
+establishment(id,address_id) e addresses(id,city). Não recebe escrita, rotinas
+da aplicação, tabelas de fatos/pontos, vw_annual_ranking ou Data Mart.
+
+Consulta contratada, em transação/conexão de leitura com timeout de 30 segundos:
+
+```sql
+SELECT s.profile, s.ranking_year, s.participant_id::text AS participant_id,
+       s.annual_points, u.name, a.city
+FROM public.vw_annual_scores s
+JOIN public.users u ON u.id=s.participant_id
+LEFT JOIN public.establishment e ON e.id=s.participant_id AND s.profile='B2B'
+LEFT JOIN public.addresses a ON a.id=e.address_id
+WHERE u.status='ACTIVE'
+ORDER BY s.profile, s.annual_points DESC, s.participant_id;
+```
+
+O cálculo anual pertence ao PostgreSQL; a posição e o armazenamento do ranking
+pertencem à API/Redis. A view é vigente e não exige REFRESH. Ausência de operação
+RECORDED com cálculo vigente no ano corrente exclui participação; pontos zero
+não excluem um participante elegível. Inativos ficam fora pela consulta acima.
+Empates seguem posição densa (1,1,2); não usar a posição ordinal do ZSET como
+substituto sem tratar empates. O rebuild periódico solicitado é de cinco minutos;
+correções/inativações serão refletidas no próximo rebuild bem-sucedido.
+
+A API deve remover membros obsoletos, separar perfil/ano, preservar a última
+versão íntegra se uma reconstrução falhar e não publicar estruturas parciais.
+Uma única consulta fornece o snapshot PostgreSQL; isso não torna a publicação
+no Redis uma transação distribuída. Identidade do usuário final e autorização
+continuam sob o contrato com a Core. O grupo não recebe acesso às sessões.
+
+O script verifica owner e security_invoker da view. Mudanças nesse contrato
+exigem revisão das permissões e comunicação ao responsável pela API Redis.
