@@ -23,8 +23,8 @@ SELECT catalog_test.assert((SELECT count(*)=843 FROM (SELECT DISTINCT table_name
 SELECT catalog_test.assert(
     (SELECT array_agg(role_name ORDER BY role_name) FROM public.data_catalog_role)
     = ARRAY['olius_api','olius_auditor','olius_bi_reader_role','olius_bi_refresh_role',
-            'olius_catalog_editor','olius_dm_owner','olius_owner','olius_reader']::TEXT[],
-    'oito perfis documentais, incluindo os três papéis do Data Mart');
+            'olius_catalog_editor','olius_dm_owner','olius_owner','olius_ranking_reader','olius_reader']::TEXT[],
+    'nove perfis documentais, incluindo Data Mart e API Redis');
 SELECT catalog_test.assert((SELECT count(*)=15 FROM pg_proc WHERE pronamespace='public'::regnamespace AND proowner='olius_auth_owner'::regrole),'quinze funções mantidas no auth_owner');
 
 SET LOCAL SESSION AUTHORIZATION pedro;

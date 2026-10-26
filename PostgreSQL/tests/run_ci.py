@@ -108,6 +108,7 @@ def main():
         sql_file("PostgreSQL/tests/catalog_access_regression.sql")
         sql_file("PostgreSQL/tests/api_access_regression.sql")
         sql_file("PostgreSQL/tests/data_mart_access_regression.sql")
+        sql_file("PostgreSQL/tests/ranking_access_regression.sql")
         sql_file("PostgreSQL/tests/admin_management_regression.sql")
     else:
         print("NOTA: testes de API/permissões e catálogo/permissões dependem da PR access_control; não executados nesta branch.")

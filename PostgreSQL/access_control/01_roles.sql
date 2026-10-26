@@ -6,7 +6,7 @@
    além de autoridade para conceder CONNECT no banco selecionado.
    No Aiven, usar a conta administrativa autorizada; não exige SUPERUSER.
 
-   Este script reconcilia concessões DIRETAS das cinco roles e de PUBLIC
+   Este script reconcilia concessões DIRETAS dos seis grupos gerais e de PUBLIC
    somente nos objetos OLIUS listados. Remove também grants por coluna.
    Reaplicá-lo remove concessões manuais adicionais nesses objetos:
    versionar futuras permissões da API neste arquivo antes de reaplicar.
@@ -117,7 +117,7 @@ BEGIN
         END IF;
     END IF;
 
-    FOREACH role_name IN ARRAY ARRAY['olius_owner','olius_reader','olius_auditor','olius_catalog_editor','olius_api'] LOOP
+    FOREACH role_name IN ARRAY ARRAY['olius_owner','olius_reader','olius_auditor','olius_catalog_editor','olius_api','olius_ranking_reader'] LOOP
         SELECT * INTO existing_role FROM pg_catalog.pg_roles WHERE rolname = role_name;
         IF NOT FOUND THEN
             EXECUTE format('CREATE ROLE %I NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS', role_name);
@@ -136,27 +136,27 @@ BEGIN
         SELECT 1 FROM olius_permission_scope s
         JOIN pg_catalog.pg_class c ON c.oid = to_regclass(format('public.%I', s.object_name))
         JOIN pg_catalog.pg_roles r ON r.oid = c.relowner
-        WHERE r.rolname IN ('olius_reader','olius_auditor','olius_catalog_editor','olius_api')
+        WHERE r.rolname IN ('olius_reader','olius_auditor','olius_catalog_editor','olius_api','olius_ranking_reader')
     ) THEN
         RAISE EXCEPTION 'Role operacional é proprietária de objeto. REVOKE não remove poderes de proprietário; revisar ownership.';
     END IF;
 
     FOR obj IN SELECT object_name FROM olius_permission_scope LOOP
-        EXECUTE format('REVOKE ALL PRIVILEGES ON TABLE public.%I FROM PUBLIC, olius_owner, olius_reader, olius_auditor, olius_catalog_editor, olius_api RESTRICT', obj.object_name);
+        EXECUTE format('REVOKE ALL PRIVILEGES ON TABLE public.%I FROM PUBLIC, olius_owner, olius_reader, olius_auditor, olius_catalog_editor, olius_api, olius_ranking_reader RESTRICT', obj.object_name);
         -- Revogar na tabela não revoga concessões independentes por coluna.
         FOR col IN SELECT attname FROM pg_catalog.pg_attribute
             WHERE attrelid = to_regclass(format('public.%I', obj.object_name))
               AND attnum > 0 AND NOT attisdropped AND attacl IS NOT NULL LOOP
-            EXECUTE format('REVOKE SELECT (%1$I), INSERT (%1$I), UPDATE (%1$I), REFERENCES (%1$I) ON TABLE public.%2$I FROM PUBLIC, olius_owner, olius_reader, olius_auditor, olius_catalog_editor, olius_api RESTRICT', col.attname, obj.object_name);
+            EXECUTE format('REVOKE SELECT (%1$I), INSERT (%1$I), UPDATE (%1$I), REFERENCES (%1$I) ON TABLE public.%2$I FROM PUBLIC, olius_owner, olius_reader, olius_auditor, olius_catalog_editor, olius_api, olius_ranking_reader RESTRICT', col.attname, obj.object_name);
         END LOOP;
     END LOOP;
-    EXECUTE format('GRANT CONNECT ON DATABASE %I TO olius_owner, olius_reader, olius_auditor, olius_catalog_editor, olius_api', current_database());
+    EXECUTE format('GRANT CONNECT ON DATABASE %I TO olius_owner, olius_reader, olius_auditor, olius_catalog_editor, olius_api, olius_ranking_reader', current_database());
 END $setup$;
 
 -- Schema public deve ser o espaço de trabalho do OLIUS neste banco.
 -- Retira criação genérica; não revoga CONNECT de PUBLIC nem afeta outros bancos.
-REVOKE CREATE ON SCHEMA public FROM PUBLIC, olius_reader, olius_auditor, olius_catalog_editor, olius_api;
-GRANT USAGE ON SCHEMA public TO olius_owner, olius_reader, olius_auditor, olius_catalog_editor, olius_api;
+REVOKE CREATE ON SCHEMA public FROM PUBLIC, olius_reader, olius_auditor, olius_catalog_editor, olius_api, olius_ranking_reader;
+GRANT USAGE ON SCHEMA public TO olius_owner, olius_reader, olius_auditor, olius_catalog_editor, olius_api, olius_ranking_reader;
 GRANT CREATE ON SCHEMA public TO olius_owner;
 
 -- PAPEL olius_owner — manutenção dos dados e da estrutura.
@@ -698,6 +698,35 @@ INSERT INTO public.data_catalog_role(role_name,description) VALUES
 ('olius_dm_owner','Proprietário NOLOGIN do Data Mart e refresh; atribuído somente à conta de manutenção olius_dm_admin, não às contas de consulta/refresh.'),
 ('olius_bi_reader_role','Grupo NOLOGIN: SELECT somente nos 13 conjuntos materializados e refresh_state em dm.'),
 ('olius_bi_refresh_role','Grupo NOLOGIN: EXECUTE no refresh coordenado e SELECT em refresh_state; sem DML direto.')
+ON CONFLICT (role_name) DO UPDATE SET description=EXCLUDED.description;
+
+-- API Redis — somente a projeção anual e as colunas usadas na apresentação.
+DO $ranking_access$
+DECLARE routine RECORD;
+BEGIN
+    IF (SELECT relowner FROM pg_class WHERE oid='public.vw_annual_scores'::regclass)<>'olius_owner'::regrole
+       OR coalesce((SELECT 'security_invoker=true'=ANY(reloptions) FROM pg_class
+                    WHERE oid='public.vw_annual_scores'::regclass),false) THEN
+        RAISE EXCEPTION 'vw_annual_scores deve manter proprietário olius_owner e execução pelos privilégios do dono.';
+    END IF;
+    -- O papel não precisa executar as rotinas operacionais/autenticadoras.
+    FOR routine IN SELECT p.oid,p.prokind,p.proname,pg_get_function_identity_arguments(p.oid) AS args
+        FROM pg_proc p WHERE p.pronamespace='public'::regnamespace AND p.prokind IN ('f','p')
+        AND p.proowner IN ('olius_owner'::regrole,'olius_auth_owner'::regrole,'olius_business_owner'::regrole)
+    LOOP
+        EXECUTE format('REVOKE EXECUTE ON %s public.%I(%s) FROM olius_ranking_reader RESTRICT',
+                       CASE WHEN routine.prokind='p' THEN 'PROCEDURE' ELSE 'FUNCTION' END,routine.proname,routine.args);
+        IF has_function_privilege('olius_ranking_reader',routine.oid,'EXECUTE') THEN
+            RAISE EXCEPTION 'Rotina % continua acessível ao ranking por concessão herdada/PUBLIC; revisar.',routine.proname;
+        END IF;
+    END LOOP;
+END $ranking_access$;
+GRANT SELECT ON public.vw_annual_scores TO olius_ranking_reader;
+GRANT SELECT (id,name,status) ON public.users TO olius_ranking_reader;
+GRANT SELECT (id,address_id) ON public.establishment TO olius_ranking_reader;
+GRANT SELECT (id,city) ON public.addresses TO olius_ranking_reader;
+INSERT INTO public.data_catalog_role(role_name,description) VALUES
+('olius_ranking_reader','Grupo NOLOGIN exclusivo da API Redis: SELECT em vw_annual_scores e em users(id,name,status), establishment(id,address_id), addresses(id,city); sem escrita ou execução de rotinas da aplicação.')
 ON CONFLICT (role_name) DO UPDATE SET description=EXCLUDED.description;
 
 COMMIT;
