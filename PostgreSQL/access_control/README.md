@@ -7,7 +7,7 @@ Esta pasta centraliza os papéis PostgreSQL, as permissões sobre os objetos do 
 | Arquivo | Responsabilidade |
 |---|---|
 | `01_roles.sql` | Cria e valida os papéis, aplica permissões, transfere a propriedade dos objetos previstos e configura os acessos de autenticação. |
-| `02_users.sql` | Cria as dez contas aprovadas e atribui seus papéis, sem definir senhas. |
+| `02_users.sql` | Cria as onze contas aprovadas e atribui seus papéis, sem definir senhas. |
 
 Executar nesta ordem, no banco do OLIUS do segundo ano:
 
@@ -22,7 +22,7 @@ Executar cada arquivo completo, fora de outra transação. Ambos utilizam BEGIN/
 
 ## Papéis e contas
 
-Os **dez papéis** abaixo são `NOLOGIN`: representam permissões ou propriedade técnica e não iniciam uma conexão. As contas da equipe, API e integração BI são `LOGIN` e recebem participação nos grupos previstos.
+Os **onze papéis** abaixo são `NOLOGIN`: representam permissões ou propriedade técnica e não iniciam uma conexão. As contas da equipe, API e integração BI são `LOGIN` e recebem participação nos grupos previstos.
 
 Os perfis ADMIN, CITIZENS e ESTABLISHMENT da aplicação são registros do sistema e não equivalem automaticamente a esses papéis PostgreSQL.
 
@@ -33,13 +33,14 @@ Os perfis ADMIN, CITIZENS e ESTABLISHMENT da aplicação são registros do siste
 | `olius_auditor` | Consulta aos 22 logs de negócio aprovados e à documentação. Sem concessão de escrita nos logs. |
 | `olius_catalog_editor` | SELECT, INSERT, UPDATE e DELETE nas três tabelas documentais; SELECT na view. Sem concessão adicional sobre dados de negócio. |
 | `olius_api` | Consultas de negócio, escrita cadastral/financeira por coluna e EXECUTE nas operações públicas. Sem escrita livre em fatos derivados, saldos, sessões ou logs; contrato completo em API_DATABASE_CONTRACT.md. |
+| `olius_ranking_reader` | Leitura exclusiva da pontuação anual e dos metadados autorizados para a API Redis. |
 | `olius_auth_owner` | Proprietário interno das funções de autenticação, com os privilégios restritos necessários à sua execução. Não é um perfil atribuído às contas da equipe ou da API. |
 | `olius_business_owner` | Proprietário interno das procedures de negócio, entradas operacionais e triggers de auditoria/sincronização de PEV. Sem login, sem propriedade de tabelas e sem participação atribuída à Core ou à equipe. |
 | `olius_dm_owner` | Proprietário interno do schema dm, das 13 views materializadas, refresh_state e procedure de refresh; acessos às fontes necessários ao refresh. |
 | `olius_bi_reader_role` | SELECT somente nos 13 conjuntos materializados e dm.refresh_state. |
 | `olius_bi_refresh_role` | EXECUTE em dm.refresh_data_mart() e SELECT em dm.refresh_state; sem DML direto. |
 
-Os cinco perfis gerais recebem CONNECT no banco selecionado e USAGE no schema public. O proprietário interno recebe USAGE e os acessos necessários às suas funções. Nenhum desses grupos recebe SUPERUSER, CREATEDB, CREATEROLE, REPLICATION ou BYPASSRLS.
+Os seis grupos gerais recebem CONNECT no banco selecionado e USAGE no schema public. O proprietário interno recebe USAGE e os acessos necessários às suas funções. Nenhum desses grupos recebe SUPERUSER, CREATEDB, CREATEROLE, REPLICATION ou BYPASSRLS.
 
 ### `olius_owner`
 
@@ -138,11 +139,12 @@ olius_dm_owner nem receber propriedade dos objetos desse schema.
 | `david` | `olius_reader` | Consulta aos dados autorizados e à documentação. |
 | `erick` | `olius_reader` | Consulta aos dados autorizados e à documentação. |
 | `olius_core_api` | `olius_api` | Conexão exclusiva do backend da Core API. |
+| `olius_redis_api` | `olius_ranking_reader` | Conexão exclusiva da API Redis, sem escrita no PostgreSQL. |
 | `olius_dm_admin` | `olius_dm_owner` | Administração da estrutura e dos dados do Data Mart; não usar na consulta cotidiana nem no Job. |
 | `olius_bi_reader` | `olius_bi_reader_role` | Leitura das views materializadas pela conexão federada do Databricks. |
 | `olius_bi_refresh` | `olius_bi_refresh_role` | Chamada do refresh coordenado e leitura do identificador da atualização. |
 
-As dez contas são criadas com LOGIN/INHERIT e sem privilégios administrativos globais. Membership usa INHERIT TRUE, SET TRUE e ADMIN FALSE: recebem os acessos do grupo, podem assumir o grupo, mas não recebem autorização para delegá-lo a outras contas.
+As onze contas são criadas com LOGIN/INHERIT e sem privilégios administrativos globais. Membership usa INHERIT TRUE, SET TRUE e ADMIN FALSE: recebem os acessos do grupo, podem assumir o grupo, mas não recebem autorização para delegá-lo a outras contas.
 
 Para criar novos objetos de manutenção como olius_dm_admin, usar SET ROLE
 olius_dm_owner e depois RESET ROLE: a propriedade deve ficar no grupo,
@@ -160,7 +162,7 @@ no serverless precisa de homologação. Não atribuir olius_dm_owner às contas 
 nem conceder refresh ao reader. Senhas ficam fora dos scripts/Git; configuração
 no guia de Databricks/documents. Não há exportador de arquivos neste fluxo.
 
-Nenhuma conta é criada para o grupo auditor/editor nesta versão; esses papéis ficam disponíveis para atribuições futuras aprovadas. A segunda API também não tem uma conta definida nesta entrega.
+Nenhuma conta é criada para o grupo auditor/editor nesta versão; esses papéis ficam disponíveis para atribuições futuras aprovadas. A API Redis utiliza olius_redis_api, exclusivamente com olius_ranking_reader.
 
 ## Senhas, reaplicação e manutenção
 
@@ -198,3 +200,28 @@ na coordenação técnica e SELECT apenas nos metadados do convite sem hash.
 O bootstrap recebe EXECUTE somente para olius_owner. Auditor lê snapshots de
 admin_invitation_log, sem token original ou hash. Não foram criados novos papéis
 ou logins nesta entrega. Documentação da funcionalidade: ../admin_management/README.md.
+
+
+## API Redis: ranking anual
+
+`olius_ranking_reader` é NOLOGIN e só recebe SELECT em `vw_annual_scores`,
+`users(id,name,status)`, `establishment(id,address_id)` e `addresses(id,city)`.
+`olius_redis_api` é a conta LOGIN correspondente, sem senha no Git e sem
+membership nos grupos da Core, manutenção, auditoria ou BI. Esses objetos estão
+na reconciliação de privilégios por tabela/coluna: permissões manuais adicionais
+são retiradas na reaplicação. Rotinas da aplicação não são concedidas ao grupo.
+
+A view anual usa os privilégios de olius_owner; não alterar security_invoker ou
+as colunas sem coordenar o contrato da segunda API. Nenhum acesso direto aos
+fatos de coleta, saldos, credenciais, logs ou Data Mart é concedido. A leitura de
+nomes e cidades não concede escrita nem autorização automática para publicação.
+
+Instalar 01_roles.sql e reaplicar 02_users.sql com implantação autorizada.
+Contas existentes preservam suas senhas; a nova conta exige provisionamento de
+senha fora do Git. Configurar URL JDBC, usuário e senha por secrets na API Redis,
+com TLS; não compartilhar olius_core_api. Conferir também os acessos por PUBLIC
+nos outros bancos do servidor antes de liberar a conta.
+
+A cadência solicitada pela API é de cinco minutos e não é agendada pelo banco.
+Cada rebuild deve retirar membros que ficaram inelegíveis ou inativos, preservar
+separação de perfil/ano e atualizar as estruturas Redis sem expor estado parcial.
