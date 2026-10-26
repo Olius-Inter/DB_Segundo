@@ -77,7 +77,8 @@ INSERT INTO data_catalog_role (role_name, description) VALUES
 ('olius_reader', 'Consulta técnica às tabelas/colunas operacionais autorizadas e ao catálogo. Sem acesso automático a credenciais, tokens, integrações financeiras ou logs.'),
 ('olius_auditor', 'Consulta às 22 tabelas de auditoria e ao catálogo, sem escrita direta nos logs. Eventos e tentativas do provedor não são incluídos automaticamente.'),
 ('olius_catalog_editor', 'Manutenção documental: SELECT, INSERT, UPDATE e DELETE nas três tabelas do catálogo e SELECT na view; não administra roles PostgreSQL.'),
-('olius_api', 'Conta técnica da aplicação: consultas necessárias, alterações cadastrais limitadas e execução de rotinas autorizadas; sem propriedade dos objetos ou escrita livre em saldos e logs. Lista exata de concessões depende das rotinas.')
+('olius_api', 'Conta técnica da aplicação: consultas necessárias, alterações cadastrais limitadas e execução de rotinas autorizadas; sem propriedade dos objetos ou escrita livre em saldos e logs. Lista exata de concessões depende das rotinas.'),
+('olius_ranking_reader', 'Grupo NOLOGIN exclusivo da API Redis: SELECT em vw_annual_scores e em users(id,name,status), establishment(id,address_id), addresses(id,city); sem escrita ou execução de rotinas da aplicação.')
 ON CONFLICT (role_name) DO NOTHING;
 
 INSERT INTO data_catalog_table
