@@ -93,7 +93,7 @@ access_control/02_users.sql apresenta um relatório de CONNECT para as sete cont
 
 `access_status` mostra uma role documental por linha, se ela existir e tiver USAGE no schema e acesso de dados à coluna/tabela. Considera SELECT/INSERT/UPDATE por coluna ou tabela e DELETE/TRUNCATE por tabela, inclusive herança efetiva e PUBLIC. REFERENCES/TRIGGER sozinhos não são acesso aos dados.
 
-Sem role elegível, a coluna permanece com NULL. EXECUTE em função SECURITY DEFINER não é acesso direto à tabela e não faz olius_api aparecer como leitor de hashes de refresh tokens/sessões. Os proprietários internos de auth e negócio não são listados entre os perfis documentais. A Core lê users.password_hash para login; isso é distinto de acesso a refresh tokens. A carga inicial registra cinco perfis; access_control acrescenta os três papéis do Data Mart, totalizando oito.
+Sem role elegível, a coluna permanece com NULL. EXECUTE em função SECURITY DEFINER não é acesso direto à tabela e não faz olius_api aparecer como leitor de hashes de refresh tokens/sessões. Os proprietários internos de auth e negócio não são listados entre os perfis documentais. A Core lê users.password_hash para login; isso é distinto de acesso a refresh tokens. A carga inicial registra seis perfis, incluindo olius_ranking_reader; access_control acrescenta os três papéis do Data Mart, totalizando nove.
 
 A descrição do papel informa sua finalidade geral; os privilégios concretos variam por objeto. A view não simula políticas RLS nem autenticação. Por usar security_invoker, exige leitura da view e das três tabelas documentais.
 
@@ -105,4 +105,16 @@ Consulte `validation_report.md`, `../tests/catalog_access_regression.sql`. A rev
 
 Referências: [privilégios e membership no PostgreSQL 16](https://www.postgresql.org/docs/16/sql-grant.html), [alteração da propriedade de funções](https://www.postgresql.org/docs/16/sql-alterfunction.html).
 
-O proprietário interno olius_business_owner e as permissões detalhadas da Core são documentados em [../access_control/README.md](../access_control/README.md) e [../access_control/API_DATABASE_CONTRACT.md](../access_control/API_DATABASE_CONTRACT.md). O catálogo tem cinco perfis na carga inicial e oito após access_control, incluindo o Data Mart; seus registros não concedem privilégios.
+O proprietário interno olius_business_owner e as permissões detalhadas da Core são documentados em [../access_control/README.md](../access_control/README.md) e [../access_control/API_DATABASE_CONTRACT.md](../access_control/API_DATABASE_CONTRACT.md). O catálogo tem seis perfis na carga inicial e nove após access_control, incluindo o Data Mart; seus registros não concedem privilégios.
+
+
+## Papel da API Redis
+
+A carga registra `olius_ranking_reader`, documentando leitura de vw_annual_scores
+e de users(id,name,status), establishment(id,address_id), addresses(id,city).
+O cadastro NÃO cria a role nem o login. A criação/permissões pertencem a
+access_control/01_roles.sql e a conta olius_redis_api a access_control/02_users.sql.
+A view documental reflete privilégios efetivos por coluna; não é uma autorização
+para consultar ou publicar outros dados. Se a role ainda não foi implantada,
+05_validate.sql informa role_exists=false; não concede acessos automaticamente.
+Aplicar preferencialmente a PR de controle de acesso antes desta documentação.
