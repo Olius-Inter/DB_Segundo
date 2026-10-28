@@ -180,7 +180,7 @@ A conta de implantação precisa de CREATEROLE, autoridade sobre os objetos/sche
 
 Roles e contas são globais ao servidor. Os scripts alteram objetos somente no banco selecionado e não modificam ACLs de outros bancos. Outro banco pode conceder CONNECT ou acessos por PUBLIC; `02_users.sql` termina com um relatório de CONNECT para conferência. Verifique os acessos ao banco do primeiro ano antes de liberar credenciais no Aiven.
 
-Na instalação inicial das funções de autenticação, a autoridade da conta de implantação sobre o parâmetro `app.audit_actor` também precisa ser conferida; consulte a documentação de sessões e os resultados anteriores de validação.
+As funções atuais de autenticação não usam SET app.* na definição: salvam e restauram o contexto dentro do corpo. Não é necessário conceder SUPERUSER ou GRANT SET nos parâmetros de auditoria à Core. A conta de implantação continua precisando das autoridades de ownership/roles documentadas; consultar AUTH_SESSIONS.md.
 
 ## Validação e situação da entrega
 
@@ -225,3 +225,16 @@ nos outros bancos do servidor antes de liberar a conta.
 A cadência solicitada pela API é de cinco minutos e não é agendada pelo banco.
 Cada rebuild deve retirar membros que ficaram inelegíveis ou inativos, preservar
 separação de perfil/ano e atualizar as estruturas Redis sem expor estado parcial.
+
+## Compatibilidade de ambientes — revisão de 28/10/2026
+
+O alvo de referência dos scripts permanece PostgreSQL 16.15. A instalação Aiven
+consultada pela Core foi identificada como PostgreSQL 18.6. As regressões SQL
+foram repetidas em servidores descartáveis nas duas versões; os testes da Core
+possuem seleção de imagem e matriz no seu próprio CI. Isso não altera nem migra
+um servidor existente e não dispensa conferir a versão no destino de implantação.
+
+Para instalação nova completa, principais 01–08 precedem o catálogo e o controle
+de acesso. O script 09 é refresh operacional do Data Mart, executado somente pela
+identidade autorizada. Dados iniciais oficiais e massa demonstrativa são entregas
+distintas; consultar initial_data/README.md antes de preparar a demonstração.

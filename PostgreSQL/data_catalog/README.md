@@ -17,7 +17,7 @@ Não há criação de contas ou definição de perfis nos cinco scripts principa
 
 ## Instalação nova
 
-1. Instalar os cinco scripts principais do PostgreSQL, de `01_structure.sql` a `05_triggers.sql`.
+1. Para uma instalação nova, instalar os scripts principais 01–08, de `01_structure.sql` a `08_materialized_views.sql`. As views de 06/07 e o Data Mart de 08 são dependências atuais do controle de acesso.
 2. Conferir banco/schema selecionados. Este módulo usa o schema `public` do banco do segundo ano.
 3. Executar os arquivos **01 a 05 desta pasta**, completos e na ordem numérica; depois `../access_control/01_roles.sql`.
 4. Executar novamente `05_validate.sql`, agora com os papéis físicos presentes.
@@ -31,13 +31,13 @@ Nenhum arquivo se conecta automaticamente ao Aiven. Nesta revisão, a execução
 ## Atualização de catálogo existente
 
 - Se as três tabelas e a view simplificada já existem, reaplicar **04**, depois `../access_control/01_roles.sql`, e conferir com **05**. Provisionar contas separadamente se necessário.
-- Se a view ainda tem o formato antigo, executar `upgrade_view.sql` antes. Ele faz DROP/CREATE sem CASCADE, preservando proprietário e concessões. Dependências ou grants incompatíveis causam erro para revisão.
+- Não há `upgrade_view.sql` nesta revisão. Se uma instalação antiga tiver uma view incompatível, levantar dependências e concessões e elaborar um plano de atualização específico antes de executar alterações. Não usar os CREATEs de instalação nova como migração automática.
 - O controle de acesso está consolidado em `../access_control/01_roles.sql`, que também protege autenticação e operações de negócio.
 - 04 preserva descrições humanas. A revisão preenche as 39 colunas descobertas como PENDING e as três tabelas de autenticação, substituindo apenas marcadores automáticos e textos versionados reconhecidos. Políticas personalizadas não são sobrescritas silenciosamente.
 
 ## Cobertura atual
 
-**58 tabelas e 828 colunas documentadas:** 58 tabelas da aplicação/auditoria e três do catálogo. A view exclui as três tabelas documentais e apresenta **55 tabelas e 808 colunas distintas**. Existem 23 tabelas de auditoria no banco.
+**61 tabelas e 863 colunas em public:** 58 tabelas da aplicação/auditoria e três do catálogo. A view exclui as três tabelas documentais e representa **58 tabelas e 843 colunas distintas**. Existem 24 tabelas de auditoria, incluindo sessões e convites. Esses valores são referência da revisão de 28/10/2026; o validador compara os objetos reais e não fixa esses totais como limite. O schema dm é documentado separadamente.
 
 Não conte linhas da view para medir colunas: uma coluna pode aparecer uma vez para cada papel com acesso. A validação verifica ausência física, renomeações, metadados faltantes e campos pendentes. Novos objetos continuam sendo descobertos como PENDING até revisão; não recebem descrições de negócio inventadas.
 

@@ -6,7 +6,7 @@ Alvo: PostgreSQL 16.15. Este contrato cobre as tabelas e rotinas atuais do MVP. 
 
 | Componente | Responsabilidade |
 |---|---|
-| Core Spring Boot | Autenticar usuários, verificar JWT/sessão, autorizar perfil e titularidade, validar formulários, proteger endpoints, verificar pagamentos no provedor, gerar documentos e publicar pontos no Redis. |
+| Core Spring Boot | Autenticar usuários, verificar JWT/sessão, autorizar perfil e titularidade, validar formulários, proteger endpoints, verificar pagamentos no provedor, gerar documentos e disponibilizar o contrato de identidade usado pela segunda API. |
 | PostgreSQL | Constraints, unicidade, referências, bloqueios concorrentes, operações atômicas, histórico, auditoria, aplicação de benefícios, reconstrução de pontos e certificados. |
 | Redis | Ordenação do ranking operacional a partir dos pontos persistidos. Não substitui o PostgreSQL como fonte de verdade. |
 
@@ -136,19 +136,19 @@ SQLSTATE relevantes das rotinas existentes: 22023 (parâmetro), 22000 (payload i
 
 ## Fluxos completos
 
-**B2B:** consultar identidade/plano/ciclo → create_collection_request → schedule_collection_request → validar motorista/QR na Core → record_collection_arrival → aceite pelo estabelecimento autenticado → accept_collection_service → record_collection → pontos/certificados internos → consultar saldos → publicar Redis. Cancelamento e rejeição usam entradas próprias.
+**B2B:** consultar identidade/plano/ciclo → create_collection_request → schedule_collection_request → validar motorista/QR na Core → record_collection_arrival → aceite pelo estabelecimento autenticado → accept_collection_service → record_collection → pontos/certificados internos → consultar saldos. A API Redis reconstrói o ranking pela leitura própria descrita em Identidade da API Redis. Cancelamento e rejeição usam entradas próprias.
 
-**B2C:** responsável autenticado de PEV aprovado lê QR → Core resolve cidadão/validador e valida autorização → record_pev_delivery com UUID → entrega e pontos internos → consultar saldo → publicar Redis. Não registrar entrega sem volume aceito positivo.
+**B2C:** responsável autenticado de PEV aprovado lê QR → Core resolve cidadão/validador e valida autorização → record_pev_delivery com UUID → entrega e pontos internos → consultar saldo. A API Redis reconstrói o ranking pela leitura própria descrita em Identidade da API Redis. Não registrar entrega sem volume aceito positivo.
 
 **Pagamento:** Core cria assinatura pendente/ordem/cobrança com cotação congelada → integra provedor → verifica confirmação externa → insere payment e chama apply_verified_payment na mesma transação → ciclo/upgrade/aplicação ou reembolso → tarefas externas atualizam tentativas e resultado confirmado. A confirmação do provedor não é feita pela procedure.
 
-**Correção:** ADM autentica, consulta revisão, informa motivo → procedure de correção → revisão/cálculos/certificados atualizados atomicamente → Core atualiza projeções no Redis. O envio ao Redis acontece após commit; prever reprocessamento caso falhe.
+**Correção:** ADM autentica, consulta revisão, informa motivo → procedure de correção → revisão/cálculos/certificados atualizados atomicamente → a próxima reconstrução da API Redis consulta os dados confirmados. Não há POST obrigatório da Core para publicar essa correção; o rebuild periódico preserva a última versão íntegra em caso de falha, conforme o contrato atual.
 
 ## Limites e implantação
 
 Este contrato fecha as concessões dos objetos atuais; não implementa endpoints Spring Boot, a integração de um provedor ainda não escolhido, uma segunda API ou políticas de negócio ausentes. Não introduz tabelas nem altera o cálculo existente de pontos. Aprovação de perfis e titularidade continuam na Core.
 
-Executar os scripts principais 01–05, catálogo 01–05, access_control/01_roles.sql e 02_users.sql. Novas funções operacionais pertencem ao script principal 04; ownership, SECURITY DEFINER e concessões pertencem exclusivamente a access_control/01_roles.sql. Reaplicar 04 ou 05 exige reaplicar 01_roles antes de liberar tráfego, pois as definições podem restaurar atributos de segurança. Implantar essa sequência sem janela de exposição às rotinas; conferir ACLs ao final.
+Na instalação nova, executar os scripts principais 01–08, catálogo 01–04, access_control/01_roles.sql e 02_users.sql; conferir o catálogo com 05_validate.sql e instalar/validar initial_data conforme seu guia. O script 08 é pré-requisito das permissões do Data Mart; 09 é refresh operacional. Novas funções operacionais pertencem ao script principal 04; ownership, SECURITY DEFINER e concessões pertencem exclusivamente a access_control/01_roles.sql. Reaplicar 04 ou 05 exige reaplicar 01_roles antes de liberar tráfego, pois as definições podem restaurar atributos de segurança. Implantar essa sequência sem janela de exposição às rotinas; conferir ACLs ao final.
 
 Contas novas continuam sem senha; provisionar credenciais fora do Git. As roles são globais ao servidor, as concessões deste contrato são no banco selecionado. A separação de proprietário é uma defesa para contas operacionais; os administradores confiáveis donos das tabelas mantêm poderes de manutenção.
 
@@ -175,8 +175,11 @@ O banco recebe SHA-256 de 32 bytes do token e o hash da senha já calculado pela
 Core. A Core gera no mínimo 32 bytes aleatórios criptograficamente seguros para
 o segredo, envia o link somente após commit, valida a senha e seu hash conforme
 a autenticação existente e não registra tokens/senhas em logs. Não reutilizar
-refresh tokens. E-mails dos convites são normalizados em minúsculas; a API deve
-aplicar a mesma normalização no cadastro/login e validar o endereço completo.
+refresh tokens. E-mails dos convites administrativos são normalizados integralmente em minúsculas.
+Conforme a decisão aprovada, os cadastros existentes de cidadão/estabelecimento e
+o login preservam maiúsculas da parte local e normalizam somente o domínio.
+Não converter usuários existentes nem alterar essa unicidade globalmente. O ADMIN
+criado pelo aceite usa o e-mail em minúsculas congelado no convite. A API valida o endereço completo.
 O banco compara o e-mail com os usuários existentes sem diferenciar maiúsculas,
 mas não altera a UNIQUE histórica case-sensitive de users.email nesta entrega.
 
