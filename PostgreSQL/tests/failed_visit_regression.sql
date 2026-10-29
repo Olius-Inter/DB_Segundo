@@ -40,6 +40,21 @@ BEGIN
     PERFORM olius_test.assert(current_setting('app.audit_actor')='SYSTEM'
         AND current_setting('app.audit_reason')='contexto anterior','contexto restaurado em sucesso/reenvio/erro');
     r:=olius_test.request(10,FALSE);
+    -- Defesas do núcleo privado, exercitadas somente pelo implantador do teste.
+    PERFORM olius_test.expect_error(format(
+        'CALL record_collection_internal(%L,%L,1,0,''NOT_ASSESSED'',false,ARRAY[''ESTABLISHMENT_CLOSED'']::text[],''Teste'',clock_timestamp(),%L,NULL)',
+        r,olius_test.id('driver'),olius_test.id('admin')),'22023');
+    PERFORM olius_test.expect_error(format(
+        'CALL record_collection(%L,%L,0,0,''NOT_ASSESSED'',false,ARRAY[''ESTABLISHMENT_CLOSED'']::text[],''Teste'',clock_timestamp(),NULL)',
+        r,olius_test.id('driver')),'42501');
+    PERFORM olius_test.expect_error(format(
+        'CALL record_collection_internal(%L,%L,0,0,''NOT_ASSESSED'',false,ARRAY[''ESTABLISHMENT_CLOSED'']::text[],''Teste'',clock_timestamp(),%L,NULL)',
+        r,olius_test.id('driver'),olius_test.id('admin')),'55000');
+    PERFORM olius_test.expect_error(format(
+        'SELECT record_failed_collection_visit(%L,%L,''ESTABLISHMENT_CLOSED'',''Teste'')',
+        gen_random_uuid(),olius_test.id('admin')),'P0002');
+    PERFORM olius_test.assert(NOT EXISTS(SELECT 1 FROM collection WHERE collection_request_id=r),
+        'validações não criam resultado parcial');
     FOREACH actor_id IN ARRAY ARRAY[olius_test.id('citizen'),gen_random_uuid()] LOOP
         PERFORM olius_test.expect_error(format('SELECT record_failed_collection_visit(%L,%L,''ESTABLISHMENT_CLOSED'',''Teste'')',r,actor_id),'42501');
     END LOOP;
@@ -63,6 +78,11 @@ BEGIN
     PERFORM olius_test.expect_error(format('SELECT record_failed_collection_visit(%L,%L,''ESTABLISHMENT_CLOSED'',''Teste'')',r,olius_test.id('admin')),'55000');
     CALL record_collection(r,olius_test.id('driver'),10,10,'ACCEPTABLE',FALSE,ARRAY[]::TEXT[],NULL,clock_timestamp(),normal);
     PERFORM olius_test.expect_error(format('SELECT record_failed_collection_visit(%L,%L,''ESTABLISHMENT_CLOSED'',''Teste'')',r,olius_test.id('admin')),'22000');
+    PERFORM olius_test.expect_error(format(
+        'CALL correct_collection(%L,1,%L,''RECORDED'',0,0,''NOT_ASSESSED'',false,ARRAY[''ESTABLISHMENT_CLOSED'']::text[],''Teste'',''Correção inválida'')',
+        normal,olius_test.id('admin')),'23514');
+    PERFORM olius_test.assert((SELECT revision=1 AND result='SUCCESSFUL' FROM collection WHERE id=normal),
+        'correção incompatível preserva revisão e resultado');
     PERFORM olius_test.assert((SELECT points=60 FROM establishment WHERE id=olius_test.id('est')),'sucesso normal preservado');
     PERFORM olius_test.assert(NOT EXISTS(SELECT collection_request_id FROM collection GROUP BY collection_request_id HAVING count(*)>1),'sem duplicação');
 END $$;
