@@ -59,7 +59,7 @@ def check_reference_data():
     verify("(SELECT count(*) FROM public.subscription_plan)=3 AND "
            "(SELECT count(*) FROM public.certificate_level)=3 AND "
            "(SELECT count(*) FROM public.establishment_type)=7 AND "
-           "(SELECT count(*) FROM public.collection_failure_reason)=3", "16 referências oficiais")
+           "(SELECT count(*) FROM public.collection_failure_reason)=5", "18 referências oficiais")
     verify("NOT EXISTS(SELECT 1 FROM public.users) AND NOT EXISTS(SELECT 1 FROM public.collection) "
            "AND NOT EXISTS(SELECT 1 FROM public.certificate)", "sem usuários, coletas ou concessões fictícias")
     before = snapshot()
@@ -120,7 +120,7 @@ def check_reference_data():
     execute(relative=validate, fails=True)
     if before != snapshot():
         raise AssertionError("Nome de certificado ambíguo não preservou o estado original.")
-    print("PASS: initial-data (16 registros, concorrência, reexecução sem escrita, IDs existentes, extras, conflitos e rollback)")
+    print("PASS: initial-data (18 registros, concorrência, reexecução sem escrita, IDs existentes, extras, conflitos e rollback)")
 
 
 def main():

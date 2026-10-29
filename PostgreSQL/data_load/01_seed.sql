@@ -7,7 +7,7 @@ SELECT pg_temp.dl_actor('SYSTEM');
 SELECT pg_temp.dl_assert((SELECT count(*)=3 FROM subscription_plan)
     AND (SELECT count(*)=3 FROM certificate_level)
     AND (SELECT count(*)=7 FROM establishment_type)
-    AND (SELECT count(*)=3 FROM collection_failure_reason), 'catálogos exclusivos da configuração oficial');
+    AND (SELECT count(*)=5 FROM collection_failure_reason), 'catálogos exclusivos da configuração oficial');
 SELECT pg_temp.dl_assert(NOT EXISTS (
     SELECT 1 FROM subscription_plan lower_plan JOIN subscription_plan higher_plan
         ON lower_plan.monthly_price < higher_plan.monthly_price

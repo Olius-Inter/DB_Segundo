@@ -81,6 +81,7 @@ def main():
 
     # O teste da carga oficial usa outro banco e não mistura catálogos com fixtures.
     execute("initial-data-regression", [sys.executable, str(TESTS / "initial_data_regression.py")])
+    execute("failed-visit-migration", [sys.executable, str(TESTS / "failed_visit_migration_regression.py")])
 
     # Registra somente o código de aplicação, antes de criar helpers dos testes.
     inventory = query("routine-inventory", """
@@ -102,6 +103,7 @@ def main():
         sql_file("PostgreSQL/tests/auth_sessions_edges.sql")
         sql_file("PostgreSQL/tests/auth_audit_context_regression.sql")
         sql_file("PostgreSQL/tests/operational_regression.sql")
+        sql_file("PostgreSQL/tests/failed_visit_regression.sql")
     if has_catalog:
         sql_file("PostgreSQL/data_catalog/05_validate.sql")
     if has_access:
