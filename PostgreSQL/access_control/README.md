@@ -48,7 +48,7 @@ Recebe ALL PRIVILEGES WITH GRANT OPTION sobre os objetos da lista fechada do scr
 
 - 58 tabelas da aplicação/auditoria, três tabelas documentais, `vw_data_catalog`, `vw_annual_scores` e `vw_annual_ranking`;
 - 22 tipos enum do projeto;
-- 11 funções comuns explicitamente listadas. As dez procedures e duas funções de trigger de negócio passam ao proprietário interno.
+- 11 funções comuns explicitamente listadas. As onze procedures e duas funções de trigger de negócio passam ao proprietário interno.
 
 A propriedade permite manutenção estrutural, como ALTER e DROP, que GRANT ALL sozinho não concede. Banco, schema e objetos de extensões não têm sua propriedade transferida.
 
@@ -94,7 +94,7 @@ Alterar um registro documental não cria uma role, não concede permissões e n�
 
 A Core consulta 30 tabelas de negócio; escreve somente nas colunas autorizadas de cadastros e integração financeira. Não tem SELECT direto em logs, sessões, refresh tokens ou catálogo. DELETE somente em telephone. A leitura de users.password_hash serve ao login e não autoriza expor hashes em respostas HTTP.
 
-Recebe EXECUTE nas três funções de consulta, oito procedures públicas de negócio, cinco funções de autenticação e quatro entradas operacionais: record_collection_arrival, accept_collection_service, reject_collection_request e set_billing_charge_external_status.
+Recebe EXECUTE nas três funções de consulta, oito procedures públicas de negócio, cinco funções de autenticação e cinco entradas operacionais: record_collection_arrival, accept_collection_service, reject_collection_request, set_billing_charge_external_status e record_failed_collection_visit.
 
 Não recebe EXECUTE em rebuild_user_points, reconcile_establishment_certificates ou auxiliares/triggers. Não pode alterar diretamente saldos, is_pev, pedidos, coletas, entregas, ciclos, revisões, cotação congelada ou pagamentos existentes.
 
@@ -102,7 +102,7 @@ O detalhamento por tabela/coluna e rotina está em [API_DATABASE_CONTRACT.md](AP
 
 ### `olius_business_owner`
 
-NOLOGIN e sem herança. Possui as dez procedures existentes, quatro funções operacionais e as duas funções de trigger de auditoria e sincronização de PEV. As oito procedures públicas, quatro entradas e duas triggers usam SECURITY DEFINER com search_path seguro; as duas procedures internas permanecem SECURITY INVOKER.
+NOLOGIN e sem herança. Possui onze procedures, cinco funções operacionais e as duas funções de trigger de auditoria e sincronização de PEV. As oito procedures públicas, cinco entradas e duas triggers usam SECURITY DEFINER com search_path seguro; as três procedures internas permanecem SECURITY INVOKER.
 
 Recebe consultas necessárias, alterações restritas aos objetos que as rotinas mantêm e INSERT nos 22 logs de negócio. Não recebe acesso às tabelas de autenticação, ao catálogo nem CREATE permanente no schema. A função genérica de snapshots permanece SECURITY INVOKER e não é concedida à API.
 
@@ -238,3 +238,7 @@ Para instalação nova completa, principais 01–08 precedem o catálogo e o con
 de acesso. O script 09 é refresh operacional do Data Mart, executado somente pela
 identidade autorizada. Dados iniciais oficiais e massa demonstrativa são entregas
 distintas; consultar initial_data/README.md antes de preparar a demonstração.
+
+A Sprint 9 adiciona EXECUTE em `record_failed_collection_visit(UUID,UUID,TEXT,TEXT)` à Core.
+O núcleo `record_collection_internal` é privado; não recebe concessão para API/equipe.
+Contrato e migração estão descritos em `API_DATABASE_CONTRACT.md`.
