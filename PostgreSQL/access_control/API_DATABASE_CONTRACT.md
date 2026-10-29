@@ -6,7 +6,7 @@ Alvo: PostgreSQL 16.15. Este contrato cobre as tabelas e rotinas atuais do MVP. 
 
 | Componente | Responsabilidade |
 |---|---|
-| Core Spring Boot | Autenticar usuários, verificar JWT/sessão, autorizar perfil e titularidade, validar formulários, proteger endpoints, verificar pagamentos no provedor, gerar documentos e publicar pontos no Redis. |
+| Core Spring Boot | Autenticar usuários, verificar JWT/sessão, autorizar perfil e titularidade, validar formulários, proteger endpoints, verificar pagamentos no provedor, gerar documentos e disponibilizar o contrato de identidade usado pela segunda API. |
 | PostgreSQL | Constraints, unicidade, referências, bloqueios concorrentes, operações atômicas, histórico, auditoria, aplicação de benefícios, reconstrução de pontos e certificados. |
 | Redis | Ordenação do ranking operacional a partir dos pontos persistidos. Não substitui o PostgreSQL como fonte de verdade. |
 
@@ -136,19 +136,19 @@ SQLSTATE relevantes das rotinas existentes: 22023 (parâmetro), 22000 (payload i
 
 ## Fluxos completos
 
-**B2B:** consultar identidade/plano/ciclo → create_collection_request → schedule_collection_request → validar motorista/QR na Core → record_collection_arrival → aceite pelo estabelecimento autenticado → accept_collection_service → record_collection → pontos/certificados internos → consultar saldos → publicar Redis. Cancelamento e rejeição usam entradas próprias.
+**B2B:** consultar identidade/plano/ciclo → create_collection_request → schedule_collection_request → validar motorista/QR na Core → record_collection_arrival → aceite pelo estabelecimento autenticado → accept_collection_service → record_collection → pontos/certificados internos → consultar saldos. A API Redis reconstrói o ranking pela leitura própria descrita em Identidade da API Redis. Cancelamento e rejeição usam entradas próprias.
 
-**B2C:** responsável autenticado de PEV aprovado lê QR → Core resolve cidadão/validador e valida autorização → record_pev_delivery com UUID → entrega e pontos internos → consultar saldo → publicar Redis. Não registrar entrega sem volume aceito positivo.
+**B2C:** responsável autenticado de PEV aprovado lê QR → Core resolve cidadão/validador e valida autorização → record_pev_delivery com UUID → entrega e pontos internos → consultar saldo. A API Redis reconstrói o ranking pela leitura própria descrita em Identidade da API Redis. Não registrar entrega sem volume aceito positivo.
 
 **Pagamento:** Core cria assinatura pendente/ordem/cobrança com cotação congelada → integra provedor → verifica confirmação externa → insere payment e chama apply_verified_payment na mesma transação → ciclo/upgrade/aplicação ou reembolso → tarefas externas atualizam tentativas e resultado confirmado. A confirmação do provedor não é feita pela procedure.
 
-**Correção:** ADM autentica, consulta revisão, informa motivo → procedure de correção → revisão/cálculos/certificados atualizados atomicamente → Core atualiza projeções no Redis. O envio ao Redis acontece após commit; prever reprocessamento caso falhe.
+**Correção:** ADM autentica, consulta revisão, informa motivo → procedure de correção → revisão/cálculos/certificados atualizados atomicamente → a próxima reconstrução da API Redis consulta os dados confirmados. Não há POST obrigatório da Core para publicar essa correção; o rebuild periódico preserva a última versão íntegra em caso de falha, conforme o contrato atual.
 
 ## Limites e implantação
 
 Este contrato fecha as concessões dos objetos atuais; não implementa endpoints Spring Boot, a integração de um provedor ainda não escolhido, uma segunda API ou políticas de negócio ausentes. Não introduz tabelas nem altera o cálculo existente de pontos. Aprovação de perfis e titularidade continuam na Core.
 
-Executar os scripts principais 01–05, catálogo 01–05, access_control/01_roles.sql e 02_users.sql. Novas funções operacionais pertencem ao script principal 04; ownership, SECURITY DEFINER e concessões pertencem exclusivamente a access_control/01_roles.sql. Reaplicar 04 ou 05 exige reaplicar 01_roles antes de liberar tráfego, pois as definições podem restaurar atributos de segurança. Implantar essa sequência sem janela de exposição às rotinas; conferir ACLs ao final.
+Na instalação nova, executar os scripts principais 01–08, catálogo 01–04, access_control/01_roles.sql e 02_users.sql; conferir o catálogo com 05_validate.sql e instalar/validar initial_data conforme seu guia. O script 08 é pré-requisito das permissões do Data Mart; 09 é refresh operacional. Novas funções operacionais pertencem ao script principal 04; ownership, SECURITY DEFINER e concessões pertencem exclusivamente a access_control/01_roles.sql. Reaplicar 04 ou 05 exige reaplicar 01_roles antes de liberar tráfego, pois as definições podem restaurar atributos de segurança. Implantar essa sequência sem janela de exposição às rotinas; conferir ACLs ao final.
 
 Contas novas continuam sem senha; provisionar credenciais fora do Git. As roles são globais ao servidor, as concessões deste contrato são no banco selecionado. A separação de proprietário é uma defesa para contas operacionais; os administradores confiáveis donos das tabelas mantêm poderes de manutenção.
 
@@ -175,8 +175,11 @@ O banco recebe SHA-256 de 32 bytes do token e o hash da senha já calculado pela
 Core. A Core gera no mínimo 32 bytes aleatórios criptograficamente seguros para
 o segredo, envia o link somente após commit, valida a senha e seu hash conforme
 a autenticação existente e não registra tokens/senhas em logs. Não reutilizar
-refresh tokens. E-mails dos convites são normalizados em minúsculas; a API deve
-aplicar a mesma normalização no cadastro/login e validar o endereço completo.
+refresh tokens. E-mails dos convites administrativos são normalizados integralmente em minúsculas.
+Conforme a decisão aprovada, os cadastros existentes de cidadão/estabelecimento e
+o login preservam maiúsculas da parte local e normalizam somente o domínio.
+Não converter usuários existentes nem alterar essa unicidade globalmente. O ADMIN
+criado pelo aceite usa o e-mail em minúsculas congelado no convite. A API valida o endereço completo.
 O banco compara o e-mail com os usuários existentes sem diferenciar maiúsculas,
 mas não altera a UNIQUE histórica case-sensitive de users.email nesta entrega.
 
@@ -238,3 +241,60 @@ continuam sob o contrato com a Core. O grupo não recebe acesso às sessões.
 
 O script verifica owner e security_invoker da view. Mudanças nesse contrato
 exigem revisão das permissões e comunicação ao responsável pela API Redis.
+
+## Sprint 9 — visita B2B sem atendimento
+
+Entrada: `record_failed_collection_visit(p_request_id UUID, p_admin_id UUID,
+p_reason_code TEXT, p_justification TEXT) RETURNS UUID`.
+
+A Core autentica o ADMIN e obtém seu ID do contexto autenticado, nunca de um
+campo livre do formulário. Banco revalida existência, tipo ADMIN e status ACTIVE.
+`olius_api` recebe apenas EXECUTE; `olius_core_api` herda esse papel. Nenhum DML
+operacional ou acesso aos logs é liberado. O núcleo `record_collection_internal`
+é privado, SECURITY INVOKER e só seu proprietário interno pode executá-lo.
+
+Motivo exclusivo: `ESTABLISHMENT_CLOSED` ou `NO_RESPONSIBLE_AVAILABLE`.
+Justificativa é obrigatória e normalizada por btrim. Não cobre recusa explícita
+do aceite. Comunicação motorista/ADMIN é externa. Havendo aceite, usar a rotina
+normal; óleo inadequado e volume fora da faixa mantêm o fluxo atual.
+
+O pedido deve estar APPROVED, agendado, com chegada de motorista ainda ativo,
+sem aceite e sem outra coleta. Não há confirmação fictícia. A rotina usa o
+motorista e o instante da chegada já registrados. `collection_date=arrived_at`;
+`collection.created_at` e `collection_log.performed_at` registram o lançamento.
+Ambos os volumes são zero, condição NOT_ASSESSED, resultado UNSUCCESSFUL,
+sem ocorrência de avaliação inventada. Um único motivo estruturado é gravado.
+
+Retorna o UUID da coleta, também em reenvio equivalente; não há códigos adicionais
+de sucesso. Solicitação é a chave de idempotência. Reenvio compara o retrato
+original, motivo, ADMIN e justificativa; correções posteriores não reescrevem
+esse contrato. Os quatro parâmetros devem ser reutilizados em retries.
+
+SQLSTATEs: 22023 parâmetro ausente/inválido ou chegada incompleta; P0002 pedido
+inexistente; 42501 ADMIN ou motorista inexistente/inativo, ou EXECUTE negado;
+55000 estado incompatível, aceite presente ou histórico original indisponível;
+22000 conflito com registro original; 23503 motivo inexistente/inativo.
+Timeout/deadlock/serialização: tratar pelos SQLSTATEs PostgreSQL, abortar e
+repetir a transação inteira com os mesmos parâmetros quando apropriado.
+
+Não enviar um horário livre nem um ID alternativo de motorista. A rotina define
+temporariamente app.audit_actor=USER, app.current_user_id=ADMIN,
+app.operational_driver_id vazio e app.audit_reason=justificativa; restaura os
+quatro contextos em sucesso, reenvio e erro. Não usar SET app.* na definição da
+função: isso impediria implantação no Aiven. Auditoria original guarda o ADMIN;
+collection.driver_id e request.arrival_driver_id preservam o responsável físico.
+
+Uma única transação: bloqueio compartilhado de ADMIN/motorista, estabelecimento
+FOR UPDATE, pedido FOR UPDATE, evento/cálculos. Reutiliza as mesmas rotinas de
+pontos e certificados: -50 nominais uma vez, piso zero, sem bônus/volume fictício.
+Pela disponibilidade oficial, consome uma vaga e zero litros e libera a reserva
+original. O pedido conserva APPROVED como no registro normal: existência da coleta
+encerra a reserva. Não converter em cancelamento nem editar saldos pela API.
+Correções continuam em correct_collection com revisão e justificativa; sem aceite
+devem manter ausência de atendimento/volume ou anular pelo fluxo existente.
+
+Base nova: scripts atuais, catálogo, access_control e initial_data. Base instalada:
+executar somente a migração `migrations/20261029_failed_collection_visit.sql`,
+inteira e fora de transação existente, como implantador. A migração conserva
+dados, IDs e segurança, é reaplicável e inclui consultas de conferência. Não
+reexecutar 01–03. Revisar relatórios de retorno antes de liberar a Core.

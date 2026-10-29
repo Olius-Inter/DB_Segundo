@@ -14,7 +14,7 @@ from pathlib import Path
 container = os.environ.get("OLIUS_TEST_DOCKER_CONTAINER")
 base = (["docker", "exec", "-i", container, "psql", "-U", "postgres", "-d", os.environ.get("PGDATABASE", "olius_test")]
         if container else ["psql"])
-command = base + ["-X", "-qAt", "-v", "ON_ERROR_STOP=1"]
+command = base + ["-X", "-qAt", "-v", "ON_ERROR_STOP=1", "-v", "VERBOSITY=verbose"]
 process_options = {"encoding": "utf-8"}
 if os.name == "nt":
     process_options["creationflags"] = subprocess.CREATE_NO_WINDOW
@@ -28,7 +28,7 @@ def query(sql):
     return result.stdout.strip()
 
 
-def pair(label, first, second, second_should_fail=False, rollback_first=False):
+def pair(label, first, second, second_should_fail=False, rollback_first=False, expected_error="Recarregue"):
     """A segura locks até receber COMMIT; confirma que B realmente espera lock."""
     a = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                          stderr=subprocess.PIPE, text=True, bufsize=1, **process_options)
@@ -64,7 +64,7 @@ def pair(label, first, second, second_should_fail=False, rollback_first=False):
         error_a, error_b = a.stderr.read(), b.stderr.read()
         if a.returncode or (bool(b.returncode) != second_should_fail):
             raise RuntimeError(error_a + error_b)
-        if second_should_fail and "Recarregue" not in error_b:
+        if second_should_fail and expected_error not in error_b:
             raise RuntimeError("Falha inesperada: " + error_b)
         print("PASS:", label, "(espera de lock observada)")
     finally:
@@ -120,3 +120,29 @@ pair("rollback não deixa uma entrega fantasma",
      delivery_call.replace(key, key_a), delivery_call.replace(key, key_b), rollback_first=True)
 query("SELECT olius_test.assert(NOT EXISTS(SELECT 1 FROM delivery_pev WHERE idempotency_key='%s') AND (SELECT processing_order=%s+1 FROM delivery_pev WHERE idempotency_key='%s'),'rollback de emissão');" % (key_a, before, key_b))
 print("PASS: sete cenários concorrentes concluídos")
+
+# Sprint 9: os caminhos disputam o mesmo estabelecimento/pedido.
+query("INSERT INTO collection_failure_reason(code,name) VALUES ('ESTABLISHMENT_CLOSED','Fechado'),('NO_RESPONSIBLE_AVAILABLE','Indisponível') ON CONFLICT(code) DO NOTHING;")
+def visit_request(accepted=False):
+    return query("SELECT olius_test.request(10,%s);" % ("TRUE" if accepted else "FALSE"))
+
+def visit_call(request):
+    return "SELECT record_failed_collection_visit('%s',olius_test.id('admin'),'ESTABLISHMENT_CLOSED','Confirmado');" % request
+
+req=visit_request()
+pair("visita administrativa concorrente idempotente",visit_call(req),visit_call(req))
+query("SELECT olius_test.assert((SELECT count(*)=1 FROM collection WHERE collection_request_id='%s'),'uma visita concorrente');" % req)
+pair("visita gravada bloqueia cancelamento",visit_call(req),
+     "CALL cancel_collection_request('%s',olius_test.id('admin'),'OPERATION','Cancelamento');" % req,
+     second_should_fail=True,expected_error="55000")
+req=visit_request()
+pair("cancelamento bloqueia conclusão administrativa",
+     "CALL cancel_collection_request('%s',olius_test.id('admin'),'OPERATION','Cancelamento');" % req,
+     visit_call(req),second_should_fail=True,expected_error="55000")
+req=visit_request(True)
+normal="CALL record_collection('%s',olius_test.id('driver'),10,10,'ACCEPTABLE',false,ARRAY[]::text[],NULL,clock_timestamp(),NULL);" % req
+pair("registro normal bloqueia conclusão administrativa",normal,visit_call(req),second_should_fail=True,expected_error="22000")
+req=visit_request()
+normal="CALL record_collection('%s',olius_test.id('driver'),0,0,'NOT_ASSESSED',false,ARRAY['VOLUME_OUT_OF_TOLERANCE']::text[],NULL,clock_timestamp(),NULL);" % req
+pair("registro administrativo bloqueia registro normal",visit_call(req),normal,second_should_fail=True,expected_error="22000")
+print("PASS: cinco cenários concorrentes de visita sem atendimento")

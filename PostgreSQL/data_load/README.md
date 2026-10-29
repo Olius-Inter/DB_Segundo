@@ -67,7 +67,7 @@ python PostgreSQL/data_load/run.py --container olius-data-load --install --insta
 
 Para testar só a estrutura e as rotinas, omita `--install-access-control`. Se `olius_api` já estiver presente, as jornadas usam esse papel; ele precisa estar configurado pelos scripts oficiais. Na ausência dele, `journeys_role` registra o usuário informado em `--user`, ou `postgres` quando essa opção não é informada.
 
-O runner exige tabelas operacionais e logs vazios. Aceita os três metadados documentais e as quatro tabelas de configuração oficial. Dos logs de configuração existentes, aceita somente snapshots SYSTEM vinculados a registros ainda presentes. Em seguida executa e valida `initial_data`; a demonstração exige exatamente 3 planos, 3 níveis, 7 tipos e 3 motivos, recusando configurações adicionais. Dados divergentes não são corrigidos automaticamente. Não executa DELETE/TRUNCATE nem remove objetos existentes.
+O runner exige tabelas operacionais e logs vazios. Aceita os três metadados documentais e as quatro tabelas de configuração oficial. Dos logs de configuração existentes, aceita somente snapshots SYSTEM vinculados a registros ainda presentes. Em seguida executa e valida `initial_data`; a demonstração exige exatamente 3 planos, 3 níveis, 7 tipos e 5 motivos, recusando configurações adicionais. Dados divergentes não são corrigidos automaticamente. Não executa DELETE/TRUNCATE nem remove objetos existentes.
 
 A carga oficial e cada etapa fictícia têm sua própria transação e interrompem em erro. Há commits entre etapas: se uma etapa falhar, as anteriores podem permanecer. O runner recusa reaplicar a massa nessa base parcial. Recrie somente o container descartável para uma nova execução:
 

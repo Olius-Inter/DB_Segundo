@@ -81,6 +81,13 @@ def main():
 
     # O teste da carga oficial usa outro banco e não mistura catálogos com fixtures.
     execute("initial-data-regression", [sys.executable, str(TESTS / "initial_data_regression.py")])
+    execute("failed-visit-migration", [sys.executable, str(TESTS / "failed_visit_migration_regression.py")])
+
+    # Este teste reaplica ALTER OWNER/SECURITY/search_path nas rotinas, invalidando
+    # seus perfis. Executar antes de iniciar a medição para preservar os cenários
+    # positivos e negativos executados pelas regressões seguintes.
+    if has_access:
+        sql_file("PostgreSQL/tests/ranking_access_regression.sql")
 
     # Registra somente o código de aplicação, antes de criar helpers dos testes.
     inventory = query("routine-inventory", """
@@ -102,13 +109,13 @@ def main():
         sql_file("PostgreSQL/tests/auth_sessions_edges.sql")
         sql_file("PostgreSQL/tests/auth_audit_context_regression.sql")
         sql_file("PostgreSQL/tests/operational_regression.sql")
+        sql_file("PostgreSQL/tests/failed_visit_regression.sql")
     if has_catalog:
         sql_file("PostgreSQL/data_catalog/05_validate.sql")
     if has_access:
         sql_file("PostgreSQL/tests/catalog_access_regression.sql")
         sql_file("PostgreSQL/tests/api_access_regression.sql")
         sql_file("PostgreSQL/tests/data_mart_access_regression.sql")
-        sql_file("PostgreSQL/tests/ranking_access_regression.sql")
         sql_file("PostgreSQL/tests/admin_management_regression.sql")
     else:
         print("NOTA: testes de API/permissões e catálogo/permissões dependem da PR access_control; não executados nesta branch.")

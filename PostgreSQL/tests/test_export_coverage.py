@@ -1,3 +1,4 @@
+import ast
 import tempfile
 from pathlib import Path
 import unittest
@@ -44,6 +45,29 @@ class CoverageMappingTests(unittest.TestCase):
         routine["source"] = "body from another commit"
         with self.assertRaises(ValueError):
             build_report(self.root, [routine])
+
+
+class CoverageOrchestrationTests(unittest.TestCase):
+    def test_role_reinstallation_precedes_profile_inventory_and_measurement(self):
+        source = Path(__file__).with_name("run_ci.py").read_text(encoding="utf-8")
+        tree = ast.parse(source)
+        main = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == "main")
+
+        def line_for(name, label):
+            calls = [node.lineno for node in ast.walk(main)
+                     if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+                     and node.func.id == name and node.args
+                     and isinstance(node.args[0], ast.Constant) and node.args[0].value == label]
+            self.assertEqual(len(calls), 1, label)
+            return calls[0]
+
+        reinstallation = line_for("sql_file", "PostgreSQL/tests/ranking_access_regression.sql")
+        inventory = line_for("query", "routine-inventory")
+        reset = line_for("query", "profiler-reset")
+        regression = line_for("sql_file", "PostgreSQL/tests/failed_visit_regression.sql")
+        self.assertLess(reinstallation, inventory)
+        self.assertLess(inventory, reset)
+        self.assertLess(reset, regression)
 
 
 if __name__ == "__main__":

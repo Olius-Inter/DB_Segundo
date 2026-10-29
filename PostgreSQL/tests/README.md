@@ -120,3 +120,13 @@ Ambos são executados por `run_ci.py`; nenhum teste conecta ao Aiven.
 
 
 `ranking_access_regression.sql` testa a conta Redis, a consulta completa, leituras proibidas, escrita/rotinas negadas e reaplicação de roles/users sem manter escrita manual.
+
+`failed_visit_regression.sql`: motivos sem atendimento, autoria ADMIN, replay/conflito,
+piso zero, franquia, aceite, contexto e bloqueio de escrita/núcleo pela conta Core.
+
+A regressão de permissões Redis reaplica roles/atributos das rotinas e deve
+preceder o inventário/reset do profiler. Assim, alterações de configuração não
+invalidam contadores já produzidos pelas regressões funcionais. O teste unitário
+em test_export_coverage.py verifica essa ordem; as métricas e o limite de 80%
+permanecem inalterados. failed_visit_regression.sql também verifica os bloqueios
+do núcleo privado, pedido inexistente e motivo administrativo incompatível com aceite.

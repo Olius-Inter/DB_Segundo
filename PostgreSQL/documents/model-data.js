@@ -8193,7 +8193,7 @@ const OLIUS_MODEL_JSON = `
             "02: chegada exige motorista, marcos temporais e agendamento aprovado.",
             "02: aceite, quando registrado, pertence ao próprio estabelecimento."
           ],
-          "routine": "Serializar chegada, cancelamento e aceite. Registro operacional não é prova independente de presença física.",
+          "routine": "Serializar chegada, cancelamento e aceite. Sem atendimento, ADMIN pode usar record_failed_collection_visit após chegada: ESTABLISHMENT_CLOSED ou NO_RESPONSIBLE_AVAILABLE, justificativa, volumes zero e sem aceite fictício. Registro operacional não é prova independente de presença física.",
           "branches": [
             {
               "condition": "Visita não realizada por falha da operação",

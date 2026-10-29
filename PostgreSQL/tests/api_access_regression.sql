@@ -121,7 +121,7 @@ END $$;
 RESET SESSION AUTHORIZATION;
 SELECT olius_test.assert(EXISTS(SELECT 1 FROM public.users_log WHERE actor_kind='USER' AND performed_by=olius_test.id('admin')),'autoria de cadastro preservada');
 SELECT olius_test.assert(EXISTS(SELECT 1 FROM public.collection_request_log WHERE audit_reason='Rejeição API'),'motivo de rejeição auditado');
-SELECT olius_test.assert((SELECT count(*)=16 FROM pg_proc WHERE pronamespace='public'::regnamespace AND proowner='olius_business_owner'::regrole),'16 rotinas de negócio protegidas');
+SELECT olius_test.assert((SELECT count(*)=18 FROM pg_proc WHERE pronamespace='public'::regnamespace AND proowner='olius_business_owner'::regrole),'18 rotinas de negócio protegidas');
 SELECT olius_test.assert(EXISTS(SELECT 1 FROM public.auth_session WHERE user_id=olius_test.id('citizen') AND revocation_reason='ACCOUNT_INACTIVE'),'inativação pela Core revoga sessão');
 ROLLBACK;
 \echo 'PASS: contrato da Core, oito procedures, consultas, auditoria e bloqueios'

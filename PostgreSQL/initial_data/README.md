@@ -9,9 +9,9 @@ A conta inicial do Gmail do projeto pertence à entrega de provisionamento segur
 | `subscription_plan` | Básico: R$ 19,90, 50 L e 2 coletas; Profissional: R$ 39,90, 220 L e 4 coletas; Empresa: R$ 79,90, 500 L e 8 coletas. Valores por ciclo mensal. |
 | `certificate_level` | Óleo Amigo — Bronze: 100 L; Óleo Amigo — Prata: 500 L; Óleo Amigo — Ouro: 1.000 L. |
 | `establishment_type` | Restaurante; Lanchonete; Padaria e confeitaria; Bar; Hotel e pousada; Cozinha institucional; Outro. |
-| `collection_failure_reason` | `VOLUME_OUT_OF_TOLERANCE`, `OIL_UNACCEPTABLE` e `COMPROMISING_OCCURRENCE`. |
+| `collection_failure_reason` | `VOLUME_OUT_OF_TOLERANCE`, `OIL_UNACCEPTABLE` `COMPROMISING_OCCURRENCE`, `ESTABLISHMENT_CLOSED` e `NO_RESPONSIBLE_AVAILABLE`. |
 
-São **16 registros**, além dos logs gerados pelas triggers nos três catálogos
+São **18 registros**, além dos logs gerados pelas triggers nos três catálogos
 auditados. `establishment_type` não possui tabela de log.
 Os certificados usam litros efetivamente coletados nas operações RECORDED,
 inclusive malsucessos com recolhimento; sem reinício anual. Imagens/descrições
@@ -59,7 +59,7 @@ Não usar o reader BI nem as contas de refresh. Senhas ficam fora do Git.
 - Mais de um nível com o mesmo nome é ambíguo e causa erro, mesmo com metas
   iguais. Não foi adicionada uma nova constraint à modelagem.
 - Outros registros legítimos são preservados e não impedem a validação oficial.
-  A massa de demonstração, por sua vez, exige apenas os 16 registros aprovados.
+  A massa de demonstração, por sua vez, exige apenas os 18 registros aprovados.
 
 Esta é a versão inicial do catálogo, não um mecanismo para impor preços/metas
 antigos a um sistema em operação. Se houver mudança comercial deliberada,
@@ -74,6 +74,9 @@ simulações. O JSON da demonstração contém somente a seed; não redefine cat
 Não executar o runner de demonstração em produção.
 
 `PostgreSQL/tests/initial_data_regression.py` verifica a carga real em banco
-descartável próprio: 16 registros, nenhuma conta criada, concorrência, reexecução sem escrita,
+descartável próprio: 18 registros, nenhuma conta criada, concorrência, reexecução sem escrita,
 IDs existentes, categorias adicionais, divergências, rollback e nomes duplicados.
 Ele é chamado pelo runner do CI e nunca deve ser apontado para produção.
+
+Os dois novos motivos são exclusivos da conclusão administrativa sem atendimento.
+Não indicam avaliação do óleo e não substituem os motivos do fluxo com aceite.

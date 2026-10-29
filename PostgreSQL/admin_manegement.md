@@ -28,8 +28,9 @@ automaticamente pelos scripts desta entrega.
 
 O aceite não aceita e-mail/perfil/autor escolhidos no formulário: utiliza os dados
 do convite. E-mail existente, inclusive de cidadão/estabelecimento, bloqueia a
-operação; não há promoção automática. Convites usam e-mail normalizado; a API
-também deve normalizar seus cadastros/login. Esta entrega preserva a unicidade
+operação; não há promoção automática. Convites usam e-mail integralmente em minúsculas. Cadastros existentes e login
+preservam a parte local case-sensitive e normalizam somente o domínio, conforme
+a decisão aprovada; não há conversão global de usuários. Esta entrega preserva a unicidade
 histórica case-sensitive de users.email, sem alterar todos os perfis existentes.
 Reenvio exige novo segredo e revoga o anterior; não altera o prazo de um token
 antigo. Se o emissor for inativado, o aceite é negado enquanto estiver inativo.
