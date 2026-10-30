@@ -20,6 +20,7 @@ com a conta restrita de atualização; não há cópia dos dados para Delta.
 * **PostgreSQL/08_materialized_views.sql** — instalação das fatos, dimensões e ranking.
 * **PostgreSQL/09_refresh_materialized_views.sql** — refresh manual coordenado.
 * **Databricks/** — notebook de refresh, seus testes e guias de configuração/execução.
+* [**BI/**](BI/README.md) — carga histórica com endereços reais e pipeline Python dos KPIs (JSON/CSV).
 * [Guia do Data Mart](Databricks/documents/README.md) — conexão, sequência de execução, modelo e atualização.
 
 ---
