@@ -169,3 +169,11 @@ invalidam contadores já produzidos pelas regressões funcionais. O teste unitá
 em test_export_coverage.py verifica essa ordem; as métricas e o limite de 80%
 permanecem inalterados. failed_visit_regression.sql também verifica os bloqueios
 do núcleo privado, pedido inexistente e motivo administrativo incompatível com aceite.
+
+`collection_history_regression.sql` valida revisões operacionais, motivos de cada
+revisão, anulação/restauração, rótulos do catálogo, ausência/ambiguidade de logs,
+paginação, autoria, contextos e permissões efetivas da Core e demais consumidores.
+`collection_history_migration_regression.py` usa banco próprio descartável para
+comparar migração e instalação nova, reaplicar sem SUPERUSER, preservar dados,
+rejeitar ACL/índice incompatíveis e ler durante uma correção concorrente, inclusive
+com REPEATABLE READ READ ONLY. A definição da migração deve coincidir com o 04.
