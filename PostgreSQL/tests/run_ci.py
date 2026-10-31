@@ -82,6 +82,7 @@ def main():
     # O teste da carga oficial usa outro banco e não mistura catálogos com fixtures.
     execute("initial-data-regression", [sys.executable, str(TESTS / "initial_data_regression.py")])
     execute("failed-visit-migration", [sys.executable, str(TESTS / "failed_visit_migration_regression.py")])
+    execute("collection-history-migration", [sys.executable, str(TESTS / "collection_history_migration_regression.py")])
 
     # Este teste reaplica ALTER OWNER/SECURITY/search_path nas rotinas, invalidando
     # seus perfis. Executar antes de iniciar a medição para preservar os cenários
@@ -117,6 +118,7 @@ def main():
         sql_file("PostgreSQL/tests/api_access_regression.sql")
         sql_file("PostgreSQL/tests/data_mart_access_regression.sql")
         sql_file("PostgreSQL/tests/admin_management_regression.sql")
+        sql_file("PostgreSQL/tests/collection_history_regression.sql")
     else:
         print("NOTA: testes de API/permissões e catálogo/permissões dependem da PR access_control; não executados nesta branch.")
 
