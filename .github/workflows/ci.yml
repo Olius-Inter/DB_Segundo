@@ -9,6 +9,11 @@ on:
 permissions:
   contents: read
 
+# Serializa execuções da mesma PR/ref sem interromper análises já enviadas ao Sonar.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: false
+
 jobs:
   redis-api-tests:
     name: Test Redis API (Java)
