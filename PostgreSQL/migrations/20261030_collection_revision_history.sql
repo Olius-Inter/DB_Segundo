@@ -121,6 +121,11 @@ BEGIN
         AND (l.operation='DELETE' OR (l.operation='UPDATE' AND l.snapshot_kind='AFTER'
              AND NOT ('revision'=ANY(l.changed_columns))
              AND NOT (l.changed_columns <@ ARRAY['points_earned']::TEXT[]))))
+       OR EXISTS(SELECT 1 FROM public.collection_log b WHERE b.id=p_collection_id
+         AND b.operation='UPDATE' AND b.snapshot_kind='BEFORE'
+         AND NOT EXISTS(SELECT 1 FROM public.collection_log a WHERE a.id=b.id
+           AND a.audit_event_id=b.audit_event_id
+           AND a.operation='UPDATE' AND a.snapshot_kind='AFTER'))
        OR EXISTS(SELECT 1 FROM public.collection_failure_log f WHERE f.collection_id=p_collection_id
         AND NOT ((f.operation='INSERT' AND f.snapshot_kind='AFTER')
                  OR (f.operation='DELETE' AND f.snapshot_kind='BEFORE'))) THEN

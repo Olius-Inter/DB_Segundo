@@ -14,7 +14,7 @@ BEGIN
     END;
 END $$;
 DO $$
-DECLARE req UUID; col UUID; volume_id UUID; oil_id UUID; occurrence_id UUID;
+DECLARE req UUID; col UUID; points_col UUID; volume_id UUID; oil_id UUID; occurrence_id UUID;
         expected UUID[]; actor UUID; n INTEGER; before_hash TEXT; after_hash TEXT; replay UUID[];
 BEGIN
     SELECT id INTO volume_id FROM collection_failure_reason WHERE code='VOLUME_OUT_OF_TOLERANCE';
@@ -100,6 +100,8 @@ BEGIN
     EXCEPTION WHEN SQLSTATE 'P9001' THEN NULL;
     END;
 
+    -- BEFORE órfão não pertence aos AFTER selecionados; precisa ser rejeitado.
+    PERFORM olius_test.history_error(format('INSERT INTO collection_log SELECT (jsonb_populate_record(NULL::collection_log,to_jsonb(l)||jsonb_build_object(''log_id'',gen_random_uuid(),''audit_event_id'',gen_random_uuid()))).* FROM collection_log l WHERE l.id=%L AND l.operation=''UPDATE'' AND l.snapshot_kind=''BEFORE'' LIMIT 1',col),col);
     PERFORM olius_test.history_error(format('DELETE FROM collection_log WHERE id=%L',col),col);
     PERFORM olius_test.history_error(format('DELETE FROM collection_log WHERE id=%L AND operation=''UPDATE'' AND snapshot_kind=''BEFORE'' AND revision=1',col),col);
     PERFORM olius_test.history_error(format('UPDATE collection_log SET revision=1 WHERE id=%L AND snapshot_kind=''AFTER'' AND revision=2',col),col);
@@ -111,6 +113,19 @@ BEGIN
     PERFORM olius_test.history_error(format('UPDATE collection_failure_log SET operation=''UPDATE'' WHERE collection_id=%L AND operation=''INSERT''',col),col);
     PERFORM olius_test.history_error(format('INSERT INTO collection_log SELECT (jsonb_populate_record(NULL::collection_log,to_jsonb(l)||jsonb_build_object(''log_id'',gen_random_uuid(),''audit_event_id'',gen_random_uuid(),''operation'',''DELETE'',''snapshot_kind'',''BEFORE''))).* FROM collection_log l WHERE l.id=%L LIMIT 1',col),col);
     PERFORM olius_test.history_error(format('INSERT INTO collection_failure_log SELECT (jsonb_populate_record(NULL::collection_failure_log,to_jsonb(l)||jsonb_build_object(''log_id'',gen_random_uuid(),''audit_event_id'',gen_random_uuid()))).* FROM collection_failure_log l WHERE l.collection_id=%L AND l.operation=''INSERT'' LIMIT 1',col),col);
+
+    -- Pares reais de UPDATE somente de pontos não são revisões operacionais.
+    req:=olius_test.request();
+    CALL record_collection(req,olius_test.id('driver'),10,10,'ACCEPTABLE',FALSE,ARRAY[]::TEXT[],
+        'Fixture de atualização de pontos',clock_timestamp(),points_col);
+    UPDATE collection SET points_earned=points_earned+10 WHERE id=points_col;
+    UPDATE collection SET points_earned=points_earned-10 WHERE id=points_col;
+    PERFORM olius_test.assert((SELECT count(*)=4 FROM collection_log WHERE id=points_col
+        AND operation='UPDATE' AND changed_columns=ARRAY['points_earned']::TEXT[]),
+        'dois pares completos de atualização de pontos');
+    PERFORM olius_test.assert((SELECT count(*)=1 AND max(revision)=1 AND max(total_elements)=1
+        FROM get_collection_revision_history(points_col,olius_test.id('admin'))),
+        'pares de pontos preservados sem criar revisões operacionais');
 
     SELECT md5(jsonb_build_array((SELECT jsonb_agg(to_jsonb(l) ORDER BY log_id) FROM collection_log l),
         (SELECT jsonb_agg(to_jsonb(l) ORDER BY log_id) FROM collection_failure_log l),
