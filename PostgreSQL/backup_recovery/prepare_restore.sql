@@ -15,27 +15,29 @@ CREATE TEMP TABLE recovery_temporary_grants (
 
 DO $$
 DECLARE r text;
+        maintenance_owner CONSTANT text := 'olius_owner';
+        mart_owner CONSTANT text := 'olius_dm_owner';
 BEGIN
     IF EXISTS (SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
                WHERE n.nspname='public' AND c.relkind IN ('r','p','v','m','S','f'))
        OR EXISTS (SELECT 1 FROM pg_namespace WHERE nspname='dm') THEN
         RAISE EXCEPTION 'Destino não vazio: crie um banco novo com template0';
     END IF;
-    FOREACH r IN ARRAY ARRAY['olius_owner','olius_auth_owner','olius_business_owner','olius_dm_owner'] LOOP
+    FOREACH r IN ARRAY ARRAY[maintenance_owner,'olius_auth_owner','olius_business_owner',mart_owner] LOOP
         IF NOT pg_has_role(current_user,r,'SET') OR NOT pg_has_role(current_user,r,'USAGE') THEN
             RAISE EXCEPTION 'Administrador precisa de SET e INHERIT no papel %',r;
         END IF;
         IF NOT has_schema_privilege(r,'public','CREATE') THEN
             -- olius_owner tem CREATE permanente na política oficial do OLIUS.
-            IF r <> 'olius_owner' THEN
+            IF r <> maintenance_owner THEN
                 INSERT INTO recovery_temporary_grants VALUES ('schema',r);
             END IF;
             EXECUTE format('GRANT CREATE ON SCHEMA public TO %I',r);
         END IF;
     END LOOP;
     -- ALTER SCHEMA dm OWNER exige CREATE no banco para o novo proprietário.
-    IF NOT has_database_privilege('olius_dm_owner',current_database(),'CREATE') THEN
-        INSERT INTO recovery_temporary_grants VALUES ('database','olius_dm_owner');
-        EXECUTE format('GRANT CREATE ON DATABASE %I TO olius_dm_owner',current_database());
+    IF NOT has_database_privilege(mart_owner,current_database(),'CREATE') THEN
+        INSERT INTO recovery_temporary_grants VALUES ('database',mart_owner);
+        EXECUTE format('GRANT CREATE ON DATABASE %I TO %I',current_database(),mart_owner);
     END IF;
 END $$;

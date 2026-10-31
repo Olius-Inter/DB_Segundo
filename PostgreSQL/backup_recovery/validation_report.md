@@ -115,7 +115,7 @@ O workflow agora executa a recuperação real antes do Sonar, na imagem
 `Dockerfile.validation` com PostgreSQL 16.15 e Coverage.py 7.10.7. O checkout
 é montado somente para leitura, o usuário Linux é `postgres`, não há portas
 publicadas e o container roda com `--network none`. Os relatórios ficam fora
-do checkout somente para leitura por meio da opção `--report-dir` do runner.
+do checkout somente para leitura por meio da opção `--ci-reports` do runner, que seleciona um destino fixo.
 
 Foram executados novamente os cenários completos no Windows e no container
 Linux usado pela etapa do CI. Ambos terminaram com código zero e PASS,
@@ -133,3 +133,34 @@ A validação local reproduziu os comandos da nova etapa Docker, incluindo
 geração do XML e limite de cobertura. Isso não equivale a uma execução remota
 do GitHub Actions nem confirma aprovação do Quality Gate após o push.
 Os comandos para reproduzir a medição estão em `PostgreSQL/tests/README.md`.
+
+## Correção dos alertas de segurança e qualidade — 31/10/2026
+
+Foram consultadas as anotações do check SonarCloud da PR #35, revisão
+`9833b0cc42a56152feed6cc665bf9bd8238d523b`. O alerta de segurança identificou
+escrita em caminho arbitrário fornecido por `--report-dir`. Também havia
+apontamentos sobre complexidade de `main` e repetição de literal SQL.
+
+A seleção de saída agora é fechada: relatórios locais em
+`PostgreSQL/backup_recovery/artifacts`, ou `coverage/backup-recovery/artifacts`
+com `--ci-reports`. Não há argumento para fornecer outro caminho. O runner
+rejeita redirecionamento por symlinks antes de criar a pasta ou iniciar bancos.
+O CI usa diretório compartilhado 0770 e concede o grupo do runner ao container,
+sem a permissão 777 da versão anterior. A função principal foi separada em
+etapas da classe `RecoveryValidation` e os owners repetidos usam constantes SQL.
+
+Reexecução efetiva no container PostgreSQL 16.15, com código somente para
+leitura e sem rede externa:
+
+- **6 testes de segurança passaram**, incluindo argumentos com `..`, caminhos
+  absolutos e links simbólicos para fora e para dentro do projeto.
+- **Recuperação completa passou**, no mesmo servidor e entre dois clusters,
+  com o administrador NOSUPERUSER e operação real pela identidade da Core.
+- Cobertura atual: **160 de 176 linhas, 90,91%**, exibida como 91%.
+- XML atualizado em `coverage/backup-recovery/python.xml`, importado pela
+  configuração existente do Sonar. Artefatos continuam fora do Git.
+
+No Windows, os quatro testes sem symlinks passaram; os dois testes de symlink
+foram ignorados por falta do privilégio do sistema. No Linux, os seis passaram
+sem ignorar nenhum. A aprovação remota do Quality Gate exige novo push/análise;
+este registro não declara os alertas remotos como resolvidos antecipadamente.
