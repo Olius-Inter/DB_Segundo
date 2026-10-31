@@ -23,9 +23,10 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--pg-bin', required=True, type=Path)
     parser.add_argument('--port', type=int, default=55486)
+    parser.add_argument('--report-dir', type=Path, default=HERE / 'artifacts')
     args = parser.parse_args()
-    report = HERE / 'artifacts'
-    report.mkdir(exist_ok=True)
+    report = args.report_dir
+    report.mkdir(parents=True, exist_ok=True)
     lab = Path(tempfile.mkdtemp(prefix='olius-recovery-'))
     env = {k: v for k, v in os.environ.items() if not k.startswith('PG')}
     env.update(PGCLIENTENCODING='UTF8', PGCONNECT_TIMEOUT='5')
@@ -115,7 +116,8 @@ def main():
         for port, database in ((args.port, source), (args.port + 1, target)):
             psql(port, 'postgres', f'CREATE DATABASE {database} WITH TEMPLATE template0;')
             version = psql(port, database, 'SHOW server_version;')[0]
-            if version != '16.15':
+            version_num = psql(port, database, 'SHOW server_version_num;')[0]
+            if version_num != '160015':
                 raise RuntimeError(f'Exige PostgreSQL 16.15; encontrado {version}')
             results[database + '_admin'] = psql(port, database,
                 "SELECT current_user,rolsuper,rolcreatedb,rolcreaterole FROM pg_roles WHERE rolname=current_user;")[0]
