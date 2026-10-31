@@ -56,3 +56,11 @@ executar somente a migração `migrations/20261029_failed_collection_visit.sql`,
 inteira e fora de transação existente, como implantador. A migração conserva
 dados, IDs e segurança, é reaplicável e inclui consultas de conferência. Não
 reexecutar 01–03. Revisar relatórios de retorno antes de liberar a Core.
+
+## Sprint 10 — consulta histórica
+
+`20261030_collection_revision_history.sql` adiciona a consulta operacional B2B e
+seu índice por janela temporal. Reaplicável e transacional, sem alterar registros.
+Pré-requisitos e conferências estão no cabeçalho; contrato e instruções completos
+em [COLLECTION_REVISION_HISTORY.md](../COLLECTION_REVISION_HISTORY.md).
+Não executar esta migração nos bancos reais sem autorização do responsável.
