@@ -1,0 +1,6 @@
+[run]
+source = PostgreSQL/backup_recovery
+relative_files = True
+
+[report]
+fail_under = 80

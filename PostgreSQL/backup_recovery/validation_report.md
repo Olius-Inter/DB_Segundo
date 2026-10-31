@@ -106,5 +106,30 @@ da origem não são copiados literalmente. O laboratório atualiza-os antes do
 dump. Não foram executadas requisições HTTP à Core; a operação foi feita pela
 identidade PostgreSQL real `olius_core_api`, como solicitado.
 
-CI/Sonar anteriores não validavam esse procedimento. Este relatório descreve
-a execução local do runner; não afirma que ele já foi integrado ao CI.
+CI/Sonar anteriores não validavam esse procedimento. A execução de 30/10
+acima foi local, ainda sem instrumentação de cobertura ou integração ao CI.
+
+## Atualização de 31/10/2026 — cobertura Python e CI
+
+O workflow agora executa a recuperação real antes do Sonar, na imagem
+`Dockerfile.validation` com PostgreSQL 16.15 e Coverage.py 7.10.7. O checkout
+é montado somente para leitura, o usuário Linux é `postgres`, não há portas
+publicadas e o container roda com `--network none`. Os relatórios ficam fora
+do checkout somente para leitura por meio da opção `--report-dir` do runner.
+
+Foram executados novamente os cenários completos no Windows e no container
+Linux usado pela etapa do CI. Ambos terminaram com código zero e PASS,
+incluindo a restauração como administrador sem SUPERUSER, comparação dos
+75 conjuntos, operação pela Core, controle negativo e revogação dos privilégios.
+
+Cobertura medida em ambos: **126 de 142 linhas executáveis (88,73%)**, exibida
+como 89% por `coverage report`. O mínimo exigido pela etapa é 80%.
+O relatório XML Linux foi gerado em `coverage/backup-recovery/python.xml`.
+A `.coveragerc` usa caminhos relativos; o XML aponta para a origem
+`PostgreSQL/backup_recovery` e o arquivo `validate_recovery.py`.
+`sonar.python.coverage.reportPaths` inclui esse relatório junto dos anteriores.
+
+A validação local reproduziu os comandos da nova etapa Docker, incluindo
+geração do XML e limite de cobertura. Isso não equivale a uma execução remota
+do GitHub Actions nem confirma aprovação do Quality Gate após o push.
+Os comandos para reproduzir a medição estão em `PostgreSQL/tests/README.md`.

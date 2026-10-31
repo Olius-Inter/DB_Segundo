@@ -100,6 +100,21 @@ jobs:
           "$RUNNER_TEMP/olius-data-load-venv/bin/python" -m coverage report --fail-under=80
           "$RUNNER_TEMP/olius-data-load-venv/bin/python" -m coverage xml -o coverage/databricks-python.xml
 
+      - name: Validar recuperação completa e gerar cobertura Python
+        run: |
+          docker build -t olius-backup-validation -f PostgreSQL/backup_recovery/Dockerfile.validation .
+          mkdir -p coverage/backup-recovery
+          chmod 777 coverage/backup-recovery
+          docker run --rm --network none \
+            -v "$GITHUB_WORKSPACE:/workspace:ro" \
+            -v "$GITHUB_WORKSPACE/coverage/backup-recovery:/reports" \
+            -e COVERAGE_FILE=/reports/.coverage \
+            olius-backup-validation bash -euc '
+              python -m coverage run --rcfile=PostgreSQL/backup_recovery/.coveragerc PostgreSQL/backup_recovery/validate_recovery.py --pg-bin /usr/lib/postgresql/16/bin --report-dir /reports/artifacts
+              python -m coverage report --rcfile=PostgreSQL/backup_recovery/.coveragerc
+              python -m coverage xml --rcfile=PostgreSQL/backup_recovery/.coveragerc -o /reports/python.xml
+            '
+
       - name: Validar carga completa em outro banco descartável
         env:
           OLIUS_DATA_LOAD_DISPOSABLE: '1'
