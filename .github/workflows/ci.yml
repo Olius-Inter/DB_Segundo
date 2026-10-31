@@ -103,16 +103,16 @@ jobs:
       - name: Validar recuperação completa e gerar cobertura Python
         run: |
           docker build -t olius-backup-validation -f PostgreSQL/backup_recovery/Dockerfile.validation .
-          mkdir -p coverage/backup-recovery
-          chmod 777 coverage/backup-recovery
-          docker run --rm --network none \
+          install -d -m 0770 coverage/backup-recovery
+          docker run --rm --network none --group-add "$(id -g)" \
             -v "$GITHUB_WORKSPACE:/workspace:ro" \
-            -v "$GITHUB_WORKSPACE/coverage/backup-recovery:/reports" \
-            -e COVERAGE_FILE=/reports/.coverage \
+            -v "$GITHUB_WORKSPACE/coverage/backup-recovery:/workspace/coverage/backup-recovery" \
+            -e COVERAGE_FILE=/workspace/coverage/backup-recovery/.coverage \
             olius-backup-validation bash -euc '
-              python -m coverage run --rcfile=PostgreSQL/backup_recovery/.coveragerc PostgreSQL/backup_recovery/validate_recovery.py --pg-bin /usr/lib/postgresql/16/bin --report-dir /reports/artifacts
+              python -m coverage run --rcfile=PostgreSQL/backup_recovery/.coveragerc -m unittest discover -s PostgreSQL/tests -p test_backup_recovery.py -v
+              python -m coverage run --append --rcfile=PostgreSQL/backup_recovery/.coveragerc PostgreSQL/backup_recovery/validate_recovery.py --pg-bin /usr/lib/postgresql/16/bin --ci-reports
               python -m coverage report --rcfile=PostgreSQL/backup_recovery/.coveragerc
-              python -m coverage xml --rcfile=PostgreSQL/backup_recovery/.coveragerc -o /reports/python.xml
+              python -m coverage xml --rcfile=PostgreSQL/backup_recovery/.coveragerc -o coverage/backup-recovery/python.xml
             '
 
       - name: Validar carga completa em outro banco descartável
