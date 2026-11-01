@@ -84,6 +84,8 @@ def main():
     execute("failed-visit-migration", [sys.executable, str(TESTS / "failed_visit_migration_regression.py")])
     execute("collection-history-migration", [sys.executable, str(TESTS / "collection_history_migration_regression.py")])
 
+    execute("password-reset-migration", [sys.executable, str(TESTS / "password_reset_migration_regression.py")])
+
     # Este teste reaplica ALTER OWNER/SECURITY/search_path nas rotinas, invalidando
     # seus perfis. Executar antes de iniciar a medição para preservar os cenários
     # positivos e negativos executados pelas regressões seguintes.
@@ -109,6 +111,7 @@ def main():
         sql_file("PostgreSQL/tests/auth_sessions_regression.sql")
         sql_file("PostgreSQL/tests/auth_sessions_edges.sql")
         sql_file("PostgreSQL/tests/auth_audit_context_regression.sql")
+        sql_file("PostgreSQL/tests/password_reset_regression.sql")
         sql_file("PostgreSQL/tests/operational_regression.sql")
         sql_file("PostgreSQL/tests/failed_visit_regression.sql")
     if has_catalog:
@@ -128,6 +131,7 @@ def main():
     execute("procedures-concurrency", [sys.executable, str(TESTS / "procedures_concurrency.py")])
     if has_auth:
         execute("auth-concurrency", [sys.executable, str(TESTS / "auth_sessions_concurrency.py")])
+        execute("password-reset-concurrency", [sys.executable, str(TESTS / "password_reset_concurrency.py")])
 
     routines = json.loads(inventory)
     oid_list = ','.join(str(int(routine['oid'])) for routine in routines)

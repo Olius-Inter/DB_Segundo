@@ -57,7 +57,7 @@ SELECT ranking_test.denied('SELECT * FROM dm.ranking_anual');
 SELECT ranking_test.denied('UPDATE public.users SET name=name WHERE false');
 SELECT ranking_test.denied('INSERT INTO public.collection DEFAULT VALUES');
 SELECT ranking_test.denied('DELETE FROM public.delivery_pev WHERE false');
-SELECT ranking_test.denied('SELECT * FROM public.open_auth_session(NULL,NULL)');
+SELECT ranking_test.denied('SELECT * FROM public.open_auth_session(NULL,NULL,$cred$test$cred$)');
 SELECT ranking_test.denied('SET ROLE olius_owner');
 SELECT ranking_test.denied('SET ROLE olius_api');
 SELECT ranking_test.denied('CREATE TABLE public.ranking_forbidden(id integer)');

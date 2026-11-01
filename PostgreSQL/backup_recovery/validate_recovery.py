@@ -165,7 +165,7 @@ class RecoveryValidation:
         if count != '1':
             raise RuntimeError('Auditoria da gravação Core não confirmada: ' + count)
         self.results['core_login_insert_and_audit_trigger'] = 'PASS: login olius_core_api, INSERT autorizado e log gerado'
-        auth = self.psql(self.args.port + 1, self.target, "SELECT result_code FROM public.open_auth_session((SELECT id FROM public.users WHERE email='recovery-smoke@olius.test'),decode(repeat('ab',32),'hex'));", user='olius_core_api')[0]
+        auth = self.psql(self.args.port + 1, self.target, "SELECT result_code FROM public.open_auth_session((SELECT id FROM public.users WHERE email='recovery-smoke@olius.test'),decode(repeat('ab',32),'hex'),$cred$hash-apenas-teste$cred$);", user='olius_core_api')[0]
         if auth != 'OK':
             raise RuntimeError('Autenticação recuperada não retornou OK: ' + auth)
         self.results['core_auth_security_definer'] = 'PASS: open_auth_session executada como olius_core_api'

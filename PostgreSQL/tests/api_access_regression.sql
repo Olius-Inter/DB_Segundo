@@ -115,7 +115,7 @@ BEGIN
 
     -- Dados de login são acessíveis apenas ao backend; sessão continua por RPC.
     PERFORM password_hash FROM public.users WHERE id=olius_test.id('citizen');
-    PERFORM public.open_auth_session(olius_test.id('citizen'),decode(repeat('ab',32),'hex'));
+    PERFORM public.open_auth_session(olius_test.id('citizen'),decode(repeat('ab',32),'hex'),$cred$hash-apenas-teste$cred$);
     UPDATE public.users SET status='INACTIVE' WHERE id=olius_test.id('citizen');
 END $$;
 RESET SESSION AUTHORIZATION;

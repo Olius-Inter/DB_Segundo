@@ -83,7 +83,7 @@ def assert_db(expression):
 
 def fixture(label, expires=False):
     uid = query("INSERT INTO public.users(name,email,password_hash,user_type) VALUES ('Auth concurrency','" + label + "@auth.test','test','CITIZENS') RETURNING id;")
-    sid = query("SELECT session_id FROM public.open_auth_session('" + uid + "',sha256('" + label + "'::bytea));")
+    sid = query("SELECT session_id FROM public.open_auth_session('" + uid + "',sha256('" + label + "'::bytea),$cred$test$cred$);")
     if expires:
         # Fixture administrativa: a janela termina enquanto B aguarda users.
         query("UPDATE public.auth_session SET idle_expires_at=clock_timestamp()+INTERVAL '5 seconds' WHERE id='" + sid + "';")
@@ -128,7 +128,7 @@ assert_db("(SELECT COUNT(*)=1 FROM public.auth_refresh_token WHERE session_id='"
 
 uid, sid = fixture('login_race')
 pair('login seguido de inativação não deixa sessão ativa',
-     "SET ROLE olius_api; SELECT * FROM public.open_auth_session('"+uid+"',sha256('login_race2'::bytea));",
+     "SET ROLE olius_api; SELECT * FROM public.open_auth_session('"+uid+"',sha256('login_race2'::bytea),$cred$test$cred$);",
      "UPDATE public.users SET status='INACTIVE' WHERE id='"+uid+"';")
 assert_db("(SELECT COUNT(*)=2 AND bool_and(revoked_at IS NOT NULL) FROM public.auth_session WHERE user_id='"+uid+"')")
 print('PASS: sete disputas concorrentes; revogação confirmada após COMMIT')
