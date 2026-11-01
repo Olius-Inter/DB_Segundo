@@ -4,7 +4,7 @@ Esta entrega acrescenta persistência de sessões, rotação de refresh tokens, 
 
 Uma **sessão** representa um login. O **refresh token** permite renovar esse login. A **auditoria** registra como a sessão foi criada, renovada e revogada.
 
-Os scripts principais passam de 52 para **55 tabelas: 32 base e 23 de auditoria**. As tabelas do catálogo de dados, instaladas separadamente, não entram nessa contagem.
+A estrutura atual possui **60 tabelas: 35 base e 25 de auditoria**. As seções finais registram as evoluções administrativas e de recuperação de senha. As tabelas do catálogo de dados, instaladas separadamente, não entram nessa contagem.
 
 ## 1. `01_structure.sql` — estruturas e relacionamentos
 
@@ -32,6 +32,7 @@ O novo ENUM `auth_revocation_reason_t` aceita:
 | `LOGOUT` | Encerramento solicitado pelo titular. |
 | `ACCOUNT_INACTIVE` | Revogação decorrente da inativação da conta. |
 | `REFRESH_REUSE` | Reutilização detectada de refresh token consumido. |
+| `PASSWORD_RESET` | Recuperação de senha concluída; revogação na mesma transação. |
 
 Não existe status `EXPIRED`: o relógio determina a expiração. Isso evita depender de uma tarefa periódica para bloquear uma sessão cujo prazo terminou. Uma sessão com `revoked_at` nulo ainda pode estar expirada.
 
@@ -153,11 +154,11 @@ Horas representam duração decorrida, inclusive atravessando mudanças de horá
 
 ### `open_auth_session`: login inicial
 
-Entradas: `p_user_id UUID` e `p_token_hash BYTEA`.
+Entradas atuais: `p_user_id UUID`, `p_token_hash BYTEA` e `p_expected_password_hash TEXT` (hash exato validado pela Core).
 
 Valida o hash, bloqueia e confere o usuário ativo, calcula o prazo, cria a sessão e registra o token de geração 1. Retorna `result_code`, `session_id` e `expires_at`.
 
-Resultados: `OK`, `INVALID_INPUT` ou `USER_UNAVAILABLE`. Não verifica senha nem assina JWT: a Core só pode chamá-la depois de autenticar a pessoa. Sessão e primeiro token são persistidos na mesma transação.
+Resultados: `OK`, `INVALID_INPUT`, `USER_UNAVAILABLE` ou `CREDENTIAL_CHANGED`. Sob lock, compara a credencial vigente ao hash validado pela Core. Não verifica senha nem assina JWT: a Core só pode chamá-la depois de autenticar a pessoa. Sessão e primeiro token são persistidos na mesma transação.
 
 ### `rotate_auth_refresh_token`: renovação atômica
 
@@ -285,7 +286,7 @@ A definição de papéis e concessões fica em `access_control/01_roles.sql`: pa
 
 Os testes de autenticação exigem também a configuração dos perfis. Nenhuma regra funcional de sessão foi alterada nesta separação.
 
-Continuam pendentes a política de retenção/limpeza, a estratégia para eventuais sessões ou JWTs antigos e a confirmação dos privilégios reais no Aiven. Revogação por troca de senha ou perfil não foi implementada sem aprovação. O perfil atual determina o prazo na próxima renovação; não se altera silenciosamente um prazo já emitido.
+Continuam pendentes a política de retenção/limpeza, a estratégia para eventuais sessões ou JWTs antigos e a confirmação dos privilégios reais no Aiven. Recuperação de senha foi aprovada e revoga sessões com PASSWORD_RESET na mesma transação; consultar PASSWORD_RESET.md. Revogação por mudança de perfil continua fora desta entrega. O perfil atual determina o prazo na próxima renovação; não se altera silenciosamente um prazo já emitido.
 
 Não há limite absoluto de duração da sessão nem limite de dispositivos nesta definição.
 
@@ -331,3 +332,7 @@ SUPERUSER nem SET nos parâmetros de auditoria. O teste confirma primeiro que a
 forma antiga gera 42501, depois instala os scripts atuais e exercita retornos.
 As regressões de contexto usam também a role real da Core e verificam sucesso,
 rejeições, exceções, rollback e chamadas consecutivas na mesma transação.
+
+## Evolução: recuperação de senha
+
+O contrato atual de login possui três argumentos e exige o hash exato já validado pela Core. A assinatura anterior não deve permanecer executável. Recuperação usa tabelas próprias; não reutiliza refresh ou convites. Há agora 60 tabelas de aplicação, incluindo 25 logs (mais três tabelas documentais). Especificação atual: [PASSWORD_RESET.md](PASSWORD_RESET.md). As seções de validação original acima são registros históricos.
