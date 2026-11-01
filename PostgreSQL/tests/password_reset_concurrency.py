@@ -13,7 +13,7 @@ def query(sql):
     return result.stdout.strip()
 
 
-def dispute(first, second, expected):
+def dispute(first, second, expected, first_expected=None):
     """A mantém a transação aberta até observar B esperando o bloqueio."""
     options={'creationflags':subprocess.CREATE_NO_WINDOW} if os.name=='nt' else {}
     processes=[]
@@ -23,10 +23,14 @@ def dispute(first, second, expected):
         processes.append(a)
         a.stdin.write("BEGIN; SET statement_timeout='15s';\n"+first+"\n\\echo READY\n")
         a.stdin.flush()
+        first_output=[]
         while True:
             line=a.stdout.readline()
             if line.strip()=='READY': break
             if not line: raise RuntimeError(a.stderr.read())
+            first_output.append(line.strip())
+        if first_expected is not None and first_expected not in first_output:
+            raise RuntimeError('Resultado de A: '+' '.join(first_output)+' / esperado '+first_expected)
         b=subprocess.Popen(run_ci.command()+['-qAt'],stdin=subprocess.PIPE,stdout=subprocess.PIPE,
                            stderr=subprocess.PIPE,text=True,encoding='utf-8',**options)
         processes.append(b)
@@ -78,7 +82,8 @@ def main():
     print('PASS: recuperação antes do login validado com senha antiga')
     uid,_=fixture('loginfirst')
     login="SET ROLE olius_api; SELECT result_code FROM open_auth_session('"+uid+"',sha256('first-login'::BYTEA),'old-hash');"
-    dispute(login,complete('loginfirst'),'OK');check_no_live_session(uid)
+    dispute(login,complete('loginfirst'),'OK',first_expected='OK');check_no_live_session(uid)
+    if query("SELECT count(*) FROM auth_session WHERE user_id='"+uid+"';")!='2': raise AssertionError('Login anterior não criou sessão')
     print('PASS: login anterior também é revogado')
     for label,reverse in [('refresh',False),('refreshfirst',True)]:
         uid,_=fixture(label)

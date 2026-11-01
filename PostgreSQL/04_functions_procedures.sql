@@ -2726,14 +2726,16 @@ BEGIN
         -- Parte local exata; somente domínio normalizado. Ambiguidade falha fechada.
         SELECT array_agg(u.id) INTO v_ids FROM public.users u
         WHERE split_part(u.email,'@',1)=split_part(p_email,'@',1)
-          AND lower(split_part(u.email,'@',2))=lower(split_part(p_email,'@',2));
+          AND lower(split_part(u.email,'@',2))=lower(split_part(p_email,'@',2))
+          AND length(u.email)-length(replace(u.email,'@',''))=1;
         IF cardinality(v_ids) IS DISTINCT FROM 1 THEN
             RETURN QUERY SELECT 'USER_UNAVAILABLE'::TEXT,NULL::UUID,NULL::UUID,NULL::TIMESTAMPTZ; EXIT reset_operation;
         END IF;
         v_uid:=v_ids[1];
         PERFORM 1 FROM public.users u WHERE u.id=v_uid AND u.status='ACTIVE'
           AND split_part(u.email,'@',1)=split_part(p_email,'@',1)
-          AND lower(split_part(u.email,'@',2))=lower(split_part(p_email,'@',2)) FOR UPDATE;
+          AND lower(split_part(u.email,'@',2))=lower(split_part(p_email,'@',2))
+          AND length(u.email)-length(replace(u.email,'@',''))=1 FOR UPDATE;
         IF NOT FOUND THEN
             RETURN QUERY SELECT 'USER_UNAVAILABLE'::TEXT,NULL::UUID,NULL::UUID,NULL::TIMESTAMPTZ; EXIT reset_operation;
         END IF;

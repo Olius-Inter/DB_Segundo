@@ -147,14 +147,16 @@ BEGIN
         -- Parte local exata; somente domínio normalizado. Ambiguidade falha fechada.
         SELECT array_agg(u.id) INTO v_ids FROM public.users u
         WHERE split_part(u.email,'@',1)=split_part(p_email,'@',1)
-          AND lower(split_part(u.email,'@',2))=lower(split_part(p_email,'@',2));
+          AND lower(split_part(u.email,'@',2))=lower(split_part(p_email,'@',2))
+          AND length(u.email)-length(replace(u.email,'@',''))=1;
         IF cardinality(v_ids) IS DISTINCT FROM 1 THEN
             RETURN QUERY SELECT 'USER_UNAVAILABLE'::TEXT,NULL::UUID,NULL::UUID,NULL::TIMESTAMPTZ; EXIT reset_operation;
         END IF;
         v_uid:=v_ids[1];
         PERFORM 1 FROM public.users u WHERE u.id=v_uid AND u.status='ACTIVE'
           AND split_part(u.email,'@',1)=split_part(p_email,'@',1)
-          AND lower(split_part(u.email,'@',2))=lower(split_part(p_email,'@',2)) FOR UPDATE;
+          AND lower(split_part(u.email,'@',2))=lower(split_part(p_email,'@',2))
+          AND length(u.email)-length(replace(u.email,'@',''))=1 FOR UPDATE;
         IF NOT FOUND THEN
             RETURN QUERY SELECT 'USER_UNAVAILABLE'::TEXT,NULL::UUID,NULL::UUID,NULL::TIMESTAMPTZ; EXIT reset_operation;
         END IF;
@@ -275,20 +277,38 @@ ALTER FUNCTION public.complete_password_reset(BYTEA,TEXT) OWNER TO olius_auth_ow
 REVOKE ALL ON FUNCTION public.issue_password_reset(TEXT,BYTEA,INTERVAL),public.complete_password_reset(BYTEA,TEXT)
     FROM PUBLIC,olius_api,olius_owner RESTRICT;
 GRANT EXECUTE ON FUNCTION public.issue_password_reset(TEXT,BYTEA,INTERVAL),public.complete_password_reset(BYTEA,TEXT) TO olius_api;
+-- Falhar fechado em concessões externas, sem revogar direitos de terceiros silenciosamente.
+DO $password_reset_routines$
+DECLARE r RECORD;
+BEGIN
+    IF (SELECT count(*) FROM pg_catalog.pg_proc WHERE pronamespace='public'::regnamespace
+        AND proname IN ('issue_password_reset','complete_password_reset'))<>2 THEN
+        RAISE EXCEPTION 'Sobrecarga de recuperação de senha não revisada.' USING ERRCODE='42501';
+    END IF;
+    FOR r IN SELECT p.proowner,p.proacl FROM pg_catalog.pg_proc p
+        WHERE p.pronamespace='public'::regnamespace
+          AND p.proname IN ('issue_password_reset','complete_password_reset') LOOP
+        IF EXISTS(SELECT 1 FROM pg_catalog.aclexplode(coalesce(r.proacl,pg_catalog.acldefault('f',r.proowner))) a
+            WHERE a.privilege_type='EXECUTE' AND a.grantee NOT IN (r.proowner,'olius_api'::regrole)) THEN
+            RAISE EXCEPTION 'Rotina de recuperação de senha tem EXECUTE externo: revisar antes de reaplicar.' USING ERRCODE='42501';
+        END IF;
+    END LOOP;
+END $password_reset_routines$;
 REVOKE CREATE ON SCHEMA public FROM olius_auth_owner;
 ALTER FUNCTION public.fn_olius_password_reset_guard() OWNER TO olius_owner;
 REVOKE ALL ON FUNCTION public.fn_olius_password_reset_guard() FROM PUBLIC,olius_api;
 -- Recuperação de senha: metadados apenas; nunca valores das credenciais.
-INSERT INTO public.data_catalog_table(schema_name,table_name,domain_name,description,business_rules,access_policy,access_status,source_reference)
-VALUES('public','password_reset_token','Autenticação e sessões','Emissões de recuperação de senha independentes de sessões e convites.',
+WITH reset_seed(schema_name,table_name,domain_name,description,business_rules,access_policy,access_status,source_reference) AS (VALUES('public','password_reset_token','Autenticação e sessões','Emissões de recuperação de senha independentes de sessões e convites.',
     'Conta ativa; 3 emissões/15 minutos, intervalo mínimo de 60 segundos; consumo único e invalidação das demais no sucesso.',
     'Core somente EXECUTE; olius_auth_owner opera os tokens; leitores, Redis e BI sem acesso.','DEFINED','PASSWORD_RESET.md'),
 ('public','password_reset_token_log','Auditoria','Metadados auditáveis de emissão, consumo e invalidação, sem hashes.',
     'Eventos públicos SYSTEM sem autor administrativo; BEFORE/AFTER correlacionados no UPDATE.',
     'Somente auditor e manutenção consultam; escrita pela trigger, sem acesso direto da Core.','DEFINED','PASSWORD_RESET.md')
-ON CONFLICT(schema_name,table_name) DO UPDATE SET domain_name=excluded.domain_name,
-    description=excluded.description,business_rules=excluded.business_rules,
-    access_policy=excluded.access_policy,access_status=excluded.access_status,source_reference=excluded.source_reference;
+)
+INSERT INTO public.data_catalog_table(schema_name,table_name,domain_name,description,business_rules,access_policy,access_status,source_reference)
+SELECT s.* FROM reset_seed s JOIN pg_catalog.pg_namespace n ON n.nspname=s.schema_name
+JOIN pg_catalog.pg_class c ON c.relnamespace=n.oid AND c.relname=s.table_name AND c.relkind IN ('r','p')
+ON CONFLICT(schema_name,table_name) DO NOTHING;
 INSERT INTO public.data_catalog_column(table_catalog_id,column_name,description,business_rules,documentation_status,source_reference)
 SELECT d.id,a.attname,coalesce(col_description(c.oid,a.attnum),CASE a.attname
     WHEN 'log_id' THEN 'Identificador único do snapshot de auditoria.'
@@ -312,8 +332,7 @@ FROM public.data_catalog_table d JOIN pg_namespace n ON n.nspname=d.schema_name
 JOIN pg_class c ON c.relnamespace=n.oid AND c.relname=d.table_name
 JOIN pg_attribute a ON a.attrelid=c.oid AND a.attnum>0 AND NOT a.attisdropped
 WHERE d.schema_name='public' AND d.table_name IN ('password_reset_token','password_reset_token_log')
-ON CONFLICT(table_catalog_id,column_name) DO UPDATE SET description=excluded.description,
-    documentation_status=excluded.documentation_status,source_reference=excluded.source_reference;
+ON CONFLICT(table_catalog_id,column_name) DO NOTHING;
 
 DO $$ BEGIN
  IF (SELECT count(*) FROM pg_proc WHERE pronamespace='public'::regnamespace AND proname='open_auth_session')<>1

@@ -20,7 +20,8 @@ INSERT INTO users(id,name,email,password_hash,user_type,status) VALUES
  (reset_test.uid(4),'Inativo','inactive-reset@example.test','old-hash','CITIZENS','INACTIVE'),
  (reset_test.uid(5),'Limites','limits-reset@example.test','old-hash','CITIZENS','ACTIVE'),
  (reset_test.uid(6),'Links preservados','links-reset@example.test','old-hash','CITIZENS','ACTIVE'),
- (reset_test.uid(7),'Falha auditoria','fault-reset@example.test','old-hash','CITIZENS','ACTIVE');
+ (reset_test.uid(7),'Falha auditoria','fault-reset@example.test','old-hash','CITIZENS','ACTIVE'),
+ (reset_test.uid(8),'E-mail legado inválido','wrong-reset@example.test@invalid','old-hash','CITIZENS','ACTIVE');
 -- Emissões mais antigas são fixtures; o relógio da rotina não é substituído.
 INSERT INTO password_reset_token(user_id,token_hash,issued_at,expires_at)
 SELECT reset_test.uid(5),sha256(('limit-'||n)::BYTEA),clock_timestamp()-n*INTERVAL '2 minutes',
@@ -28,6 +29,15 @@ SELECT reset_test.uid(5),sha256(('limit-'||n)::BYTEA),clock_timestamp()-n*INTERV
 INSERT INTO password_reset_token(user_id,token_hash,issued_at,expires_at) VALUES
  (reset_test.uid(6),sha256('preserved-link'::BYTEA),clock_timestamp()-INTERVAL '2 minutes',clock_timestamp()+INTERVAL '28 minutes');
 SET LOCAL SESSION AUTHORIZATION olius_api;
+-- split_part não pode transformar um endereço legado malformado em outra conta.
+SELECT reset_test.assert(result_code='USER_UNAVAILABLE','endereço malformado não é destinatário')
+ FROM issue_password_reset('wrong-reset@example.test',sha256('wrong-reset-alone'::BYTEA));
+RESET SESSION AUTHORIZATION;
+SELECT reset_test.assert(NOT EXISTS(SELECT 1 FROM password_reset_token WHERE user_id=reset_test.uid(8)),'sem emissão para conta malformada');
+INSERT INTO users(id,name,email,password_hash,user_type) VALUES(reset_test.uid(9),'Conta legítima','wrong-reset@example.test','old-hash','CITIZENS');
+SET LOCAL SESSION AUTHORIZATION olius_api;
+SELECT reset_test.assert(result_code='OK' AND user_id=reset_test.uid(9),'legítima não é bloqueada por endereço malformado')
+ FROM issue_password_reset('wrong-reset@example.test',sha256('wrong-reset-legitimate'::BYTEA));
 SELECT reset_test.assert(result_code='USER_UNAVAILABLE','conta inexistente')
  FROM issue_password_reset('missing@example.test',sha256('missing'::BYTEA));
 SELECT reset_test.assert(result_code='USER_UNAVAILABLE','conta inativa')
@@ -89,6 +99,20 @@ SELECT reset_test.assert((SELECT bool_and(invalidated_at IS NOT NULL) FROM passw
 SELECT reset_test.assert(NOT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema='public'
  AND table_name IN ('password_reset_token_log','users_log','auth_session_log') AND column_name IN ('token_hash','password_hash','token')),'sem segredos nos logs');
 SELECT reset_test.assert((SELECT bool_and(actor_kind='SYSTEM' AND performed_by IS NULL) FROM password_reset_token_log),'sem autoria ADMIN fictícia');
+SELECT reset_test.assert(EXISTS(SELECT 1 FROM password_reset_token_log l JOIN password_reset_token t ON t.id=l.id
+ WHERE t.token_hash=sha256('first-reset'::BYTEA) AND l.operation='INSERT' AND l.snapshot_kind='AFTER'
+ AND l.consumed_at IS NULL AND l.invalidated_at IS NULL),'emissão auditada');
+SELECT reset_test.assert(EXISTS(SELECT 1 FROM password_reset_token_log a JOIN password_reset_token_log b
+ ON b.id=a.id AND b.audit_event_id=a.audit_event_id JOIN password_reset_token t ON t.id=a.id
+ WHERE t.token_hash=sha256('first-reset'::BYTEA) AND a.operation='UPDATE' AND b.operation='UPDATE'
+ AND a.snapshot_kind='AFTER' AND b.snapshot_kind='BEFORE'
+ AND a.consumed_at IS NOT NULL AND b.consumed_at IS NULL),'par de consumo auditado');
+SELECT reset_test.assert(EXISTS(SELECT 1 FROM password_reset_token_log a JOIN password_reset_token_log b
+ ON b.id=a.id AND b.audit_event_id=a.audit_event_id JOIN password_reset_token t ON t.id=a.id
+ WHERE t.token_hash=sha256('older-reset'::BYTEA) AND a.operation='UPDATE' AND b.operation='UPDATE'
+ AND a.snapshot_kind='AFTER' AND b.snapshot_kind='BEFORE'
+ AND a.invalidated_at IS NOT NULL AND b.invalidated_at IS NULL),'par de invalidação auditado');
+
 SELECT reset_test.assert(to_regprocedure('public.open_auth_session(uuid,bytea)') IS NULL,'nenhum caminho antigo de login');
 SELECT reset_test.error('INSERT INTO password_reset_token(user_id,token_hash,issued_at,expires_at) VALUES(reset_test.uid(1),sha256(''infinite''::BYTEA),clock_timestamp(),''infinity'')','23514');
 SELECT reset_test.error('UPDATE password_reset_token SET token_hash=sha256(''tamper''::BYTEA)','55000');

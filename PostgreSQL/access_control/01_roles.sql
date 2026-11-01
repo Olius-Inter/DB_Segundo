@@ -757,6 +757,23 @@ ALTER FUNCTION public.complete_password_reset(BYTEA,TEXT) OWNER TO olius_auth_ow
 REVOKE ALL ON FUNCTION public.issue_password_reset(TEXT,BYTEA,INTERVAL),public.complete_password_reset(BYTEA,TEXT)
     FROM PUBLIC,olius_api,olius_owner RESTRICT;
 GRANT EXECUTE ON FUNCTION public.issue_password_reset(TEXT,BYTEA,INTERVAL),public.complete_password_reset(BYTEA,TEXT) TO olius_api;
+-- Falhar fechado em concessões externas, sem revogar direitos de terceiros silenciosamente.
+DO $password_reset_routines$
+DECLARE r RECORD;
+BEGIN
+    IF (SELECT count(*) FROM pg_catalog.pg_proc WHERE pronamespace='public'::regnamespace
+        AND proname IN ('issue_password_reset','complete_password_reset'))<>2 THEN
+        RAISE EXCEPTION 'Sobrecarga de recuperação de senha não revisada.' USING ERRCODE='42501';
+    END IF;
+    FOR r IN SELECT p.proowner,p.proacl FROM pg_catalog.pg_proc p
+        WHERE p.pronamespace='public'::regnamespace
+          AND p.proname IN ('issue_password_reset','complete_password_reset') LOOP
+        IF EXISTS(SELECT 1 FROM pg_catalog.aclexplode(coalesce(r.proacl,pg_catalog.acldefault('f',r.proowner))) a
+            WHERE a.privilege_type='EXECUTE' AND a.grantee NOT IN (r.proowner,'olius_api'::regrole)) THEN
+            RAISE EXCEPTION 'Rotina de recuperação de senha tem EXECUTE externo: revisar antes de reaplicar.' USING ERRCODE='42501';
+        END IF;
+    END LOOP;
+END $password_reset_routines$;
 REVOKE CREATE ON SCHEMA public FROM olius_auth_owner;
 ALTER FUNCTION public.fn_olius_password_reset_guard() OWNER TO olius_owner;
 REVOKE ALL ON FUNCTION public.fn_olius_password_reset_guard() FROM PUBLIC,olius_api;
