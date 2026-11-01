@@ -57,7 +57,7 @@ def main():
         smoke = f"""SET SESSION AUTHORIZATION {ROLE};
         BEGIN;
         SELECT set_config('app.audit_actor','EXTERNAL',true);
-        SELECT result_code FROM public.open_auth_session(NULL,NULL);
+        SELECT result_code FROM public.open_auth_session(NULL,NULL,$cred$test$cred$);
         SELECT result_code FROM public.rotate_auth_refresh_token(NULL,NULL);
         SELECT public.revoke_auth_session(NULL,NULL);
         SELECT result_code FROM public.revoke_user_auth_sessions(NULL);

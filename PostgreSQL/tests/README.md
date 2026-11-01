@@ -177,3 +177,7 @@ paginação, autoria, contextos e permissões efetivas da Core e demais consumid
 comparar migração e instalação nova, reaplicar sem SUPERUSER, preservar dados,
 rejeitar ACL/índice incompatíveis e ler durante uma correção concorrente, inclusive
 com REPEATABLE READ READ ONLY. A definição da migração deve coincidir com o 04.
+
+### Recuperação de senha
+
+run_ci.py executa password_reset_regression.sql (funcional/permissões/contexto/rollback), password_reset_concurrency.py (nove disputas reais) e password_reset_migration_regression.py (referência anterior versionada, instalador NOSUPERUSER e preservação dos dados). Exigem OLIUS_CI_DISPOSABLE=1 em servidor descartável. Os testes existentes de login foram adaptados para o terceiro argumento obrigatório, sem tornar a assinatura antiga executável. A migração espelha definições canônicas e está excluída apenas da duplicação do Sonar; seu código permanece analisado.

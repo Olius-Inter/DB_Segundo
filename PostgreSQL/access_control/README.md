@@ -248,3 +248,7 @@ a olius_business_owner. Somente olius_api recebe EXECUTE; olius_owner e leitores
 não recebem essa entrada. A conta Core continua sem SELECT direto nos logs.
 Consultar [o contrato do histórico](../COLLECTION_REVISION_HISTORY.md) para
 paginação, SQLSTATEs e implantação em bancos existentes.
+
+### Recuperação de senha
+
+olius_api tem EXECUTE nas duas funções de recuperação, sem leitura/escrita dos tokens ou logs. olius_auth_owner recebe os privilégios estreitos necessários e continua NOLOGIN; não atribuir esse owner à Core. Assinatura atual de login: open_auth_session(uuid,bytea,text). Detalhes e migração: [PASSWORD_RESET.md](../PASSWORD_RESET.md). As contas LOGIN e seus memberships não foram alterados.

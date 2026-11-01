@@ -51,10 +51,10 @@ SELECT admin_test.error(format('SELECT public.revoke_admin_invitation(%L,%L)',ad
 SELECT admin_test.error(format('SELECT public.revoke_admin_invitation(%L,gen_random_uuid())',admin_test.id('first')),'P0002');
 SELECT admin_test.error(format('SELECT public.set_admin_status(%L,gen_random_uuid(),''INACTIVE'')',admin_test.id('first')),'P0002');
 SELECT admin_test.error(format('SELECT public.set_admin_status(%L,%L,NULL)',admin_test.id('first'),admin_test.id('second')),'22023');
-SELECT public.open_auth_session(admin_test.id('second'),sha256('session-test'::bytea));
+SELECT public.open_auth_session(admin_test.id('second'),sha256('session-test'::bytea),$cred$hash-apenas-teste$cred$);
 SELECT public.set_admin_status(admin_test.id('first'),admin_test.id('second'),'INACTIVE');
 SELECT admin_test.assert((SELECT result_code='USER_UNAVAILABLE' FROM public.open_auth_session(
-    admin_test.id('second'),sha256('inactive-session-test'::bytea))),'ADMIN inativo sem sessão nova');
+    admin_test.id('second'),sha256('inactive-session-test'::bytea),$cred$hash-apenas-teste$cred$)),'ADMIN inativo sem sessão nova');
 SELECT public.set_admin_status(admin_test.id('first'),admin_test.id('second'),'ACTIVE');
 
 INSERT INTO admin_test.ids VALUES('old',public.issue_admin_invitation(admin_test.id('first'),'Reenvio','resend@example.invalid',sha256('old-test'::bytea)));

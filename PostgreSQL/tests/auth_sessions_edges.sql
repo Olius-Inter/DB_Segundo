@@ -10,15 +10,15 @@ INSERT INTO users(id,name,email,password_hash,user_type,status) VALUES
 ('11000000-0000-0000-0000-000000000002','Auth edge inactive','edgeinactive@olius.test','test','CITIZENS','INACTIVE');
 CREATE TABLE auth_edges.session (id UUID);
 INSERT INTO auth_edges.session SELECT session_id FROM open_auth_session(
-    '11000000-0000-0000-0000-000000000001',sha256('edge-original'::bytea));
+    '11000000-0000-0000-0000-000000000001',sha256('edge-original'::bytea),$cred$test$cred$);
 GRANT SELECT ON auth_edges.session TO olius_api;
 SET LOCAL SESSION AUTHORIZATION olius_api;
 SELECT auth_edges.assert(result_code='INVALID_INPUT','short hash rejected') FROM open_auth_session(
-    '11000000-0000-0000-0000-000000000001','short'::bytea);
+    '11000000-0000-0000-0000-000000000001','short'::bytea,$cred$test$cred$);
 SELECT auth_edges.assert(result_code='USER_UNAVAILABLE','unknown user rejected') FROM open_auth_session(
-    '11000000-0000-0000-0000-000000000099',sha256('edge-missing'::bytea));
+    '11000000-0000-0000-0000-000000000099',sha256('edge-missing'::bytea),$cred$test$cred$);
 SELECT auth_edges.assert(result_code='USER_UNAVAILABLE','inactive user rejected') FROM open_auth_session(
-    '11000000-0000-0000-0000-000000000002',sha256('edge-inactive'::bytea));
+    '11000000-0000-0000-0000-000000000002',sha256('edge-inactive'::bytea),$cred$test$cred$);
 SELECT auth_edges.assert(result_code='INVALID_INPUT','invalid old hash') FROM rotate_auth_refresh_token(
     NULL,sha256('edge-next'::bytea));
 SELECT auth_edges.assert(result_code='INVALID_INPUT','successor missing') FROM rotate_auth_refresh_token(
