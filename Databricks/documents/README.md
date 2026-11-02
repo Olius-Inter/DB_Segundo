@@ -1,5 +1,10 @@
 # Olius — Data Mart federado no Databricks
 
+O fluxo com silver/gold foi adaptado à pipeline declarativa da Aula 5. Consulte
+[Pipeline medalhão: configuração e execução](03_pipeline_medalhao.md). Os parágrafos
+abaixo documentam o fluxo original de refresh e consulta direta ao dm; com a nova
+pipeline, os dashboards podem consultar as materialized views da gold no Databricks.
+
 O PostgreSQL mantém o star schema: 13 views materializadas e dm.refresh_state.
 Os dashboards consultam databricks_postgresql_catalog.dm usando olius_bi_reader.
 Não há exportação Parquet, upload, Volume de snapshots ou cópia em Delta.
