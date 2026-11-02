@@ -1,46 +1,29 @@
 # Databricks notebook source
 # MAGIC %md
-# MAGIC # Gold — Silver → métricas e KPIs com pandas
-# MAGIC Execute **silver_note → gold_note** depois do refresh da bronze `dm`.
-# MAGIC Origem padrão: `silver.olius`; destino: **`gold.olius`**. Configure os widgets
-# MAGIC para seus catálogos. Spark somente transporta/persiste dados e executa DDL;
-# MAGIC joins, filtros, calendários, estatísticas e KPIs são calculados em **pandas**.
-# MAGIC Este notebook é independente de arquivos auxiliares e pronto para futura migração.
+# MAGIC # Gold — pipeline declarativa da Aula 5
+# MAGIC Adicione este notebook à MESMA pipeline que silver_note. As leituras de silver
+# MAGIC declaram as dependências; não é necessário ordenar notebooks manualmente.
+# MAGIC Os cálculos continuam em pandas, executados por applyInPandas no plano Spark.
+# MAGIC O framework cria/atualiza materialized views; não há gravações manuais.
 # MAGIC
-# MAGIC **Definições:** coleta B2B é uma visita vigente, inclusive malsucesso/zero litros;
-# MAGIC B2C é uma entrega recebida em PEV, não uma retirada física do PEV. Litros dos
-# MAGIC dois fluxos permanecem separados para evitar dupla contagem de óleo.
-# MAGIC “DP” é desvio padrão populacional (`ddof=0`); amostral (`ddof=1`) é outro campo.
-# MAGIC Desvio médio = média de `|x − média|`. Grupos sem observações têm estatísticas
-# MAGIC NULL; DP amostral com uma observação é NULL. Pontos ausentes não viram zero.
+# MAGIC B2B conta visitas vigentes, inclusive falhas/zero litros. B2C conta entregas
+# MAGIC recebidas em PEV; o dm não registra retirada física do PEV. Fluxos não são somados.
+# MAGIC DP padrão é populacional; desvio médio é a média de |x-média|. Pontos ausentes
+# MAGIC permanecem ausentes; o ranking oficial não é reconstruído pela soma nominal.
+# MAGIC Médias por participante usam totais mensais e incluem zeros da dimensão atual.
+# MAGIC Cadastros históricos não são reconstruídos. A agenda reflete o estado atual.
+# MAGIC Períodos futuros são marcados; variação percentual sem base válida é NULL.
 # MAGIC
-# MAGIC As médias por B2B/PEV são calculadas sobre o **total mensal por participante**,
-# MAGIC incluindo participantes com zero eventos. Há também estatísticas por evento,
-# MAGIC cidadão e motorista. O universo de participantes é o cadastro atual das
-# MAGIC dimensões; o dm não tem histórico de ativação para reconstruir cada mês.
-# MAGIC O ranking oficial é preservado: soma de pontos nominais não reproduz o piso
-# MAGIC sequencial nem a ordem operacional e não é usada para recalcular esse ranking.
+# MAGIC Publica KPIs, séries, estatísticas, participantes, agenda, falhas, geografia,
+# MAGIC detalhamentos, ranking e qualidade. _gold_pandas_lote é uma intermediária privada.
+# MAGIC pipeline_state relaciona a gold ao snapshot bronze e à data de referência.
+# MAGIC Não há transação atômica entre todas as materialized views: libere consumidores
+# MAGIC após o SUCESSO da atualização completa da pipeline, pelo Job.
 # MAGIC
-# MAGIC Pendentes = `PENDING`; agendadas hoje e restantes = `APPROVED` sem coleta vigente.
-# MAGIC Restantes considera datas de hoje até o fim do mês; atrasos anteriores são outro
-# MAGIC KPI. Datas são avaliadas em `America/Sao_Paulo`. A agenda usa o estado atual da
-# MAGIC silver, mesmo com `reference_date` passado; não reconstrói estados históricos.
-# MAGIC Séries mostram todos os meses do calendário e marcam meses futuros; filtre
-# MAGIC `periodo_futuro=false` nos gráficos. Variação sem base anterior ou base zero é NULL.
-# MAGIC Motivos de falha são N:N: uma visita pode aparecer em mais de um motivo.
-# MAGIC
-# MAGIC **Saídas:** `kpis`, `serie_diaria`, `serie_mensal`, `serie_anual`,
-# MAGIC `participantes_mensais`, `estatisticas_eventos`, `estatisticas_participantes`,
-# MAGIC `estatisticas_solicitacoes`, `solicitacoes_mensais`, `agenda_coletas`,
-# MAGIC `motivos_falha_mensais`, `classificacoes_mensais`, `geografia_mensal`,
-# MAGIC `tipos_estabelecimento_mensais`, `detalhe_b2b`, `detalhe_b2c`,
-# MAGIC `detalhe_solicitacoes`, `ranking_anual`, `qualidade_silver`, `catalogo_metricas`.
-# MAGIC Consulte `gold.olius.<tabela>` para dashboards. `_dados_*` são tabelas físicas
-# MAGIC versionadas; `pipeline_state` aponta a publicação completa. O Job deve ter
-# MAGIC concorrência máxima 1. Nenhuma migração de repositórios é feita aqui.
-# MAGIC
-# MAGIC Referências: [pandas no Databricks](https://docs.databricks.com/aws/en/pandas),
-# MAGIC [tabelas no Unity Catalog](https://docs.databricks.com/aws/en/pyspark/basics).
+# MAGIC Configuração: olius.silver_catalog/schema, olius.gold_catalog/schema,
+# MAGIC olius.max_rows_per_table, olius.max_total_rows, olius.max_output_rows.
+# MAGIC A data de referência é herdada da silver, garantindo um corte comum às camadas.
+# MAGIC Veja documents/03_pipeline_medalhao.md. Não há dependência da pasta BI/.
 
 # COMMAND ----------
 import json
@@ -350,89 +333,505 @@ def gold_schema(frame):
     return specs
 
 
-def write_pandas(spark_session, frame, table, schema, mode='append'):
+
+GOLD_INPUT_SCHEMAS = {'dim_estabelecimento': {'estabelecimento_id': 'STRING',
+                         'nome': 'STRING',
+                         'tipo_estabelecimento': 'STRING',
+                         'estado': 'STRING',
+                         'cidade': 'STRING',
+                         'bairro': 'STRING',
+                         'latitude': 'DOUBLE',
+                         'longitude': 'DOUBLE',
+                         'is_pev': 'BOOLEAN',
+                         'status': 'STRING'},
+ 'dim_cidadao': {'cidadao_id': 'STRING', 'nome': 'STRING', 'status': 'STRING'},
+ 'dim_motorista': {'motorista_id': 'STRING', 'nome': 'STRING', 'status': 'STRING'},
+ 'dim_pev': {'pev_id': 'STRING',
+             'status': 'STRING',
+             'estado': 'STRING',
+             'cidade': 'STRING',
+             'bairro': 'STRING',
+             'latitude': 'DOUBLE',
+             'longitude': 'DOUBLE'},
+ 'dim_classificacao_coleta': {'classificacao_id': 'STRING',
+                              'resultado': 'STRING',
+                              'condicao_oleo': 'STRING',
+                              'ocorrencia_comprometedora': 'BOOLEAN'},
+ 'dim_status_solicitacao': {'status_id': 'STRING'},
+ 'dim_motivo_falha': {'motivo_id': 'STRING', 'codigo': 'STRING', 'nome': 'STRING', 'descricao': 'STRING'},
+ 'dim_tempo': {'data_id': 'DATE',
+               'ano': 'LONG',
+               'trimestre': 'LONG',
+               'mes': 'LONG',
+               'dia': 'LONG',
+               'dia_semana': 'LONG'},
+ 'fato_coleta': {'coleta_id': 'STRING',
+                 'data_id': 'DATE',
+                 'estabelecimento_id': 'STRING',
+                 'motorista_id': 'STRING',
+                 'classificacao_id': 'STRING',
+                 'solicitacao_id': 'STRING',
+                 'volume_coletado_litros': 'DOUBLE',
+                 'volume_apresentado_litros': 'DOUBLE',
+                 'volume_estimado_litros': 'DOUBLE',
+                 'pontos_nominais': 'LONG',
+                 'calculo_vigente_disponivel': 'BOOLEAN',
+                 'quantidade_coletas': 'LONG'},
+ 'fato_entrega_pev': {'entrega_id': 'STRING',
+                      'data_id': 'DATE',
+                      'cidadao_id': 'STRING',
+                      'pev_id': 'STRING',
+                      'volume_entregue_litros': 'DOUBLE',
+                      'pontos_nominais': 'LONG',
+                      'calculo_vigente_disponivel': 'BOOLEAN',
+                      'quantidade_entregas': 'LONG'},
+ 'fato_solicitacao': {'solicitacao_id': 'STRING',
+                      'data_id': 'DATE',
+                      'estabelecimento_id': 'STRING',
+                      'status_id': 'STRING',
+                      'solicitada_em': 'TIMESTAMP',
+                      'agendada_em': 'TIMESTAMP',
+                      'chegada_em': 'TIMESTAMP',
+                      'coletada_em': 'TIMESTAMP',
+                      'cancelada_em': 'TIMESTAMP',
+                      'volume_estimado_litros': 'DOUBLE',
+                      'volume_franquia_perdida_litros': 'DOUBLE',
+                      'vagas_perdidas': 'LONG',
+                      'quantidade_solicitacoes': 'LONG',
+                      'quantidade_reagendamentos': 'LONG',
+                      'tempo_ate_coleta_horas': 'DOUBLE',
+                      'desvio_chegada_minutos': 'DOUBLE',
+                      'iniciativa_cancelamento': 'STRING',
+                      'politica_cancelamento': 'STRING'},
+ 'ponte_coleta_motivo': {'coleta_id': 'STRING', 'motivo_id': 'STRING'},
+ 'ranking_anual': {'perfil': 'STRING',
+                   'ano': 'LONG',
+                   'participante_id': 'STRING',
+                   'pontos_anuais': 'DOUBLE',
+                   'posicao': 'LONG'},
+ 'qualidade_dados': {'tabela': 'STRING',
+                     'linhas_bronze': 'LONG',
+                     'linhas_silver': 'LONG',
+                     'duplicadas_identicas': 'LONG',
+                     'linhas_rejeitadas': 'LONG',
+                     'percentual_aproveitamento': 'DOUBLE'}}
+GOLD_OUTPUT_SCHEMAS = {'detalhe_b2b': {'coleta_id': 'STRING',
+                 'data_id': 'TIMESTAMP',
+                 'estabelecimento_id': 'STRING',
+                 'motorista_id': 'STRING',
+                 'classificacao_id': 'STRING',
+                 'solicitacao_id': 'STRING',
+                 'volume_coletado_litros': 'DOUBLE',
+                 'volume_apresentado_litros': 'DOUBLE',
+                 'volume_estimado_litros': 'DOUBLE',
+                 'pontos_nominais': 'DOUBLE',
+                 'calculo_vigente_disponivel': 'BOOLEAN',
+                 'quantidade_coletas': 'DOUBLE',
+                 'resultado': 'STRING',
+                 'condicao_oleo': 'STRING',
+                 'ocorrencia_comprometedora': 'BOOLEAN',
+                 'est_nome': 'STRING',
+                 'est_tipo_estabelecimento': 'STRING',
+                 'est_estado': 'STRING',
+                 'est_cidade': 'STRING',
+                 'est_bairro': 'STRING',
+                 'est_latitude': 'DOUBLE',
+                 'est_longitude': 'DOUBLE',
+                 'est_is_pev': 'BOOLEAN',
+                 'est_status': 'STRING',
+                 'motorista_nome': 'STRING',
+                 'motorista_status': 'STRING',
+                 'pedido_data_id': 'TIMESTAMP',
+                 'pedido_estabelecimento_id': 'STRING',
+                 'pedido_status_id': 'STRING',
+                 'pedido_solicitada_em': 'TIMESTAMP',
+                 'pedido_agendada_em': 'TIMESTAMP',
+                 'pedido_chegada_em': 'TIMESTAMP',
+                 'pedido_coletada_em': 'TIMESTAMP',
+                 'pedido_cancelada_em': 'TIMESTAMP',
+                 'pedido_volume_estimado_litros': 'DOUBLE',
+                 'pedido_volume_franquia_perdida_litros': 'DOUBLE',
+                 'pedido_vagas_perdidas': 'DOUBLE',
+                 'pedido_quantidade_solicitacoes': 'DOUBLE',
+                 'pedido_quantidade_reagendamentos': 'DOUBLE',
+                 'pedido_tempo_ate_coleta_horas': 'DOUBLE',
+                 'pedido_desvio_chegada_minutos': 'DOUBLE',
+                 'pedido_iniciativa_cancelamento': 'STRING',
+                 'pedido_politica_cancelamento': 'STRING',
+                 'ano': 'DOUBLE',
+                 'mes': 'DOUBLE',
+                 'periodo': 'STRING',
+                 'perfil': 'STRING',
+                 'desvio_volume_litros': 'DOUBLE',
+                 'desvio_volume_pct': 'DOUBLE',
+                 'sucesso': 'BOOLEAN',
+                 'insucesso': 'BOOLEAN'},
+ 'detalhe_b2c': {'entrega_id': 'STRING',
+                 'data_id': 'TIMESTAMP',
+                 'cidadao_id': 'STRING',
+                 'pev_id': 'STRING',
+                 'volume_entregue_litros': 'DOUBLE',
+                 'pontos_nominais': 'DOUBLE',
+                 'calculo_vigente_disponivel': 'BOOLEAN',
+                 'quantidade_entregas': 'DOUBLE',
+                 'cidadao_nome': 'STRING',
+                 'cidadao_status': 'STRING',
+                 'pev_status': 'STRING',
+                 'pev_estado': 'STRING',
+                 'pev_cidade': 'STRING',
+                 'pev_bairro': 'STRING',
+                 'pev_latitude': 'DOUBLE',
+                 'pev_longitude': 'DOUBLE',
+                 'ano': 'DOUBLE',
+                 'mes': 'DOUBLE',
+                 'periodo': 'STRING',
+                 'perfil': 'STRING'},
+ 'detalhe_solicitacoes': {'solicitacao_id': 'STRING',
+                          'data_id': 'TIMESTAMP',
+                          'estabelecimento_id': 'STRING',
+                          'status_id': 'STRING',
+                          'solicitada_em': 'TIMESTAMP',
+                          'agendada_em': 'TIMESTAMP',
+                          'chegada_em': 'TIMESTAMP',
+                          'coletada_em': 'TIMESTAMP',
+                          'cancelada_em': 'TIMESTAMP',
+                          'volume_estimado_litros': 'DOUBLE',
+                          'volume_franquia_perdida_litros': 'DOUBLE',
+                          'vagas_perdidas': 'DOUBLE',
+                          'quantidade_solicitacoes': 'DOUBLE',
+                          'quantidade_reagendamentos': 'DOUBLE',
+                          'tempo_ate_coleta_horas': 'DOUBLE',
+                          'desvio_chegada_minutos': 'DOUBLE',
+                          'iniciativa_cancelamento': 'STRING',
+                          'politica_cancelamento': 'STRING',
+                          'est_nome': 'STRING',
+                          'est_tipo_estabelecimento': 'STRING',
+                          'est_estado': 'STRING',
+                          'est_cidade': 'STRING',
+                          'est_bairro': 'STRING',
+                          'est_latitude': 'DOUBLE',
+                          'est_longitude': 'DOUBLE',
+                          'est_is_pev': 'BOOLEAN',
+                          'est_status': 'STRING',
+                          'ano': 'DOUBLE',
+                          'mes': 'DOUBLE',
+                          'periodo': 'STRING',
+                          'solicitada_em_data_local': 'TIMESTAMP',
+                          'agendada_em_data_local': 'TIMESTAMP',
+                          'chegada_em_data_local': 'TIMESTAMP',
+                          'coletada_em_data_local': 'TIMESTAMP',
+                          'cancelada_em_data_local': 'TIMESTAMP',
+                          'desvio_chegada_absoluto_minutos': 'DOUBLE',
+                          'atendida': 'BOOLEAN',
+                          'aguardando_coleta': 'BOOLEAN'},
+ 'serie_diaria': {'data_id': 'TIMESTAMP',
+                  'perfil': 'STRING',
+                  'quantidade_eventos': 'DOUBLE',
+                  'litros': 'DOUBLE',
+                  'pontos_nominais_disponiveis': 'DOUBLE',
+                  'eventos_sem_calculo': 'DOUBLE',
+                  'sucessos': 'DOUBLE',
+                  'insucessos': 'DOUBLE'},
+ 'serie_mensal': {'periodo': 'STRING',
+                  'perfil': 'STRING',
+                  'quantidade_eventos': 'DOUBLE',
+                  'litros': 'DOUBLE',
+                  'pontos_nominais_disponiveis': 'DOUBLE',
+                  'eventos_sem_calculo': 'DOUBLE',
+                  'sucessos': 'DOUBLE',
+                  'insucessos': 'DOUBLE',
+                  'ano': 'DOUBLE',
+                  'mes': 'DOUBLE',
+                  'periodo_futuro': 'BOOLEAN',
+                  'litros_mes_anterior': 'DOUBLE',
+                  'variacao_litros': 'DOUBLE',
+                  'variacao_litros_pct': 'DOUBLE',
+                  'eventos_mes_anterior': 'DOUBLE',
+                  'variacao_eventos_pct': 'DOUBLE',
+                  'litros_acumulados_ano': 'DOUBLE',
+                  'eventos_acumulados_ano': 'DOUBLE',
+                  'taxa_sucesso_b2b_pct': 'DOUBLE'},
+ 'serie_anual': {'ano': 'DOUBLE',
+                 'perfil': 'STRING',
+                 'quantidade_eventos': 'DOUBLE',
+                 'litros': 'DOUBLE',
+                 'pontos_nominais_disponiveis': 'DOUBLE',
+                 'eventos_sem_calculo': 'DOUBLE',
+                 'sucessos': 'DOUBLE',
+                 'insucessos': 'DOUBLE'},
+ 'participantes_mensais': {'periodo': 'STRING',
+                           'participante_id': 'STRING',
+                           'quantidade_eventos': 'DOUBLE',
+                           'litros': 'DOUBLE',
+                           'pontos_nominais_disponiveis': 'DOUBLE',
+                           'eventos_sem_calculo': 'DOUBLE',
+                           'sucessos': 'DOUBLE',
+                           'insucessos': 'DOUBLE',
+                           'tipo_participante': 'STRING',
+                           'perfil': 'STRING',
+                           'ano': 'DOUBLE',
+                           'mes': 'DOUBLE'},
+ 'estatisticas_eventos': {'periodo': 'STRING',
+                          'perfil': 'STRING',
+                          'metrica': 'STRING',
+                          'n': 'DOUBLE',
+                          'nulos': 'DOUBLE',
+                          'total': 'DOUBLE',
+                          'media': 'DOUBLE',
+                          'mediana': 'DOUBLE',
+                          'desvio_padrao': 'DOUBLE',
+                          'variancia': 'DOUBLE',
+                          'desvio_medio': 'DOUBLE',
+                          'desvio_padrao_amostral': 'DOUBLE',
+                          'variancia_amostral': 'DOUBLE',
+                          'minimo': 'DOUBLE',
+                          'maximo': 'DOUBLE',
+                          'percentil_25': 'DOUBLE',
+                          'percentil_75': 'DOUBLE',
+                          'amplitude': 'DOUBLE',
+                          'coeficiente_variacao_pct': 'DOUBLE',
+                          'granularidade': 'STRING'},
+ 'estatisticas_participantes': {'periodo': 'STRING',
+                                'perfil': 'STRING',
+                                'tipo_participante': 'STRING',
+                                'metrica': 'STRING',
+                                'n': 'DOUBLE',
+                                'nulos': 'DOUBLE',
+                                'total': 'DOUBLE',
+                                'media': 'DOUBLE',
+                                'mediana': 'DOUBLE',
+                                'desvio_padrao': 'DOUBLE',
+                                'variancia': 'DOUBLE',
+                                'desvio_medio': 'DOUBLE',
+                                'desvio_padrao_amostral': 'DOUBLE',
+                                'variancia_amostral': 'DOUBLE',
+                                'minimo': 'DOUBLE',
+                                'maximo': 'DOUBLE',
+                                'percentil_25': 'DOUBLE',
+                                'percentil_75': 'DOUBLE',
+                                'amplitude': 'DOUBLE',
+                                'coeficiente_variacao_pct': 'DOUBLE'},
+ 'estatisticas_solicitacoes': {'periodo': 'STRING',
+                               'status_id': 'STRING',
+                               'metrica': 'STRING',
+                               'n': 'DOUBLE',
+                               'nulos': 'DOUBLE',
+                               'total': 'DOUBLE',
+                               'media': 'DOUBLE',
+                               'mediana': 'DOUBLE',
+                               'desvio_padrao': 'DOUBLE',
+                               'variancia': 'DOUBLE',
+                               'desvio_medio': 'DOUBLE',
+                               'desvio_padrao_amostral': 'DOUBLE',
+                               'variancia_amostral': 'DOUBLE',
+                               'minimo': 'DOUBLE',
+                               'maximo': 'DOUBLE',
+                               'percentil_25': 'DOUBLE',
+                               'percentil_75': 'DOUBLE',
+                               'amplitude': 'DOUBLE',
+                               'coeficiente_variacao_pct': 'DOUBLE'},
+ 'solicitacoes_mensais': {'periodo': 'STRING',
+                          'status_id': 'STRING',
+                          'quantidade_solicitacoes': 'DOUBLE',
+                          'estimativa_litros': 'DOUBLE',
+                          'franquia_perdida_litros': 'DOUBLE',
+                          'vagas_perdidas': 'DOUBLE',
+                          'reagendamentos': 'DOUBLE',
+                          'atendidas': 'DOUBLE',
+                          'tempo_medio_ate_coleta_horas': 'DOUBLE',
+                          'desvio_medio_chegada_minutos': 'DOUBLE',
+                          'participacao_status_pct': 'DOUBLE'},
+ 'agenda_coletas': {'solicitacao_id': 'STRING',
+                    'data_id': 'TIMESTAMP',
+                    'estabelecimento_id': 'STRING',
+                    'status_id': 'STRING',
+                    'solicitada_em': 'TIMESTAMP',
+                    'agendada_em': 'TIMESTAMP',
+                    'chegada_em': 'TIMESTAMP',
+                    'coletada_em': 'TIMESTAMP',
+                    'cancelada_em': 'TIMESTAMP',
+                    'volume_estimado_litros': 'DOUBLE',
+                    'volume_franquia_perdida_litros': 'DOUBLE',
+                    'vagas_perdidas': 'DOUBLE',
+                    'quantidade_solicitacoes': 'DOUBLE',
+                    'quantidade_reagendamentos': 'DOUBLE',
+                    'tempo_ate_coleta_horas': 'DOUBLE',
+                    'desvio_chegada_minutos': 'DOUBLE',
+                    'iniciativa_cancelamento': 'STRING',
+                    'politica_cancelamento': 'STRING',
+                    'est_nome': 'STRING',
+                    'est_tipo_estabelecimento': 'STRING',
+                    'est_estado': 'STRING',
+                    'est_cidade': 'STRING',
+                    'est_bairro': 'STRING',
+                    'est_latitude': 'DOUBLE',
+                    'est_longitude': 'DOUBLE',
+                    'est_is_pev': 'BOOLEAN',
+                    'est_status': 'STRING',
+                    'ano': 'DOUBLE',
+                    'mes': 'DOUBLE',
+                    'periodo': 'STRING',
+                    'solicitada_em_data_local': 'TIMESTAMP',
+                    'agendada_em_data_local': 'TIMESTAMP',
+                    'chegada_em_data_local': 'TIMESTAMP',
+                    'coletada_em_data_local': 'TIMESTAMP',
+                    'cancelada_em_data_local': 'TIMESTAMP',
+                    'desvio_chegada_absoluto_minutos': 'DOUBLE',
+                    'atendida': 'BOOLEAN',
+                    'aguardando_coleta': 'BOOLEAN',
+                    'situacao_agenda': 'STRING'},
+ 'motivos_falha_mensais': {'periodo': 'STRING',
+                           'motivo_id': 'STRING',
+                           'codigo': 'STRING',
+                           'nome': 'STRING',
+                           'descricao': 'STRING',
+                           'quantidade_coletas': 'DOUBLE'},
+ 'classificacoes_mensais': {'periodo': 'STRING',
+                            'resultado': 'STRING',
+                            'condicao_oleo': 'STRING',
+                            'ocorrencia_comprometedora': 'BOOLEAN',
+                            'quantidade_coletas': 'DOUBLE',
+                            'litros': 'DOUBLE'},
+ 'geografia_mensal': {'periodo': 'STRING',
+                      'perfil': 'STRING',
+                      'estado': 'STRING',
+                      'cidade': 'STRING',
+                      'bairro': 'STRING',
+                      'quantidade_eventos': 'DOUBLE',
+                      'litros': 'DOUBLE',
+                      'pontos_nominais_disponiveis': 'DOUBLE',
+                      'eventos_sem_calculo': 'DOUBLE',
+                      'sucessos': 'DOUBLE',
+                      'insucessos': 'DOUBLE'},
+ 'tipos_estabelecimento_mensais': {'periodo': 'STRING',
+                                   'est_tipo_estabelecimento': 'STRING',
+                                   'quantidade_coletas': 'DOUBLE',
+                                   'litros': 'DOUBLE',
+                                   'estabelecimentos_com_movimento': 'DOUBLE'},
+ 'kpis': {'metrica': 'STRING',
+          'perfil': 'STRING',
+          'valor': 'DOUBLE',
+          'unidade': 'STRING',
+          'definicao': 'STRING',
+          'data_referencia': 'TIMESTAMP'},
+ 'ranking_anual': {'perfil': 'STRING',
+                   'ano': 'DOUBLE',
+                   'participante_id': 'STRING',
+                   'pontos_anuais': 'DOUBLE',
+                   'posicao': 'DOUBLE'},
+ 'qualidade_silver': {'tabela': 'STRING',
+                      'linhas_bronze': 'DOUBLE',
+                      'linhas_silver': 'DOUBLE',
+                      'duplicadas_identicas': 'DOUBLE',
+                      'linhas_rejeitadas': 'DOUBLE',
+                      'percentual_aproveitamento': 'DOUBLE'},
+ 'catalogo_metricas': {'metrica': 'STRING', 'perfil': 'STRING', 'unidade': 'STRING', 'definicao': 'STRING'},
+ 'pipeline_state': {'snapshot_bronze': 'STRING',
+                    'data_referencia': 'STRING',
+                    'linhas_quarentena': 'LONG',
+                    'versao': 'STRING'}}
+
+# COMMAND ----------
+def gold_json_records(frame, schema):
     def scalar(value, kind):
         if pd.isna(value):
             return None
         if kind == 'DOUBLE':
             return float(value)
+        if kind == 'LONG':
+            return int(value)
         if kind == 'BOOLEAN':
             return bool(value)
         if kind == 'TIMESTAMP':
-            value = pd.Timestamp(value)
-            if value.tzinfo:
-                value = value.tz_convert('UTC').tz_localize(None)
-            return value.to_pydatetime()
+            stamp = pd.Timestamp(value)
+            if stamp.tzinfo is None:
+                stamp = stamp.tz_localize('UTC')
+            return stamp.isoformat()
         return str(value)
-    records = [tuple(scalar(value, kind) for value, kind in zip(row, schema.values()))
-               for row in frame[list(schema)].itertuples(index=False, name=None)]
-    ddl = ', '.join(f'{quoted(name)} {kind}' for name, kind in schema.items())
-    writer = spark_session.createDataFrame(records, schema=ddl).write.format('delta').mode(mode)
-    if mode == 'overwrite':
-        writer = writer.option('overwriteSchema', 'true')
-    writer.saveAsTable(table)
+    return [json.dumps({field: scalar(row[field], kind) for field, kind in schema.items()},
+                       ensure_ascii=False, allow_nan=False) for row in frame.to_dict('records')]
 
 
-def publish_gold(spark_session, catalog, schema, outputs, state):
-    spark_session.sql(f'CREATE CATALOG IF NOT EXISTS {quoted(catalog)}')
-    spark_session.sql(f'CREATE SCHEMA IF NOT EXISTS {quoted(catalog)}.{quoted(schema)}')
-    pointer = full_name(catalog, schema, 'pipeline_state')
-    spark_session.sql(f'CREATE TABLE IF NOT EXISTS {pointer} ('
-        + ', '.join(f'{quoted(name)} STRING' for name in state) + ') USING DELTA')
-    for name, frame in outputs.items():
-        schema_types = gold_schema(frame)
-        payload = frame.copy()
-        payload['_execucao_id'] = state['execucao_id']
-        physical = full_name(catalog, schema, '_dados_' + name)
-        write_pandas(spark_session, payload, physical, dict(schema_types, _execucao_id='STRING'))
-        columns = ', '.join(quoted(field) for field in schema_types)
-        spark_session.sql(f'CREATE OR REPLACE VIEW {full_name(catalog, schema, name)} AS '
-                          f'SELECT {columns} FROM {physical} WHERE _execucao_id = '
-                          f'(SELECT execucao_id FROM {pointer})')
-    write_pandas(spark_session, pd.DataFrame([state]), pointer,
-                 {name: 'STRING' for name in state}, mode='overwrite')
-
-# COMMAND ----------
-def run_gold(spark_session, widgets):
-    for name, default in dict(silver_catalog='silver', silver_schema='olius', gold_catalog='gold',
-                             gold_schema='olius', reference_date='', max_rows_per_table='200000',
-                             max_output_rows='2000000').items():
-        widgets.text(name, default)
-    source_catalog, source_schema = widgets.get('silver_catalog').strip(), widgets.get('silver_schema').strip()
-    target_catalog, target_schema = widgets.get('gold_catalog').strip(), widgets.get('gold_schema').strip()
-    if source_catalog == target_catalog:
-        raise ValueError('Gold e silver devem usar catálogos diferentes')
-    max_rows, max_output_rows = int(widgets.get('max_rows_per_table')), int(widgets.get('max_output_rows'))
-    if min(max_rows, max_output_rows) < 1:
-        raise ValueError('Limites de linhas devem ser positivos')
-    reference = widgets.get('reference_date').strip() or pd.Timestamp.now(tz=TIMEZONE).date().isoformat()
-    if pd.Timestamp(reference).strftime('%Y-%m-%d') != reference:
-        raise ValueError('reference_date deve usar AAAA-MM-DD')
-    spark_session.conf.set('spark.sql.session.timeZone', 'UTC')
-    pointer = spark_session.table(full_name(source_catalog, source_schema, 'pipeline_state')).limit(2).toPandas()
-    if len(pointer) != 1:
-        raise ValueError('Execute silver_note com sucesso antes de gold_note')
-    source_state = pointer.iloc[0]
-    run_id = str(uuid.UUID(str(source_state['execucao_id'])))
-    # O ponteiro é lido uma vez. Cada tabela é filtrada pela mesma execução imutável,
-    # mesmo que outra silver seja publicada enquanto gold está lendo.
+def gold_envelope(batch, max_rows=200000, max_total_rows=500000, max_output_rows=2000000):
+    """Reconstitui as tabelas tipadas da silver e calcula as 20 saídas em pandas."""
+    present = batch.loc[batch['registro_json'].notna()]
+    if len(present) > max_total_rows:
+        raise MemoryError('Lote silver excedeu olius.max_total_rows')
+    controls = present.loc[present['tabela'].eq('pipeline_state'), 'registro_json']
+    if len(controls) != 1:
+        raise ValueError('Silver sem pipeline_state único')
+    state = json.loads(controls.iloc[0])
+    reference = pd.Timestamp(state['data_referencia']).date().isoformat()
     tables = {}
     for name in SILVER_TABLES:
-        sql = (f'SELECT * FROM {full_name(source_catalog, source_schema, "_dados_" + name)} '
-               f"WHERE _execucao_id = '{run_id}' LIMIT {max_rows + 1}")
-        tables[name] = spark_session.sql(sql).toPandas().drop(columns='_execucao_id')
-        if len(tables[name]) > max_rows:
-            raise MemoryError(f'{name}: limite de linhas excedido')
+        subset = present.loc[present['tabela'].eq(name), 'registro_json']
+        if len(subset) > max_rows:
+            raise MemoryError(name + ': excedeu olius.max_rows_per_table')
+        frame = pd.DataFrame([json.loads(value) for value in subset], columns=list(GOLD_INPUT_SCHEMAS[name]))
+        for field, kind in GOLD_INPUT_SCHEMAS[name].items():
+            if kind in ('LONG', 'DOUBLE'):
+                frame[field] = pd.to_numeric(frame[field], errors='raise').astype('Int64' if kind == 'LONG' else 'Float64')
+            elif kind == 'BOOLEAN':
+                frame[field] = frame[field].astype('boolean')
+            elif kind in ('DATE', 'TIMESTAMP'):
+                frame[field] = pd.to_datetime(frame[field], utc=(kind == 'TIMESTAMP'), errors='raise', format='mixed')
+            else:
+                frame[field] = frame[field].astype('string')
+        tables[name] = frame
+    quality = tables['qualidade_dados'].set_index('tabela')
+    for name in SILVER_TABLES:
+        if name != 'qualidade_dados' and (name not in quality.index or int(quality.loc[name, 'linhas_silver']) != len(tables[name])):
+            raise ValueError(name + ': contagem incompatível com qualidade_dados')
     outputs = calculate_gold(tables, reference, max_output_rows)
-    state = dict(execucao_id=str(uuid.uuid4()), execucao_silver=run_id,
-        snapshot_bronze=str(source_state['snapshot_bronze']), data_referencia=reference,
-        publicada_em=pd.Timestamp.now(tz='UTC').isoformat(), silver_catalog=source_catalog,
-        silver_schema=source_schema, versao='1')
-    publish_gold(spark_session, target_catalog, target_schema, outputs, state)
-    print(json.dumps(dict(state, catalogo=target_catalog, schema=target_schema,
-                          tabelas_publicadas=list(outputs)), ensure_ascii=False))
-    return outputs['kpis']
+    outputs['pipeline_state'] = pd.DataFrame([dict(snapshot_bronze=state['snapshot_bronze'],
+        data_referencia=reference, linhas_quarentena=state['linhas_quarentena'], versao='2-declarativa')])
+    rows = [(name, value) for name, frame in outputs.items()
+            for value in gold_json_records(frame, GOLD_OUTPUT_SCHEMAS[name])]
+    if len(rows) > max_output_rows:
+        raise MemoryError('Conjunto das saídas gold excedeu olius.max_output_rows')
+    return pd.DataFrame(rows, columns=['tabela', 'registro_json'])
 
 
-if __name__ == '__main__':
-    display(run_gold(spark, dbutils.widgets))  # noqa: F821 — ambiente Databricks
+def register_gold_pipeline(spark_session):
+    from pyspark import pipelines as dp
+    from pyspark.sql import functions as F
+
+    config = lambda key, default: spark_session.conf.get('olius.' + key, default).strip()
+    source_catalog, source_schema = config('silver_catalog', 'silver'), config('silver_schema', 'olius')
+    catalog, schema = config('gold_catalog', 'gold'), config('gold_schema', 'olius')
+    if (source_catalog.lower(), source_schema.lower()) == (catalog.lower(), schema.lower()):
+        raise ValueError('Silver e gold precisam usar destinos diferentes')
+    max_rows = int(config('max_rows_per_table', '200000'))
+    max_total = int(config('max_total_rows', '500000'))
+    max_output = int(config('max_output_rows', '2000000'))
+    if min(max_rows, max_total, max_output) < 1:
+        raise ValueError('Limites devem ser positivos')
+    internal = full_name(catalog, schema, '_gold_pandas_lote')
+
+    @dp.materialized_view(name=internal, private=True, comment='Cálculos pandas sobre o lote silver')
+    def gold_pandas_lote():
+        parts = []
+        for name in SILVER_TABLES + ['pipeline_state']:
+            source = spark_session.read.table(full_name(source_catalog, source_schema, name)).limit(max_rows + 1)
+            parts.append(source.select(F.lit(name).alias('tabela'),
+                F.to_json(F.struct('*'), options={'ignoreNullFields': 'false'}).alias('registro_json')))
+        combined = parts[0]
+        for part in parts[1:]:
+            combined = combined.unionByName(part)
+        def process(batch):
+            return gold_envelope(batch, max_rows, max_total, max_output)
+        return combined.withColumn('_lote', F.lit(1)).groupBy('_lote').applyInPandas(
+            process, schema='tabela STRING, registro_json STRING')
+
+    def declare_output(name, fields):
+        ddl = ', '.join(f'{quoted(field)} {kind}' for field, kind in fields.items())
+        @dp.materialized_view(name=full_name(catalog, schema, name), comment='Gold calculada com pandas: ' + name)
+        def gold_output():
+            source = spark_session.read.table(internal).where(F.col('tabela') == F.lit(name))
+            return source.select(F.from_json('registro_json', ddl).alias('registro')).select('registro.*')
+        return gold_output
+    return [declare_output(name, fields) for name, fields in GOLD_OUTPUT_SCHEMAS.items()]
+
+
+if 'spark' in globals():
+    register_gold_pipeline(spark)  # noqa: F821 — sessão gerenciada pela pipeline

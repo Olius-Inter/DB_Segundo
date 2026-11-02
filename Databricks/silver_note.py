@@ -1,32 +1,31 @@
 # Databricks notebook source
 # MAGIC %md
-# MAGIC # Silver — Data Mart → dados tratados com pandas
-# MAGIC Bronze é o catálogo federado que expõe o schema `dm`. Este notebook lê seus
-# MAGIC 13 conjuntos, valida novamente os dados e publica no catálogo **silver**.
-# MAGIC Configure `bronze_catalog` com o nome exato do catálogo (inclusive espaços).
-# MAGIC Destino padrão: `silver.olius`. Execute depois do refresh do PostgreSQL.
+# MAGIC # Silver — pipeline declarativa da Aula 5
+# MAGIC Adicione este notebook e gold_note como fontes de UMA pipeline ETL no
+# MAGIC Databricks. A bronze já é o catálogo federado que expõe o schema dm.
+# MAGIC O framework controla materialização, dependências e atualização dos resultados.
+# MAGIC Não execute como notebook comum nem use gravações manuais dentro da pipeline.
 # MAGIC
-# MAGIC Toda limpeza usa **pandas**; Spark somente lê/grava tabelas e executa DDL do
-# MAGIC Unity Catalog. É preciso poder ler a bronze e criar catálogo/schema/tabelas/views
-# MAGIC no destino. pandas/numpy já integram o Runtime. Nenhuma senha vai neste arquivo.
-# MAGIC Há limite configurável de linhas por tabela, pois pandas trabalha na memória
-# MAGIC do driver. Acima dele a execução para, sem publicar amostras como dados completos.
+# MAGIC As regras continuam em pandas. applyInPandas executa a transformação como
+# MAGIC parte do plano Spark, sem trazer dados ao driver. Para validar relações entre
+# MAGIC os 13 conjuntos, o lote é processado em um único grupo: é uma solução acadêmica
+# MAGIC de volume limitado, não uma implementação distribuída para grandes massas.
+# MAGIC Limites não autorizam amostragem: lote acima do limite falha sem publicar cortes.
 # MAGIC
-# MAGIC Duplicatas idênticas: mantém uma ocorrência. Chaves repetidas com conteúdos
-# MAGIC diferentes: rejeita todas as ocorrências conflitantes. Tipos não conversíveis,
-# MAGIC nulos obrigatórios, valores fora da regra e referências órfãs vão para
-# MAGIC `quarentena`, com motivos e conteúdo original; não são substituídos por zero.
-# MAGIC Pontos nominais B2B e desvio de chegada admitem negativos legítimos.
+# MAGIC Tipos, nulos, domínios, volumes, duplicações, referências e regras temporais
+# MAGIC são conferidos novamente. Negativos legítimos (penalidade e chegada antecipada)
+# MAGIC são preservados. Rejeitados e cópias idênticas ficam em quarentena.
+# MAGIC A materialized view privada _silver_pandas_lote é apenas intermediária.
+# MAGIC Não existem mais _dados_* ou ponteiros de publicação escritos pelo notebook.
+# MAGIC pipeline_state agora é metadado declarativo da origem processada.
 # MAGIC
-# MAGIC As tabelas físicas `_dados_*` guardam execuções completas identificadas por UUID.
-# MAGIC As views públicas selecionam a execução em `pipeline_state`. O ponteiro só muda
-# MAGIC depois de todas as gravações. Uma falha preserva a execução publicada anterior.
-# MAGIC A gold fixa esse UUID antes de ler. Configure o Job com concorrência máxima 1.
-# MAGIC Não há limpeza automática do histórico de execuções.
-# MAGIC
-# MAGIC Referências: [pandas](https://docs.databricks.com/aws/en/pandas),
-# MAGIC [conversão numérica](https://pandas.pydata.org/docs/reference/api/pandas.to_numeric.html),
-# MAGIC [persistência no Unity Catalog](https://docs.databricks.com/aws/en/pyspark/basics).
+# MAGIC Configuração: olius.bronze_catalog, olius.bronze_schema, olius.silver_catalog,
+# MAGIC olius.silver_schema, olius.reference_date, olius.max_rows_per_table,
+# MAGIC olius.max_total_rows. Veja documents/03_pipeline_medalhao.md para os passos.
+# MAGIC Execute refresh no PostgreSQL antes da pipeline e evite refresh concorrente:
+# MAGIC leituras federadas distintas não oferecem uma transação PostgreSQL compartilhada.
+# MAGIC Referências: https://docs.databricks.com/aws/en/ldp/developer/python-ref
+# MAGIC https://spark.apache.org/docs/latest/api/python/reference/pyspark.sql/api/pyspark.sql.GroupedData.applyInPandas.html
 
 # COMMAND ----------
 import json
@@ -381,99 +380,123 @@ def pandas_schema(frame):
     return result
 
 
-def write_pandas(spark_session, frame, table, schema, mode='append'):
-    """A ponte usa tipos explícitos; cálculos e tratamento já terminaram no pandas."""
+
+# COMMAND ----------
+_SILVER_KIND = {'uuid': 'STRING', 'text': 'STRING', 'float': 'DOUBLE', 'int': 'LONG',
+                'bool': 'BOOLEAN', 'date': 'DATE', 'timestamp': 'TIMESTAMP'}
+SILVER_OUTPUT_SCHEMAS = {name: {field: _SILVER_KIND[spec['kind']] for field, spec in specs.items()}
+                         for name, (_, specs) in CONTRACTS.items()}
+SILVER_OUTPUT_SCHEMAS.update({
+    'qualidade_dados': dict(tabela='STRING', linhas_bronze='LONG', linhas_silver='LONG',
+        duplicadas_identicas='LONG', linhas_rejeitadas='LONG', percentual_aproveitamento='DOUBLE'),
+    'quarentena': dict(tabela='STRING', linha_origem='LONG', chave='STRING', motivos='STRING', registro_json='STRING'),
+    'pipeline_state': dict(snapshot_bronze='STRING', bronze_atualizada_em='STRING', data_referencia='DATE',
+        bronze_catalog='STRING', bronze_schema='STRING', linhas_quarentena='LONG', versao='STRING'),
+})
+
+
+def silver_json_records(frame, schema):
     def scalar(value, kind):
         if pd.isna(value):
             return None
+        if kind == 'DATE':
+            return pd.Timestamp(value).date().isoformat()
+        if kind == 'TIMESTAMP':
+            stamp = pd.Timestamp(value)
+            if stamp.tzinfo is None:
+                stamp = stamp.tz_localize('UTC')
+            return stamp.isoformat()
         if kind == 'LONG':
             return int(value)
         if kind == 'DOUBLE':
             return float(value)
         if kind == 'BOOLEAN':
             return bool(value)
-        if kind == 'DATE':
-            return pd.Timestamp(value).date()
-        if kind == 'TIMESTAMP':
-            stamp = pd.Timestamp(value)
-            if stamp.tzinfo:
-                stamp = stamp.tz_convert('UTC').tz_localize(None)
-            return stamp.to_pydatetime()
         return str(value)
-    records = [tuple(scalar(value, kind) for value, kind in zip(row, schema.values()))
-               for row in frame[list(schema)].itertuples(index=False, name=None)]
-    ddl = ', '.join(f'{quoted(name)} {kind}' for name, kind in schema.items())
-    writer = spark_session.createDataFrame(records, schema=ddl).write.format('delta').mode(mode)
-    if mode == 'overwrite':
-        writer = writer.option('overwriteSchema', 'true')
-    writer.saveAsTable(table)
+    return [json.dumps({field: scalar(row[field], kind) for field, kind in schema.items()},
+                       ensure_ascii=False, allow_nan=False) for row in frame.to_dict('records')]
 
 
-def publish_silver(spark_session, catalog, schema, tables, state):
-    spark_session.sql(f'CREATE CATALOG IF NOT EXISTS {quoted(catalog)}')
-    spark_session.sql(f'CREATE SCHEMA IF NOT EXISTS {quoted(catalog)}.{quoted(schema)}')
-    state_table = full_name(catalog, schema, 'pipeline_state')
-    state_schema = {name: 'STRING' for name in state}
-    ddl = ', '.join(f'{quoted(name)} STRING' for name in state)
-    spark_session.sql(f'CREATE TABLE IF NOT EXISTS {state_table} ({ddl}) USING DELTA')
-    for name, frame in tables.items():
-        specs = CONTRACTS.get(name, (None, {}))[1]
-        kinds = {'uuid': 'STRING', 'text': 'STRING', 'float': 'DOUBLE', 'int': 'LONG',
-                 'bool': 'BOOLEAN', 'date': 'DATE', 'timestamp': 'TIMESTAMP'}
-        types = ({field: kinds[spec['kind']] for field, spec in specs.items()}
-                 if specs else pandas_schema(frame))
-        if name == 'quarentena':
-            types = dict(tabela='STRING', linha_origem='LONG', chave='STRING', motivos='STRING', registro_json='STRING')
-        payload = frame.copy()
-        payload['_execucao_id'] = state['execucao_id']
-        physical = full_name(catalog, schema, '_dados_' + name)
-        write_pandas(spark_session, payload, physical, dict(types, _execucao_id='STRING'))
-        columns = ', '.join(quoted(field) for field in types)
-        spark_session.sql(f'CREATE OR REPLACE VIEW {full_name(catalog, schema, name)} AS '
-                          f'SELECT {columns} FROM {physical} WHERE _execucao_id = '
-                          f'(SELECT execucao_id FROM {state_table})')
-    write_pandas(spark_session, pd.DataFrame([state]), state_table, state_schema, mode='overwrite')
-
-# COMMAND ----------
-def run_silver(spark_session, widgets):
-    for key, default in dict(bronze_catalog='data mart', bronze_schema='dm',
-                             silver_catalog='silver', silver_schema='olius', max_rows_per_table='200000').items():
-        widgets.text(key, default)
-    source_catalog = widgets.get('bronze_catalog').strip()
-    source_schema = widgets.get('bronze_schema').strip()
-    target_catalog = widgets.get('silver_catalog').strip()
-    target_schema = widgets.get('silver_schema').strip()
-    if target_catalog == source_catalog:
-        raise ValueError('O catálogo silver deve ser diferente do catálogo bronze')
-    max_rows = int(widgets.get('max_rows_per_table'))
-    if max_rows < 1:
-        raise ValueError('max_rows_per_table deve ser positivo')
-    spark_session.conf.set('spark.sql.session.timeZone', 'UTC')
-
-    def read(name):
-        frame = spark_session.table(full_name(source_catalog, source_schema, name)).limit(max_rows + 1).toPandas()
-        if len(frame) > max_rows:
-            raise MemoryError(f'{name}: excedeu limite de {max_rows} linhas; aumente conscientemente a memória/limite')
-        return frame
-
-    before = read('refresh_state')
-    if len(before) != 1 or not bool(before.iloc[0]['singleton']):
-        raise ValueError('Bronze sem controle de snapshot único')
-    snapshot_id = str(uuid.UUID(str(before.iloc[0]['snapshot_id'])))
-    raw_tables = {name: read(name) for name in CONTRACTS}
-    after = read('refresh_state')
-    if len(after) != 1 or str(after.iloc[0]['snapshot_id']) != snapshot_id:
-        raise RuntimeError('Bronze atualizou durante a leitura; execute silver novamente')
-    tables = clean_data_mart(raw_tables)
-    state = dict(execucao_id=str(uuid.uuid4()), snapshot_bronze=snapshot_id,
-        bronze_atualizada_em=str(before.iloc[0]['refreshed_at']),
-        publicada_em=pd.Timestamp.now(tz='UTC').isoformat(),
-        bronze_catalog=source_catalog, bronze_schema=source_schema, versao='1')
-    publish_silver(spark_session, target_catalog, target_schema, tables, state)
-    print(json.dumps(dict(state, catalogo=target_catalog, schema=target_schema,
-                          linhas_quarentena=len(tables['quarentena'])), ensure_ascii=False))
-    return tables['qualidade_dados']
+def silver_envelope(batch, max_rows=200000, max_total_rows=500000):
+    """Callback puro pandas: nenhum Spark, efeito externo ou gravação."""
+    present = batch.loc[batch['registro_json'].notna()]
+    if len(present) > max_total_rows:
+        raise MemoryError('Lote bronze excedeu olius.max_total_rows')
+    controls = present.loc[present['tabela'].eq('__controle_bronze__'), 'registro_json']
+    if len(controls) != 1:
+        raise ValueError('dm.refresh_state precisa de exatamente um registro')
+    control = json.loads(controls.iloc[0])
+    if control.get('singleton') is not True:
+        raise ValueError('Controle bronze inválido')
+    snapshot = str(uuid.UUID(str(control['snapshot_id'])))
+    updated = pd.to_datetime(control['refreshed_at'], utc=True, errors='raise')
+    if pd.isna(updated):
+        raise ValueError('Controle bronze sem refreshed_at')
+    reference = pd.Timestamp(control['data_referencia']).date().isoformat()
+    raw_tables = {}
+    for name, (_, specs) in CONTRACTS.items():
+        subset = present.loc[present['tabela'].eq(name), 'registro_json']
+        if len(subset) > max_rows:
+            raise MemoryError(f'{name}: excedeu olius.max_rows_per_table; dados não foram amostrados')
+        raw_tables[name] = pd.DataFrame([json.loads(value) for value in subset], columns=list(specs))
+    tables = clean_data_mart(raw_tables, reference)
+    tables['pipeline_state'] = pd.DataFrame([dict(snapshot_bronze=snapshot,
+        bronze_atualizada_em=updated.isoformat(), data_referencia=reference,
+        bronze_catalog=control['bronze_catalog'], bronze_schema=control['bronze_schema'],
+        linhas_quarentena=len(tables['quarentena']), versao='2-declarativa')])
+    rows = [(name, value) for name, frame in tables.items()
+            for value in silver_json_records(frame, SILVER_OUTPUT_SCHEMAS[name])]
+    return pd.DataFrame(rows, columns=['tabela', 'registro_json'])
 
 
-if __name__ == '__main__':
-    display(run_silver(spark, dbutils.widgets))  # noqa: F821 — ambiente Databricks
+def register_silver_pipeline(spark_session):
+    from pyspark import pipelines as dp
+    from pyspark.sql import functions as F
+
+    config = lambda key, default: spark_session.conf.get('olius.' + key, default).strip()
+    source_catalog, source_schema = config('bronze_catalog', 'data mart'), config('bronze_schema', 'dm')
+    catalog, schema = config('silver_catalog', 'silver'), config('silver_schema', 'olius')
+    if (source_catalog.lower(), source_schema.lower()) == (catalog.lower(), schema.lower()):
+        raise ValueError('Origem bronze e destino silver precisam ser diferentes')
+    max_rows, max_total = int(config('max_rows_per_table', '200000')), int(config('max_total_rows', '500000'))
+    if min(max_rows, max_total) < 1:
+        raise ValueError('Limites devem ser positivos')
+    reference = config('reference_date', '')
+    if reference and pd.Timestamp(reference).strftime('%Y-%m-%d') != reference:
+        raise ValueError('olius.reference_date deve ser AAAA-MM-DD')
+    internal = full_name(catalog, schema, '_silver_pandas_lote')
+
+    @dp.materialized_view(name=internal, private=True,
+                          comment='Tratamento pandas do lote completo; volume acadêmico limitado')
+    def silver_pandas_lote():
+        parts = []
+        for name in CONTRACTS:
+            source = spark_session.read.table(full_name(source_catalog, source_schema, name)).select(
+                *list(CONTRACTS[name][1])).limit(max_rows + 1)
+            parts.append(source.select(F.lit(name).alias('tabela'),
+                F.to_json(F.struct('*'), options={'ignoreNullFields': 'false'}).alias('registro_json')))
+        state = spark_session.read.table(full_name(source_catalog, source_schema, 'refresh_state')).limit(2)
+        ref = F.to_date(F.lit(reference)) if reference else F.to_date(F.from_utc_timestamp(F.current_timestamp(), 'America/Sao_Paulo'))
+        state = state.withColumn('data_referencia', ref).withColumn('bronze_catalog', F.lit(source_catalog)).withColumn('bronze_schema', F.lit(source_schema))
+        parts.append(state.select(F.lit('__controle_bronze__').alias('tabela'),
+            F.to_json(F.struct('*'), options={'ignoreNullFields': 'false'}).alias('registro_json')))
+        combined = parts[0]
+        for part in parts[1:]:
+            combined = combined.unionByName(part)
+        def process(batch):
+            return silver_envelope(batch, max_rows, max_total)
+        return combined.withColumn('_lote', F.lit(1)).groupBy('_lote').applyInPandas(
+            process, schema='tabela STRING, registro_json STRING')
+
+    def declare_output(name, fields):
+        ddl = ', '.join(f'{quoted(field)} {kind}' for field, kind in fields.items())
+        @dp.materialized_view(name=full_name(catalog, schema, name), comment='Silver validada com pandas: ' + name)
+        def silver_output():
+            source = spark_session.read.table(internal).where(F.col('tabela') == F.lit(name))
+            return source.select(F.from_json('registro_json', ddl).alias('registro')).select('registro.*')
+        return silver_output
+    return [declare_output(name, fields) for name, fields in SILVER_OUTPUT_SCHEMAS.items()]
+
+
+if 'spark' in globals():
+    register_silver_pipeline(spark)  # noqa: F821 — sessão gerenciada pela pipeline
