@@ -13,7 +13,7 @@ DECLARE member_name text; group_name text; account record;
         marker text;
 BEGIN
     IF to_regclass('public.data_catalog_role') IS NULL
-       OR to_regprocedure('public.open_auth_session(uuid,bytea)') IS NULL
+       OR to_regprocedure('public.open_auth_session(uuid,bytea,text)') IS NULL
        OR NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='olius_owner')
        OR NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='olius_reader')
        OR NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='olius_api')
@@ -26,7 +26,7 @@ BEGIN
     IF (SELECT pg_get_userbyid(relowner) FROM pg_class
         WHERE oid='public.users'::regclass) <> 'olius_owner'
        OR (SELECT pg_get_userbyid(proowner) FROM pg_proc
-           WHERE oid='public.open_auth_session(uuid,bytea)'::regprocedure) <> 'olius_auth_owner' THEN
+           WHERE oid='public.open_auth_session(uuid,bytea,text)'::regprocedure) <> 'olius_auth_owner' THEN
         RAISE EXCEPTION 'Propriedade ainda não configurada; executar 01_roles.sql antes das contas.';
     END IF;
 

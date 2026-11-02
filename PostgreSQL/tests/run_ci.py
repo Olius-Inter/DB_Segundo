@@ -84,10 +84,15 @@ def main():
     execute("failed-visit-migration", [sys.executable, str(TESTS / "failed_visit_migration_regression.py")])
     execute("collection-history-migration", [sys.executable, str(TESTS / "collection_history_migration_regression.py")])
 
+    if has_access:
+        execute("password-reset-migration", [sys.executable, str(TESTS / "password_reset_migration_regression.py")])
+
     # Este teste reaplica ALTER OWNER/SECURITY/search_path nas rotinas, invalidando
     # seus perfis. Executar antes de iniciar a medição para preservar os cenários
     # positivos e negativos executados pelas regressões seguintes.
     if has_access:
+        execute("password-reset-review-unit", [sys.executable, "-m", "unittest", "discover", "-s", str(TESTS), "-p", "test_password_reset_review.py", "-v"])
+        execute("password-reset-access-review", [sys.executable, str(TESTS / "password_reset_access_review.py")])
         sql_file("PostgreSQL/tests/ranking_access_regression.sql")
 
     # Registra somente o código de aplicação, antes de criar helpers dos testes.
@@ -114,6 +119,7 @@ def main():
     if has_catalog:
         sql_file("PostgreSQL/data_catalog/05_validate.sql")
     if has_access:
+        sql_file("PostgreSQL/tests/password_reset_regression.sql")
         sql_file("PostgreSQL/tests/catalog_access_regression.sql")
         sql_file("PostgreSQL/tests/api_access_regression.sql")
         sql_file("PostgreSQL/tests/data_mart_access_regression.sql")
@@ -128,6 +134,8 @@ def main():
     execute("procedures-concurrency", [sys.executable, str(TESTS / "procedures_concurrency.py")])
     if has_auth:
         execute("auth-concurrency", [sys.executable, str(TESTS / "auth_sessions_concurrency.py")])
+    if has_access:
+        execute("password-reset-concurrency", [sys.executable, str(TESTS / "password_reset_concurrency.py")])
 
     routines = json.loads(inventory)
     oid_list = ','.join(str(int(routine['oid'])) for routine in routines)

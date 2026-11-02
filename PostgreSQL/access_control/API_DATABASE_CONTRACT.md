@@ -311,3 +311,7 @@ O contrato completo, incluindo as 28 colunas tipadas, linha de metadados em pág
 vazia, SQLSTATEs, reconstrução histórica, limites temporais, snapshot MVCC e
 migração está em [COLLECTION_REVISION_HISTORY.md](../COLLECTION_REVISION_HISTORY.md).
 Os IDs dos motivos são históricos; códigos são rótulos atuais e podem ser NULL.
+
+## Recuperação de senha — contrato de 01/11/2026
+
+Contrato obrigatório: [PASSWORD_RESET.md](../PASSWORD_RESET.md). Core recebe EXECUTE em issue_password_reset(text,bytea,interval) e complete_password_reset(bytea,text), sem acesso às respectivas tabelas/logs. open_auth_session agora exige (uuid,bytea,text): o terceiro parâmetro é o hash de senha exato validado pela Core. A assinatura anterior não permanece disponível. Publicar banco/API coordenadamente, com autenticação em manutenção durante a mudança. Os grants prévios de cadastro permanecem; não usar UPDATE direto da senha como substituto da recuperação transacional.

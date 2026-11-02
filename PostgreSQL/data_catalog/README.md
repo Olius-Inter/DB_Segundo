@@ -37,7 +37,7 @@ Nenhum arquivo se conecta automaticamente ao Aiven. Nesta revisão, a execução
 
 ## Cobertura atual
 
-**61 tabelas e 863 colunas em public:** 58 tabelas da aplicação/auditoria e três do catálogo. A view exclui as três tabelas documentais e representa **58 tabelas e 843 colunas distintas**. Existem 24 tabelas de auditoria, incluindo sessões e convites. Esses valores são referência da revisão de 28/10/2026; o validador compara os objetos reais e não fixa esses totais como limite. O schema dm é documentado separadamente.
+**63 tabelas e 886 colunas em public:** 60 tabelas da aplicação/auditoria e três do catálogo. A view exclui as três tabelas documentais e representa **60 tabelas e 866 colunas distintas**. Existem 25 tabelas de auditoria, incluindo sessões e convites. Esses valores são referência da revisão de 01/11/2026; o validador compara os objetos reais e não fixa esses totais como limite. O schema dm é documentado separadamente.
 
 Não conte linhas da view para medir colunas: uma coluna pode aparecer uma vez para cada papel com acesso. A validação verifica ausência física, renomeações, metadados faltantes e campos pendentes. Novos objetos continuam sendo descobertos como PENDING até revisão; não recebem descrições de negócio inventadas.
 

@@ -14,18 +14,18 @@ BEGIN
 END $$;
 GRANT USAGE ON SCHEMA catalog_test TO olius_owner,olius_reader,olius_catalog_editor,olius_auditor;
 
-SELECT catalog_test.assert((SELECT count(*)=61 FROM public.data_catalog_table),'61 tabelas catalogadas');
-SELECT catalog_test.assert((SELECT count(*)=863 FROM public.data_catalog_column),'863 colunas documentadas');
+SELECT catalog_test.assert((SELECT count(*)=63 FROM public.data_catalog_table),'63 tabelas catalogadas');
+SELECT catalog_test.assert((SELECT count(*)=886 FROM public.data_catalog_column),'886 colunas documentadas');
 SELECT catalog_test.assert(NOT EXISTS(SELECT 1 FROM public.data_catalog_column WHERE documentation_status='PENDING'),'sem colunas pendentes');
 SELECT catalog_test.assert(NOT EXISTS(SELECT 1 FROM public.data_catalog_table WHERE access_status='PENDING' OR domain_name='Pendente de classificação'),'sem tabelas pendentes');
-SELECT catalog_test.assert((SELECT count(*)=58 FROM (SELECT DISTINCT table_name FROM public.vw_data_catalog) t),'view exclui 3 tabelas documentais');
-SELECT catalog_test.assert((SELECT count(*)=843 FROM (SELECT DISTINCT table_name,column_name FROM public.vw_data_catalog) t),'843 colunas distintas na view');
+SELECT catalog_test.assert((SELECT count(*)=60 FROM (SELECT DISTINCT table_name FROM public.vw_data_catalog) t),'view exclui 3 tabelas documentais');
+SELECT catalog_test.assert((SELECT count(*)=866 FROM (SELECT DISTINCT table_name,column_name FROM public.vw_data_catalog) t),'866 colunas distintas na view');
 SELECT catalog_test.assert(
     (SELECT array_agg(role_name ORDER BY role_name) FROM public.data_catalog_role)
     = ARRAY['olius_api','olius_auditor','olius_bi_reader_role','olius_bi_refresh_role',
             'olius_catalog_editor','olius_dm_owner','olius_owner','olius_ranking_reader','olius_reader']::TEXT[],
     'nove perfis documentais, incluindo Data Mart e API Redis');
-SELECT catalog_test.assert((SELECT count(*)=15 FROM pg_proc WHERE pronamespace='public'::regnamespace AND proowner='olius_auth_owner'::regrole),'quinze funções mantidas no auth_owner');
+SELECT catalog_test.assert((SELECT count(*)=17 FROM pg_proc WHERE pronamespace='public'::regnamespace AND proowner='olius_auth_owner'::regrole),'dezessete funções mantidas no auth_owner');
 
 SET LOCAL SESSION AUTHORIZATION pedro;
 ALTER TABLE public.collection ADD COLUMN catalog_test_pedro text;
@@ -33,7 +33,7 @@ ALTER FUNCTION public.get_cycle_availability(uuid) COST 101;
 INSERT INTO public.establishment_type(id,name) VALUES ('90000000-0000-0000-0000-000000000001','Teste de acesso');
 UPDATE public.establishment_type SET name='Teste Pedro' WHERE id='90000000-0000-0000-0000-000000000001';
 SELECT catalog_test.denied('SET ROLE olius_auth_owner');
-SELECT catalog_test.denied('ALTER FUNCTION public.open_auth_session(uuid,bytea) COST 200');
+SELECT catalog_test.denied('ALTER FUNCTION public.open_auth_session(uuid,bytea,text) COST 200');
 SELECT catalog_test.denied('CREATE ROLE nao_autorizado');
 SET LOCAL ROLE olius_owner;
 CREATE TABLE public.catalog_test_owned(id integer);
@@ -64,7 +64,7 @@ SELECT catalog_test.denied('UPDATE public.collection SET collected_volume_liters
 SELECT catalog_test.denied('DELETE FROM public.collection WHERE false');
 SELECT catalog_test.denied('TRUNCATE public.collection');
 SELECT catalog_test.denied('ALTER TABLE public.collection ADD COLUMN forbidden integer');
-SELECT catalog_test.denied('SELECT public.open_auth_session(NULL,NULL)');
+SELECT catalog_test.denied('SELECT public.open_auth_session(NULL,NULL,$cred$test$cred$)');
 SELECT catalog_test.denied('SELECT public.catalog_test_future()');
 SELECT catalog_test.denied('SET ROLE olius_owner');
 SELECT catalog_test.denied('GRANT olius_reader TO caio');

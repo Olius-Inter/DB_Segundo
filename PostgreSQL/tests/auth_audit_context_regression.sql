@@ -41,7 +41,7 @@ SET LOCAL SESSION AUTHORIZATION olius_api;
 SELECT set_config('app.audit_actor','',true),set_config('app.current_user_id','',true),
        set_config('app.operational_driver_id','',true),set_config('app.audit_reason','',true);
 SELECT auth_context_test.assert(result_code='OK','login inicial') FROM public.open_auth_session(
-    '12000000-0000-0000-0000-000000000001',sha256('context-initial'::bytea));
+    '12000000-0000-0000-0000-000000000001',sha256('context-initial'::bytea),$cred$test$cred$);
 SELECT auth_context_test.assert(NOT EXISTS(SELECT 1 FROM unnest(ARRAY[
     'app.audit_actor','app.current_user_id','app.operational_driver_id','app.audit_reason']) p
     WHERE coalesce(current_setting(p,true),'')<>''),'contexto vazio restaurado');
@@ -54,7 +54,7 @@ SELECT set_config('app.audit_actor','USER',true),
 DO $$ DECLARE login RECORD; rotation RECORD; other_login RECORD;
 BEGIN
     SELECT * INTO login FROM public.open_auth_session(
-        '12000000-0000-0000-0000-000000000001',sha256('context-login'::bytea));
+        '12000000-0000-0000-0000-000000000001',sha256('context-login'::bytea),$cred$test$cred$);
     PERFORM auth_context_test.assert(login.result_code='OK','login normal');
     PERFORM auth_context_test.assert_context();
     SELECT * INTO rotation FROM public.rotate_auth_refresh_token(
@@ -69,12 +69,12 @@ BEGIN
         '12000000-0000-0000-0000-000000000001',login.session_id)='ALREADY_REVOKED','logout já revogado');
     PERFORM auth_context_test.assert_context();
     SELECT * INTO other_login FROM public.open_auth_session(
-        '12000000-0000-0000-0000-000000000001',sha256('context-logout'::bytea));
+        '12000000-0000-0000-0000-000000000001',sha256('context-logout'::bytea),$cred$test$cred$);
     PERFORM auth_context_test.assert(public.revoke_auth_session(
         '12000000-0000-0000-0000-000000000001',other_login.session_id)='OK','logout normal');
     PERFORM auth_context_test.assert_context();
     PERFORM auth_context_test.assert(result_code='INVALID_INPUT','login inválido')
-        FROM public.open_auth_session(NULL,NULL);
+        FROM public.open_auth_session(NULL,NULL,$cred$test$cred$);
     PERFORM auth_context_test.assert_context();
     PERFORM auth_context_test.assert(result_code='INVALID_INPUT','rotação inválida')
         FROM public.rotate_auth_refresh_token(NULL,NULL);
@@ -89,7 +89,7 @@ END $$;
 -- Falhas após a configuração de autoria devem reverter escritas e manter o chamador.
 SELECT set_config('auth_context_test.inject_failure','on',true);
 SELECT auth_context_test.error($call$SELECT * FROM public.open_auth_session(
- '12000000-0000-0000-0000-000000000001',sha256('context-failed-login'::bytea))$call$,'P7001');
+ '12000000-0000-0000-0000-000000000001',sha256('context-failed-login'::bytea),$cred$test$cred$)$call$,'P7001');
 SELECT auth_context_test.error($call$SELECT * FROM public.rotate_auth_refresh_token(
  sha256('context-initial'::bytea),sha256('context-failed-next'::bytea))$call$,'P7001');
 SELECT set_config('auth_context_test.inject_failure','off',true);

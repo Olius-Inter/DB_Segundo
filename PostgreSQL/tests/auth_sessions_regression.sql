@@ -20,18 +20,18 @@ INSERT INTO public.users(id,name,email,password_hash,user_type) VALUES
 ('10000000-0000-0000-0000-000000000001','Citizen test','authcit@olius.test','test-hash','CITIZENS'),
 ('10000000-0000-0000-0000-000000000002','Admin test','authadm@olius.test','test-hash','ADMIN'),
 ('10000000-0000-0000-0000-000000000003','Est test','authest@olius.test','test-hash','ESTABLISHMENT');
-SELECT auth_test.assert((SELECT COUNT(*)=58 FROM pg_tables WHERE schemaname='public' AND tablename NOT IN ('data_catalog_table','data_catalog_column','data_catalog_role')),'58 application tables');
-SELECT auth_test.assert((SELECT COUNT(*)=24 FROM pg_tables WHERE schemaname='public' AND tablename LIKE '%\_log'),'24 logs');
+SELECT auth_test.assert((SELECT COUNT(*)=60 FROM pg_tables WHERE schemaname='public' AND tablename NOT IN ('data_catalog_table','data_catalog_column','data_catalog_role')),'60 application tables');
+SELECT auth_test.assert((SELECT COUNT(*)=25 FROM pg_tables WHERE schemaname='public' AND tablename LIKE '%\_log'),'25 logs');
 
 SET LOCAL SESSION AUTHORIZATION olius_api;
 INSERT INTO auth_test.sessions SELECT 'citizen', session_id, expires_at
-FROM public.open_auth_session('10000000-0000-0000-0000-000000000001',sha256('token1'::bytea));
+FROM public.open_auth_session('10000000-0000-0000-0000-000000000001',sha256('token1'::bytea),$cred$test-hash$cred$);
 INSERT INTO auth_test.sessions SELECT 'admin', session_id, expires_at
-FROM public.open_auth_session('10000000-0000-0000-0000-000000000002',sha256('token2'::bytea));
+FROM public.open_auth_session('10000000-0000-0000-0000-000000000002',sha256('token2'::bytea),$cred$test-hash$cred$);
 INSERT INTO auth_test.sessions SELECT 'est', session_id, expires_at
-FROM public.open_auth_session('10000000-0000-0000-0000-000000000003',sha256('token3'::bytea));
+FROM public.open_auth_session('10000000-0000-0000-0000-000000000003',sha256('token3'::bytea),$cred$test-hash$cred$);
 INSERT INTO auth_test.sessions SELECT 'second', session_id, expires_at
-FROM public.open_auth_session('10000000-0000-0000-0000-000000000001',sha256('token4'::bytea));
+FROM public.open_auth_session('10000000-0000-0000-0000-000000000001',sha256('token4'::bytea),$cred$test-hash$cred$);
 SELECT auth_test.assert(result_code='OK','rotation') FROM public.rotate_auth_refresh_token(sha256('token1'::bytea),sha256('token5'::bytea));
 SELECT auth_test.assert(is_valid,'valid session') FROM public.get_auth_session_status('10000000-0000-0000-0000-000000000001',(SELECT session_id FROM auth_test.sessions WHERE kind='citizen'));
 SELECT auth_test.assert(NOT is_valid,'wrong sub/sid') FROM public.get_auth_session_status('10000000-0000-0000-0000-000000000002',(SELECT session_id FROM auth_test.sessions WHERE kind='citizen'));
