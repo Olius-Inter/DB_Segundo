@@ -102,7 +102,7 @@ O detalhamento por tabela/coluna e rotina está em [API_DATABASE_CONTRACT.md](AP
 
 ### `olius_business_owner`
 
-NOLOGIN e sem herança. Possui onze procedures, cinco funções operacionais e as duas funções de trigger de auditoria e sincronização de PEV. As oito procedures públicas, cinco entradas e duas triggers usam SECURITY DEFINER com search_path seguro; as três procedures internas permanecem SECURITY INVOKER.
+NOLOGIN e sem herança. Possui onze procedures, cinco funções operacionais, a consulta histórica e as duas funções de trigger de auditoria e sincronização de PEV. As oito procedures públicas, cinco entradas, a consulta histórica e duas triggers usam SECURITY DEFINER com search_path seguro; as três procedures internas permanecem SECURITY INVOKER.
 
 Recebe consultas necessárias, alterações restritas aos objetos que as rotinas mantêm e INSERT nos 22 logs de negócio. Não recebe acesso às tabelas de autenticação, ao catálogo nem CREATE permanente no schema. A função genérica de snapshots permanece SECURITY INVOKER e não é concedida à API.
 
@@ -242,3 +242,9 @@ distintas; consultar initial_data/README.md antes de preparar a demonstração.
 A Sprint 9 adiciona EXECUTE em `record_failed_collection_visit(UUID,UUID,TEXT,TEXT)` à Core.
 O núcleo `record_collection_internal` é privado; não recebe concessão para API/equipe.
 Contrato e migração estão descritos em `API_DATABASE_CONTRACT.md`.
+
+A Sprint 10 acrescenta `get_collection_revision_history(UUID,UUID,INTEGER,INTEGER)`
+a olius_business_owner. Somente olius_api recebe EXECUTE; olius_owner e leitores
+não recebem essa entrada. A conta Core continua sem SELECT direto nos logs.
+Consultar [o contrato do histórico](../COLLECTION_REVISION_HISTORY.md) para
+paginação, SQLSTATEs e implantação em bancos existentes.

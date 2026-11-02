@@ -298,3 +298,16 @@ executar somente a migração `migrations/20261029_failed_collection_visit.sql`,
 inteira e fora de transação existente, como implantador. A migração conserva
 dados, IDs e segurança, é reaplicável e inclui consultas de conferência. Não
 reexecutar 01–03. Revisar relatórios de retorno antes de liberar a Core.
+
+## Sprint 10 — histórico operacional de coleta B2B
+
+A Core executa `public.get_collection_revision_history(UUID, UUID, INTEGER, INTEGER)`
+com o UUID do ADMIN autenticado e paginação 0/20 (máximo 100). Somente olius_api
+recebe EXECUTE; não há SELECT da Core em collection_log/collection_failure_log.
+A consulta é STABLE/SECURITY DEFINER sob olius_business_owner e não modifica o
+contexto de auditoria. Não retorna cálculos nem snapshots brutos.
+
+O contrato completo, incluindo as 28 colunas tipadas, linha de metadados em página
+vazia, SQLSTATEs, reconstrução histórica, limites temporais, snapshot MVCC e
+migração está em [COLLECTION_REVISION_HISTORY.md](../COLLECTION_REVISION_HISTORY.md).
+Os IDs dos motivos são históricos; códigos são rótulos atuais e podem ser NULL.

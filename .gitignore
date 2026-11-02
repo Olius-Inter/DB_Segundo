@@ -6,3 +6,7 @@ __pycache__/
 
 # Relatórios e arquivos temporários dos testes.
 /coverage/
+
+# Backups locais: contêm dados do banco.
+/backup_local.sql
+/backup_aiven.sql

@@ -50,6 +50,45 @@ no ambiente real; não há upload/ingestão de arquivos no fluxo atual.
 
 ## Medição de cobertura
 
+### Recuperação de backups
+
+O CI também executa `PostgreSQL/backup_recovery/validate_recovery.py` com
+Coverage.py em uma imagem PostgreSQL 16.15 própria, definida em
+`PostgreSQL/backup_recovery/Dockerfile.validation`. A execução usa o usuário
+Linux `postgres` (não root), sem rede externa e com o checkout somente para
+leitura. Os dois clusters descartáveis ficam dentro do container, sem portas
+publicadas. O código continua sendo analisado como fonte pelo Sonar.
+
+Antes da recuperação, `test_backup_recovery.py` verifica os destinos fixos,
+rejeição de argumentos com caminhos arbitrários e bloqueio de symlinks.
+O runner aceita apenas `--ci-reports` para selecionar a pasta fixa do CI;
+sem essa opção usa `PostgreSQL/backup_recovery/artifacts`. A antiga opção
+`--report-dir` foi removida. O diretório compartilhado usa modo 0770 e o
+container recebe somente o grupo do runner para escrever nele.
+
+A configuração `.coveragerc` desse diretório usa caminhos relativos para que
+o Sonar consiga relacionar o XML ao arquivo do repositório, mesmo que o teste
+rode em `/workspace`. A etapa exige recuperação bem-sucedida e cobertura de
+linhas de pelo menos 80%, antes de gerar `coverage/backup-recovery/python.xml`.
+O Sonar importa esse XML junto dos relatórios Python anteriores. Logs, dumps
+sintéticos e resultados ficam em `coverage/backup-recovery/artifacts` e são
+publicados pelo artefato já existente do CI, sem entrar no Git.
+
+Para medir localmente no PowerShell, com Coverage.py instalado:
+
+```powershell
+$env:COVERAGE_FILE = 'coverage/backup-recovery/.coverage'
+python -m coverage run --rcfile=PostgreSQL/backup_recovery/.coveragerc -m unittest discover -s PostgreSQL/tests -p test_backup_recovery.py -v
+if ($LASTEXITCODE -ne 0) { throw 'Os testes de segurança falharam' }
+python -m coverage run --append --rcfile=PostgreSQL/backup_recovery/.coveragerc PostgreSQL/backup_recovery/validate_recovery.py --pg-bin 'C:\Program Files\PostgreSQL\16\bin' --ci-reports
+if ($LASTEXITCODE -ne 0) { throw 'A recuperação falhou' }
+python -m coverage report --rcfile=PostgreSQL/backup_recovery/.coveragerc
+if ($LASTEXITCODE -ne 0) { throw 'Cobertura abaixo de 80%' }
+python -m coverage xml --rcfile=PostgreSQL/backup_recovery/.coveragerc -o coverage/backup-recovery/python.xml
+```
+
+### Rotinas PL/pgSQL
+
 `functions_negative.sql` e `procedures_negative.sql` exercitam exceções das
 rotinas do Script 04: registros inexistentes, parâmetros inválidos, autorização,
 limite do ciclo e ausência de assinatura ativa. Usam `expect_error` para exigir
@@ -130,3 +169,11 @@ invalidam contadores já produzidos pelas regressões funcionais. O teste unitá
 em test_export_coverage.py verifica essa ordem; as métricas e o limite de 80%
 permanecem inalterados. failed_visit_regression.sql também verifica os bloqueios
 do núcleo privado, pedido inexistente e motivo administrativo incompatível com aceite.
+
+`collection_history_regression.sql` valida revisões operacionais, motivos de cada
+revisão, anulação/restauração, rótulos do catálogo, ausência/ambiguidade de logs,
+paginação, autoria, contextos e permissões efetivas da Core e demais consumidores.
+`collection_history_migration_regression.py` usa banco próprio descartável para
+comparar migração e instalação nova, reaplicar sem SUPERUSER, preservar dados,
+rejeitar ACL/índice incompatíveis e ler durante uma correção concorrente, inclusive
+com REPEATABLE READ READ ONLY. A definição da migração deve coincidir com o 04.

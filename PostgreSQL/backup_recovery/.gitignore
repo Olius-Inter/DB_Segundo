@@ -1,0 +1,4 @@
+/artifacts/
+/lab/
+/*.sql.backup
+/backup*.sql
