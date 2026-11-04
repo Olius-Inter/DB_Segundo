@@ -8,7 +8,10 @@ destino OLIUS. SQLite é somente staging da aplicação, não backend do Airflow
 ## DAG
 
 `olius_legacy_preparation`: extract_legacy → prepare_citizens → summarize →
-load_citizens → reconcile_destination.
+load_citizens → reconcile_destination → archive_history.
+A exportação histórica é opcional e ocorre depois de a carga/reconciliação terminarem,
+inclusive quando forem ignoradas ou falharem. Sua regra all_done não transforma
+uma carga falha em sucesso da DAG. Sem snapshot preparado, o histórico é ignorado.
 
 Execução manual, sem agenda, sem backfill e no máximo uma execução/tarefa por vez.
 Só a extração possui uma retentativa automática, após 30 segundos. A UUID do lote
@@ -68,7 +71,7 @@ com o professor: tecnicamente é um orquestrador de workflows.
 
 ## Validação sem acesso ao legado
 
-Da pasta `PostgreSQL/legacy_rpa_etl`, construa a imagem e execute os três testes
+Da pasta `PostgreSQL/legacy_rpa_etl`, construa a imagem e execute os testes
 da DAG (no PowerShell):
 
 ```powershell
@@ -119,3 +122,52 @@ Não execute o complemento de carga até confirmar o banco e a autorização de 
 Uma falha no meio da carga pode deixar cidadãos anteriores já confirmados; retomada
 é feita pela mesma execução/lote, que consulta o controle transacional no destino.
 Configuração atual cobre migração administrada local, não serviço de produção.
+
+## Histórico pela DAG (opt-in independente da carga)
+
+O padrão OLIUS_ETL_ARCHIVE_ENABLED=false não grava nas pastas externas. Para usar,
+verifique permissões de Pedro/Caio na pasta protegida, gere/guarde uma chave de
+histórico separada e preencha os campos OLIUS_HISTORY_* do .env.example. Não use a
+chave do staging, a chave do Airflow ou CPF_CHAVE como chave do histórico.
+
+Os três diretórios devem existir: histórico protegido, backup local fora do
+OneDrive e relatórios compartilhados. O complemento Compose não cria caminhos
+faltantes automaticamente. Defina OLIUS_ETL_ARCHIVE_ENABLED=true e então:
+
+```powershell
+docker compose --env-file .env -f compose.yaml -f compose.archive.yaml up -d --build
+```
+
+Para habilitar simultaneamente a carga autorizada, acrescente também
+`-f compose.load.yaml`, com todas as salvaguardas de destino já configuradas.
+Nada é disparado pelo comando acima: a DAG continua manual. Não foi alterado seu
+.env nem reiniciado o ambiente em uso durante a implementação.
+
+archive_history recebe apenas o ID do lote, abre uma transação de leitura no
+staging, gera o histórico cifrado e valida a cópia local. Somente contagens e
+metadados seguros vão ao log/XCom/pasta compartilhada. O arquivo completo nunca
+é colocado na pasta do grupo. A sincronização OneDrive e recuperação da chave
+pelo Caio continuam verificações externas, não confirmadas pela DAG.
+
+Sem CPF_CHAVE, os CPFs AES-GCM ficam preservados como na origem e a preparação
+informa CPF_DECRYPTION_KEY_REQUIRED. Esses cidadãos não são carregados; não gerar
+CPF substituto nem liberar essas rejeições para satisfazer a carga.
+
+## CI e cobertura
+
+O CI executa os testes Python e integração com origem/destino fictícios em Docker,
+mais os testes da DAG na imagem Airflow sem rede. Mede cobertura dos módulos em
+coverage/legacy-etl-python.xml e da DAG em coverage/legacy-airflow/python.xml, ambos
+consumidos pelo Sonar. O mínimo local configurado é 80% para cada conjunto. Testes
+não são classificados como código principal no Sonar. Não se utilizam .env ou
+credenciais reais nessas etapas.
+
+Os testes da DAG verificam importação, grafo, funções de tarefa, falhas e flags com
+dependências simuladas. A integração PostgreSQL verifica as operações reais de
+carga. Ainda falta uma execução ponta a ponta pelo scheduler/API do Airflow em
+ambiente controlado; não afirmar essa validação apenas por cobertura de código.
+
+A DAG possui uma tarefa final workflow_finished com regra none_failed. Ela depende
+explicitamente da carga, reconciliação e histórico. Isso impede que o sucesso de
+archive_history (all_done) esconda falhas anteriores no estado final da execução.
+A etapa final não declara que houve importação quando a carga estava desabilitada.

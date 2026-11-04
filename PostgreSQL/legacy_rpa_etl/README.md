@@ -116,5 +116,18 @@ final. Não lê .env, Aiven ou bancos existentes. Testa instalação oficial, ca
 reenvio, concorrência, conflito, rollback com auditoria, preservação de edição/hash
 no app, extração real READ ONLY contra fonte fictícia separada, cifra e reconciliação.
 Os testes da DAG usam a imagem real do Airflow; não equivalem a uma execução da DAG
-com scheduler e APIs reais. Integração CI/Sonar desta nova pasta ainda deve ser
-fechada antes de considerar a branch pronta para PR.
+com scheduler e APIs reais. O CI agora executa testes e integração descartável, além dos testes da DAG em
+imagem real, gerando relatórios de cobertura para o Sonar. A aprovação da esteira
+ainda depende de execução remota; não é garantida por verificações locais.
+
+## Preservação e bloqueios atuais
+
+archive.py pode ser acionado pela DAG com OLIUS_ETL_ARCHIVE_ENABLED=true e o
+complemento compose.archive.yaml. Ver HISTORY_ARCHIVE.md e airflow/README.md.
+Nenhuma saída para OneDrive é produzida com a flag desabilitada.
+
+CPF_CHAVE do backend legado continua pendente. Valores aesgcm não são CPF textual:
+recebem motivo CPF_DECRYPTION_KEY_REQUIRED, sem preenchimento fictício. O arquivo
+histórico preserva o valor original criptografado, sem depender dessa chave.
+Ampliar cargas operacionais B2B/motorista/coleta/entrega/certificado permanece
+condicionado à complementação e às decisões já documentadas, sem enfraquecer FKs.

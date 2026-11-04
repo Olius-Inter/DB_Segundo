@@ -17,6 +17,7 @@ services:
     build:
       context: ..
       dockerfile: airflow/Dockerfile
+      target: runtime
     command: [bash, -c, 'mkdir -p /opt/airflow/state /opt/airflow/staging && exec airflow standalone']
     environment:
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:${AIRFLOW_METADATA_PASSWORD:?Configure .env}@metadata/airflow
@@ -30,6 +31,7 @@ services:
       PYTHONPATH: /opt/olius
       OLIUS_STAGE_PATH: /opt/airflow/staging/legacy.sqlite
       OLIUS_ETL_LOAD_ENABLED: ${OLIUS_ETL_LOAD_ENABLED:-false}
+      OLIUS_ETL_ARCHIVE_ENABLED: ${OLIUS_ETL_ARCHIVE_ENABLED:-false}
       OLIUS_LEGACY_HOST: ${OLIUS_LEGACY_HOST:?Configure .env}
       OLIUS_LEGACY_PORT: ${OLIUS_LEGACY_PORT:?Configure .env}
       OLIUS_LEGACY_DATABASE: ${OLIUS_LEGACY_DATABASE:?Configure .env}
@@ -43,6 +45,7 @@ services:
       - ../credentials.py:/opt/olius/credentials.py:ro
       - ../loader.py:/opt/olius/loader.py:ro
       - ../connections.py:/opt/olius/connections.py:ro
+      - ../archive.py:/opt/olius/archive.py:ro
       - airflow-home:/opt/airflow
     secrets:
       - source_ca

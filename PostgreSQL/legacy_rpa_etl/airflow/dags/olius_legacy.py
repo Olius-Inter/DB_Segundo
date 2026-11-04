@@ -99,7 +99,43 @@ def legacy_preparation():
         finally:
             stage.close()
 
-    reconcile_destination(load_citizens(summarize(prepare_citizens(extract_legacy()))))
+    @task(trigger_rule='all_done', show_return_value_in_logs=False)
+    def archive_history(run_id):
+        if not run_id:
+            raise AirflowSkipException('No prepared snapshot to archive.')
+        if os.environ.get('OLIUS_ETL_ARCHIVE_ENABLED') != 'true':
+            raise AirflowSkipException('History export disabled; no shared output written.')
+        from archive import export_history
+        from pipeline import open_stage
+        stage = open_stage(os.environ['OLIUS_STAGE_PATH'])
+        try:
+            stage.execute('BEGIN')
+            result = export_history(stage, run_id, int(os.environ.get('OLIUS_ETL_ARCHIVE_VERSION', '1')),
+                                    '/run/secrets/archive_key', '/opt/olius-history/private',
+                                    '/opt/olius-history/backup', '/opt/olius-history/reports',
+                                    os.environ.get('OLIUS_ETL_EVALUATION_DATE') or None)
+            print(json.dumps(result))
+        except Exception as exc:
+            raise RuntimeError('History export failed: ' + type(exc).__name__) from None
+        finally:
+            stage.rollback()
+            stage.close()
+
+    prepared = summarize(prepare_citizens(extract_legacy()))
+    loaded = load_citizens(prepared)
+    checked = reconcile_destination(loaded)
+    archived = archive_history(prepared)
+    checked >> archived
+
+    @task(trigger_rule='none_failed')
+    def workflow_finished():
+        # This final leaf prevents all_done archival from masking upstream failures.
+        return None
+
+    finished = workflow_finished()
+    loaded >> finished
+    checked >> finished
+    archived >> finished
 
 
 legacy_preparation()

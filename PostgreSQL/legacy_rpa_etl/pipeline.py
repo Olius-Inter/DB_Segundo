@@ -139,7 +139,9 @@ def prepare(stage, run_id):
             reasons = []
             user = users.get(citizen['ID_usuario'])
             cpf = str(citizen['CPF'])
-            if not (cpf.isascii() and cpf.isdigit() and len(cpf) == 11):
+            if cpf.startswith('aesgcm$'):
+                reasons.append('CPF_DECRYPTION_KEY_REQUIRED')
+            elif not (cpf.isascii() and cpf.isdigit() and len(cpf) == 11):
                 reasons.append('INVALID_CPF_FORMAT')
             if cpfs.count(citizen['CPF']) > 1 or owners.count(citizen['ID_usuario']) > 1:
                 reasons.append('DUPLICATE_IDENTITY')

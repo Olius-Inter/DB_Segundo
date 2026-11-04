@@ -1,0 +1,27 @@
+# Opt-in: arquivos completos somente na pasta protegida; grupo recebe agregados.
+services:
+  airflow:
+    environment:
+      OLIUS_ETL_ARCHIVE_VERSION: ${OLIUS_ETL_ARCHIVE_VERSION:-1}
+      OLIUS_ETL_EVALUATION_DATE: ${OLIUS_ETL_EVALUATION_DATE:-}
+    volumes:
+      - type: bind
+        source: ${OLIUS_HISTORY_PRIVATE_DIR:?Configure pasta protegida}
+        target: /opt/olius-history/private
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${OLIUS_HISTORY_BACKUP_DIR:?Configure backup fora do OneDrive}
+        target: /opt/olius-history/backup
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${OLIUS_HISTORY_REPORT_DIR:?Configure pasta de relatorios compartilhados}
+        target: /opt/olius-history/reports
+        bind:
+          create_host_path: false
+    secrets:
+      - archive_key
+secrets:
+  archive_key:
+    file: ${OLIUS_HISTORY_KEY_FILE:?Configure chave exclusiva do historico}

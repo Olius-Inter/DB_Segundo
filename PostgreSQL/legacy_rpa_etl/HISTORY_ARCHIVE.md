@@ -75,7 +75,13 @@ Revisar lixeira/versionamento e políticas institucionais da nuvem ao eliminar.
 
 ## Estado de integração
 
-O exportador é manual, testável sem bancos e sem dados reais. Não está conectado à
-DAG: exportar apenas lote estabilizado e revisado. A exportação real, sincronização,
+O exportador pode ser chamado manualmente ou pela tarefa archive_history da DAG,
+com habilitação explícita e compose.archive.yaml. A tarefa aguarda o término das
+etapas de carga/reconciliação, mesmo se forem ignoradas ou falharem. Não altera o
+resultado de falha da carga. Exige lote preparado; sem esse lote é ignorada. A exportação real, sincronização,
 teste com o Caio e aceite final permanecem pendentes. Não foram gerados arquivos de
 histórico do Aiven nem escritas nas pastas compartilhadas nos testes.
+
+A tarefa final workflow_finished impede que o histórico executado com all_done
+mascare uma falha na carga ou na reconciliação. Nenhum componente envia a chave
+ao OneDrive ou ao relatório compartilhado.
