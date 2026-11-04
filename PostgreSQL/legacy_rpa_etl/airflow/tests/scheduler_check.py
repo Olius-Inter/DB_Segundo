@@ -143,7 +143,7 @@ def main():
                     telefone text,primeiro_registro date,tipo_usuario text,senha text);
                 CREATE TABLE public."B2C"("ID_B2C" int PRIMARY KEY,"ID_usuario" int,"CPF" text);
             '''
-            for ident, cpf in ((1, '12345678901'), (2, 'aesgcm$fixture-unavailable-key')):
+            for ident, cpf in ((1, '52998224725'), (2, 'aesgcm$fixture-unavailable-key')):
                 source_sql += f'''INSERT INTO public."USUARIO" VALUES({ident},'Scheduler fixture',
                     'scheduler-{ident}@example.invalid','11999999999','2025-01-01','B2C','{encoded}');
                     INSERT INTO public."B2C" VALUES({ident},{ident},'{cpf}');'''
@@ -215,7 +215,7 @@ def main():
             assert sql('olius_target', 'SELECT count(*) FROM olius_etl.citizen_import;') == '1'
             sql('legacy_fixture', f'''INSERT INTO public."USUARIO" VALUES(3,'New fixture',
                 'scheduler-3@example.invalid','11999999999','2025-01-01','B2C','{encoded}');
-                INSERT INTO public."B2C" VALUES(3,3,'12345678903');''')
+                INSERT INTO public."B2C" VALUES(3,3,'11144477735');''')
             sql('olius_target', '''CREATE FUNCTION public.fixture_reject() RETURNS trigger LANGUAGE plpgsql AS $$
                 BEGIN IF NEW.email='scheduler-3@example.invalid' THEN RAISE EXCEPTION 'Fixture forced failure'; END IF;
                 RETURN NEW; END $$;

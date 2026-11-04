@@ -74,7 +74,7 @@ def main():
             return psycopg2.connect(host='127.0.0.1', port=port, dbname='olius_test',
                                     user='etl_test_operator', password=password)
         payload = dict(legacy_user_id=1, legacy_citizen_id=1, name='ETL fixture',
-                       email='etl-fixture@example.invalid', cpf='12345678901',
+                       email='etl-fixture@example.invalid', cpf='52998224725',
                        telephone='11999999999', user_type='CITIZENS', original_registration_date='2025-01-01')
         run_id = str(uuid.uuid4())
         value = fake_hash()
@@ -158,7 +158,7 @@ def main():
                 q.execute('''CREATE TABLE public."B2C"("ID_B2C" int PRIMARY KEY,"ID_usuario" int,"CPF" text)''')
                 q.execute('''INSERT INTO public."USUARIO" VALUES(7,'Extracted fixture',
                     'extracted@example.invalid','11999999999','2025-02-01','B2C',%s)''', (value,))
-                q.execute('INSERT INTO public."B2C" VALUES(7,7,\'12345678907\')')
+                q.execute('INSERT INTO public."B2C" VALUES(7,7,\'11144477735\')')
                 q.execute('INSERT INTO public."ADM" VALUES(1,%s)', (value,))
                 q.execute('CREATE ROLE etl_test_reader LOGIN PASSWORD %s', (password,))
                 q.execute('GRANT CONNECT ON DATABASE legacy_fixture TO etl_test_reader')

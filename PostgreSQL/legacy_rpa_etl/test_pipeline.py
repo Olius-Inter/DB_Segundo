@@ -67,7 +67,7 @@ class StagingTests(unittest.TestCase):
         self.user = dict(ID_usuario=1, nome='Pessoa de teste', email='teste@example.invalid',
                          telefone='11999999999', tipo_usuario='B2C', primeiro_registro='2025-01-01')
         self.add('USUARIO', 1, self.user)
-        self.add('B2C', 1, dict(ID_B2C=1, ID_usuario=1, CPF='12345678901'))
+        self.add('B2C', 1, dict(ID_B2C=1, ID_usuario=1, CPF='52998224725'))
         self.stage.commit()
 
     def add(self, table, key, value):
@@ -83,6 +83,59 @@ class StagingTests(unittest.TestCase):
         prepare(self.stage, 'test')
         self.assertEqual(report(self.stage, 'test')['candidate_counts'], {'BLOCKED_POLICY': 1})
         self.assertEqual(report(self.stage, 'test')['destination_writes'], 0)
+
+    def test_encrypted_cpf_preparation_and_raw_preservation(self):
+        import base64
+        import os
+        from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+        key = AESGCM.generate_key(bit_length=256)
+        def encrypt(cpf):
+            nonce = os.urandom(12)
+            return 'aesgcm$' + base64.b64encode(nonce).decode() + '$' + base64.b64encode(
+                AESGCM(key).encrypt(nonce, cpf.encode(), None)).decode()
+        def set_cpf(value):
+            self.stage.execute("UPDATE raw_rows SET payload=? WHERE source_table='B2C'",
+                               (json.dumps(dict(ID_B2C=1, ID_usuario=1, CPF=value)),))
+        encrypted = encrypt('52998224725')
+        set_cpf(encrypted)
+        prepare(self.stage, 'test')
+        self.assertIn('CPF_DECRYPTION_KEY_REQUIRED', self.stage.execute(
+            'SELECT reasons FROM candidates').fetchone()[0])
+        prepare(self.stage, 'test', key)
+        payload = json.loads(self.stage.execute('SELECT payload FROM candidates').fetchone()[0])
+        self.assertEqual(payload['cpf'], '52998224725')
+        self.assertIn(encrypted, self.stage.execute(
+            "SELECT payload FROM raw_rows WHERE source_table='B2C'").fetchone()[0])
+        prepare(self.stage, 'test', AESGCM.generate_key(bit_length=256))
+        self.assertIn('CPF_DECRYPTION_FAILED', self.stage.execute(
+            'SELECT reasons FROM candidates').fetchone()[0])
+        set_cpf(encrypt('11111111111'))
+        prepare(self.stage, 'test', key)
+        self.assertIn('INVALID_CPF_CHECK_DIGITS', self.stage.execute(
+            'SELECT reasons FROM candidates').fetchone()[0])
+        self.assertIsNone(json.loads(self.stage.execute(
+            'SELECT payload FROM candidates').fetchone()[0])['cpf'])
+        set_cpf(encrypted)
+        self.add('B2C', 2, dict(ID_B2C=2, ID_usuario=2, CPF=encrypt('52998224725')))
+        self.add('USUARIO', 2, dict(self.user, ID_usuario=2, email='other@example.invalid'))
+        prepare(self.stage, 'test', key)
+        self.assertTrue(all('DUPLICATE_IDENTITY' in row[0] for row in
+                            self.stage.execute('SELECT reasons FROM candidates')))
+
+    def test_cpf_key_and_malformed_documents(self):
+        import base64
+        from pipeline import read_cpf_key, decode_cpf
+        path = Path(self.directory.name) / 'key.txt'
+        path.write_text(base64.b64encode(bytes(32)).decode(), encoding='utf-8-sig')
+        self.assertEqual(read_cpf_key(path), bytes(32))
+        for value in ('invalid!', base64.b64encode(bytes(16)).decode()):
+            path.write_text(value)
+            with self.assertRaises(ValueError):
+                read_cpf_key(path)
+        for value in ('aesgcm$bad', 'aesgcm$bad$bad'):
+            self.assertEqual(decode_cpf(value, bytes(32)), (None, 'CPF_DECRYPTION_FAILED'))
+        self.assertEqual(decode_cpf(None, None), (None, 'INVALID_CPF_FORMAT'))
+        self.assertEqual(decode_cpf('12345678901', None), (None, 'INVALID_CPF_CHECK_DIGITS'))
 
     def test_missing_user_is_rejected(self):
         self.stage.execute("DELETE FROM raw_rows WHERE source_table='USUARIO'")

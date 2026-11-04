@@ -126,8 +126,24 @@ archive.py pode ser acionado pela DAG com OLIUS_ETL_ARCHIVE_ENABLED=true e o
 complemento compose.archive.yaml. Ver HISTORY_ARCHIVE.md e airflow/README.md.
 Nenhuma saída para OneDrive é produzida com a flag desabilitada.
 
-CPF_CHAVE do backend legado continua pendente. Valores aesgcm não são CPF textual:
-recebem motivo CPF_DECRYPTION_KEY_REQUIRED, sem preenchimento fictício. O arquivo
+A chave original do CPF foi validada em leitura separada; seu conteúdo não pertence
+ao repositório. prepare aceita --cpf-key-file com arquivo Base64 de 32 bytes.
+Sem arquivo, valores aesgcm recebem CPF_DECRYPTION_KEY_REQUIRED. Falha de autenticação,
+formato de cifra ou chave incompatível produz CPF_DECRYPTION_FAILED. CPFs precisam
+ter 11 dígitos e verificadores válidos; rejeições não são corrigidas automaticamente.
+Duplicações são verificadas depois da descriptografia, não pelo ciphertext.
+raw_rows mantém o valor original; candidates contém CPF textual somente quando
+válido. Proteger o staging, que já contém outros dados pessoais, com acesso restrito
+ e retenção controlada. Nenhum CPF/chave deve aparecer em logs ou XCom.
+
+No Airflow, adicionar compose.cpf.yaml aos arquivos Compose usados normalmente e
+definir OLIUS_LEGACY_CPF_KEY_HOST_FILE com o caminho local do arquivo, nunca com a
+chave. O segredo é montado somente para leitura; não é obrigatório no Compose base.
+Recriar o serviço para aplicar esse complemento fica a cargo do operador. Não
+reiniciar nem habilitar carga real automaticamente. Lotes sem tentativa de carga
+podem repetir prepare com a chave; após tentativa de carga, usar novo lote para
+reavaliar documentos antes rejeitados, preservando a proveniência dos já importados.
+A carga continua desabilitada por padrão. O arquivo
 histórico preserva o valor original criptografado, sem depender dessa chave.
 Ampliar cargas operacionais B2B/motorista/coleta/entrega/certificado permanece
 condicionado à complementação e às decisões já documentadas, sem enfraquecer FKs.

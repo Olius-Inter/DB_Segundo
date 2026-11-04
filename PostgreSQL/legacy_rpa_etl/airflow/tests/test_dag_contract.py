@@ -67,6 +67,16 @@ class DagContractTests(unittest.TestCase):
                 self.assertEqual(self.call(name, 'run'), 'run')
                 opened.return_value.close.assert_called_once()
 
+    def test_prepare_reads_optional_cpf_secret(self):
+        with patch.dict(os.environ, {'OLIUS_STAGE_PATH': 'fixture',
+                                    'OLIUS_LEGACY_CPF_KEY_FILE': '/run/secrets/fixture'}), \
+             patch('pipeline.open_stage') as opened, patch('pipeline.prepare') as prepared, \
+             patch('pipeline.read_cpf_key', return_value=b'fixture-key') as read:
+            self.assertEqual(self.call('prepare_citizens', 'batch'), 'batch')
+            read.assert_called_once_with('/run/secrets/fixture')
+            prepared.assert_called_once_with(opened.return_value, 'batch', b'fixture-key')
+            opened.return_value.close.assert_called_once()
+
     def test_load_reconciliation_and_archive_delegate_without_exposing_secrets(self):
         environment = {'OLIUS_STAGE_PATH': 'fixture', 'OLIUS_ETL_LOAD_ENABLED': 'true',
                        'OLIUS_ETL_ARCHIVE_ENABLED': 'true'}

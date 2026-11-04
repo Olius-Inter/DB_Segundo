@@ -47,10 +47,11 @@ def legacy_preparation():
 
     @task(show_return_value_in_logs=False)
     def prepare_citizens(batch_id):
-        from pipeline import open_stage, prepare
+        from pipeline import open_stage, prepare, read_cpf_key
         stage = open_stage(os.environ['OLIUS_STAGE_PATH'])
         try:
-            prepare(stage, batch_id)
+            key_path = os.environ.get('OLIUS_LEGACY_CPF_KEY_FILE')
+            prepare(stage, batch_id, read_cpf_key(key_path) if key_path else None)
             return batch_id
         except Exception as exc:
             raise RuntimeError('Legacy preparation failed: ' + type(exc).__name__) from None

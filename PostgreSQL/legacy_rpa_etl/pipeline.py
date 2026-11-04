@@ -1,5 +1,7 @@
 """Legacy extraction, sealed credentials, and opt-in atomic B2C migration."""
 import argparse
+import base64
+import binascii
 import json
 import os
 import sqlite3
@@ -118,7 +120,45 @@ def extract(stage, source_name, connect, run_id=None, credential_key=None):
             source.close()
 
 
-def prepare(stage, run_id):
+def read_cpf_key(path):
+    """Read the original AES key without including its value in errors."""
+    try:
+        key = base64.b64decode(Path(path).read_text(encoding='utf-8-sig').strip(), validate=True)
+    except (ValueError, UnicodeError, binascii.Error):
+        raise ValueError('Invalid CPF key file') from None
+    if len(key) != 32:
+        raise ValueError('Invalid CPF key length')
+    return key
+
+
+def decode_cpf(value, key):
+    """Return a candidate document and a non-sensitive rejection reason."""
+    cpf = str(value)
+    if cpf.startswith('aesgcm$'):
+        if key is None:
+            return None, 'CPF_DECRYPTION_KEY_REQUIRED'
+        from cryptography.exceptions import InvalidTag
+        from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+        try:
+            _, nonce, ciphertext = cpf.split('$')
+            nonce = base64.b64decode(nonce, validate=True)
+            ciphertext = base64.b64decode(ciphertext, validate=True)
+            if len(nonce) != 12 or len(ciphertext) < 16:
+                raise ValueError()
+            cpf = AESGCM(key).decrypt(nonce, ciphertext, None).decode('utf-8')
+        except (ValueError, UnicodeError, binascii.Error, InvalidTag):
+            return None, 'CPF_DECRYPTION_FAILED'
+    if not (cpf.isascii() and cpf.isdigit() and len(cpf) == 11):
+        return None, 'INVALID_CPF_FORMAT'
+    digits = list(map(int, cpf))
+    valid = len(set(cpf)) > 1
+    for size in (9, 10):
+        check = (sum(digits[i] * (size + 1 - i) for i in range(size)) * 10) % 11
+        valid = valid and digits[size] == (0 if check == 10 else check)
+    return (cpf, None) if valid else (None, 'INVALID_CPF_CHECK_DIGITS')
+
+
+def prepare(stage, run_id, cpf_key=None):
     run = stage.execute('SELECT status FROM runs WHERE id=?', (run_id,)).fetchone()
     if not run or run[0] not in ('EXTRACTED', 'PREPARED'):
         raise ValueError('Run must contain a complete extraction')
@@ -127,7 +167,8 @@ def prepare(stage, run_id):
             'SELECT payload FROM raw_rows WHERE run_id=? AND source_table=?', (run_id, table))]
     users = {row['ID_usuario']: row for row in records('USUARIO')}
     citizens = records('B2C')
-    cpfs = [row['CPF'] for row in citizens]
+    decoded = [decode_cpf(row['CPF'], cpf_key) for row in citizens]
+    cpfs = [cpf for cpf, reason in decoded if reason is None]
     owners = [row['ID_usuario'] for row in citizens]
     email_keys = [(str(row['email']).split('@')[0], str(row['email']).split('@')[-1].lower())
                   for row in users.values()]
@@ -135,15 +176,12 @@ def prepare(stage, run_id):
         if stage.execute('SELECT 1 FROM load_results WHERE run_id=? LIMIT 1', (run_id,)).fetchone():
             raise ValueError('Cannot prepare an already attempted load; use load to resume')
         stage.execute('DELETE FROM candidates WHERE run_id=?', (run_id,))
-        for citizen in citizens:
+        for citizen, (cpf, cpf_reason) in zip(citizens, decoded):
             reasons = []
             user = users.get(citizen['ID_usuario'])
-            cpf = str(citizen['CPF'])
-            if cpf.startswith('aesgcm$'):
-                reasons.append('CPF_DECRYPTION_KEY_REQUIRED')
-            elif not (cpf.isascii() and cpf.isdigit() and len(cpf) == 11):
-                reasons.append('INVALID_CPF_FORMAT')
-            if cpfs.count(citizen['CPF']) > 1 or owners.count(citizen['ID_usuario']) > 1:
+            if cpf_reason:
+                reasons.append(cpf_reason)
+            if (cpf is not None and cpfs.count(cpf) > 1) or owners.count(citizen['ID_usuario']) > 1:
                 reasons.append('DUPLICATE_IDENTITY')
             if not user:
                 reasons.append('MISSING_USER')
@@ -208,6 +246,7 @@ def main():
     parser.add_argument('--stage', required=True)
     parser.add_argument('--run-id')
     parser.add_argument('--credential-key-file')
+    parser.add_argument('--cpf-key-file')
     args = parser.parse_args()
     stage = open_stage(args.stage)
     try:
@@ -229,7 +268,7 @@ def main():
                 parser.error('--run-id is required for prepare/report')
             run_id = args.run_id
             if args.step == 'prepare':
-                prepare(stage, run_id)
+                prepare(stage, run_id, read_cpf_key(args.cpf_key_file) if args.cpf_key_file else None)
             elif args.step in ('load', 'reconcile'):
                 from loader import load, reconcile
                 from connections import destination_connection

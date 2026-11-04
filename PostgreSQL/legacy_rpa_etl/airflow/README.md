@@ -179,3 +179,11 @@ funções de tarefa com op_args. O scheduler real revelou esse conflito; a regre
 verifica os nomes e o teste ponta a ponta repete o caminho completo.
 O LocalExecutor foi limitado a dois processos, mantendo uma tarefa/execução por
 vez conforme a DAG, para reduzir consumo no ambiente local.
+
+## Chave original do CPF (opcional)
+
+Adicionar `-f compose.cpf.yaml` ao conjunto de arquivos Compose utilizado e definir
+`OLIUS_LEGACY_CPF_KEY_HOST_FILE` com o caminho do arquivo privado de chave.
+Não copiar o conteúdo para .env. A tarefa prepare_citizens lê o segredo pelo arquivo;
+sem o complemento, CPFs cifrados continuam rejeitados por falta da chave.
+Ver ../README.md para validações, proteção do staging e regras de reprocessamento.

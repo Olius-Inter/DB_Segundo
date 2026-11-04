@@ -45,7 +45,7 @@ class CredentialTests(unittest.TestCase):
                 for table, payload in [
                     ('USUARIO', dict(ID_usuario=1, nome='Fixture', email='x@example.invalid',
                                      telefone='11999999999', primeiro_registro='2025-01-01', tipo_usuario='B2C')),
-                    ('B2C', dict(ID_B2C=1, ID_usuario=1, CPF='12345678901'))]:
+                    ('B2C', dict(ID_B2C=1, ID_usuario=1, CPF='52998224725'))]:
                     stage.execute('INSERT INTO raw_rows VALUES(?,?,?,?)', ('run', table, '1', json.dumps(payload)))
                 stage.execute('INSERT INTO sealed_credentials VALUES(?,?,?)',
                               ('run', '1', seal(Fernet.generate_key(), 'run', 1, fake_hash())))

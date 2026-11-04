@@ -1,0 +1,10 @@
+# Optional original legacy CPF key: file contents never enter environment variables.
+services:
+  airflow:
+    environment:
+      OLIUS_LEGACY_CPF_KEY_FILE: /run/secrets/legacy_cpf_key
+    secrets:
+      - legacy_cpf_key
+secrets:
+  legacy_cpf_key:
+    file: ${OLIUS_LEGACY_CPF_KEY_HOST_FILE:?Configure o caminho local da chave original}
