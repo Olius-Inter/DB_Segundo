@@ -1,0 +1,10 @@
+[run]
+relative_files = True
+source = PostgreSQL/legacy_rpa_etl
+omit =
+    */test_*.py
+    */integration_check.py
+    */airflow/*
+
+[report]
+show_missing = True

@@ -1,0 +1,6 @@
+[run]
+relative_files = True
+source = PostgreSQL/legacy_rpa_etl/airflow/dags
+
+[report]
+show_missing = True

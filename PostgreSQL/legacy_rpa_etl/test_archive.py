@@ -3,10 +3,13 @@ from pathlib import Path
 import tempfile
 import unittest
 import uuid
+import io
+from contextlib import redirect_stdout
+from unittest.mock import patch
 
 from cryptography.fernet import Fernet
 
-from archive import export_history
+from archive import export_history, main
 from pipeline import open_stage
 
 
@@ -99,6 +102,20 @@ class ArchiveTests(unittest.TestCase):
         data = json.loads(Fernet(self.key.read_bytes()).decrypt(path.read_bytes()))
         account = next(item for item in data['records'] if item['source_table'] == 'USUARIO')
         self.assertEqual(account['original_data'], {'ID_usuario': 1, 'ID_endereco': 4})
+
+    def test_cli_outputs_only_aggregates_and_handles_failure(self):
+        arguments = ['archive', '--stage', str(self.root / 's.sqlite'), '--run-id', self.run,
+                     '--key-file', str(self.key), '--encrypted-dir', str(self.root / 'private'),
+                     '--backup-dir', str(self.root / 'backup'), '--report-dir', str(self.root / 'shared')]
+        with patch('sys.argv', arguments), redirect_stdout(io.StringIO()) as output:
+            main()
+        self.assertEqual(json.loads(output.getvalue())['historical_records'], 3)
+        self.assertNotIn('personal@example.invalid', output.getvalue())
+        self.key.write_bytes(Fernet.generate_key())
+        with patch('sys.argv', arguments), redirect_stdout(io.StringIO()) as output:
+            with self.assertRaises(SystemExit):
+                main()
+        self.assertEqual(json.loads(output.getvalue())['status'], 'FAILED')
 
 
 if __name__ == '__main__':
