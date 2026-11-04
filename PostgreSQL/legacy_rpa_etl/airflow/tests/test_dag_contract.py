@@ -20,6 +20,12 @@ class DagContractTests(unittest.TestCase):
     def test_no_import_errors(self):
         self.assertEqual(self.bag.import_errors, {})
 
+    def test_task_arguments_do_not_shadow_airflow_context(self):
+        import inspect
+        for task in self.bag.dags['olius_legacy_preparation'].tasks:
+            self.assertFalse({'run_id', 'dag_run', 'ti', 'task_instance', 'dag'}
+                             & set(inspect.signature(task.python_callable).parameters))
+
     def test_manual_single_run_graph(self):
         dag = self.bag.dags['olius_legacy_preparation']
         self.assertIsNone(dag.schedule)
@@ -73,6 +79,7 @@ class DagContractTests(unittest.TestCase):
                  patch('pathlib.Path.read_bytes', return_value=Fernet.generate_key()), \
                  redirect_stdout(io.StringIO()) as output:
                 action.return_value = {}
+                opened.return_value.execute.return_value.fetchone.return_value = ('PREPARED',)
                 self.call(name, 'run')
                 action.assert_called_once()
                 opened.return_value.close.assert_called_once()
@@ -90,6 +97,7 @@ class DagContractTests(unittest.TestCase):
                  patch(function, side_effect=ValueError('PRIVATE_SECRET')), \
                  patch('pathlib.Path.read_bytes', return_value=Fernet.generate_key()):
                 with self.assertRaises(RuntimeError) as error:
+                    opened.return_value.execute.return_value.fetchone.return_value = ('PREPARED',)
                     self.call(name, 'run')
                 self.assertNotIn('PRIVATE_SECRET', str(error.exception))
                 opened.return_value.close.assert_called_once()

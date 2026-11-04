@@ -164,10 +164,18 @@ credenciais reais nessas etapas.
 
 Os testes da DAG verificam importação, grafo, funções de tarefa, falhas e flags com
 dependências simuladas. A integração PostgreSQL verifica as operações reais de
-carga. Ainda falta uma execução ponta a ponta pelo scheduler/API do Airflow em
-ambiente controlado; não afirmar essa validação apenas por cobertura de código.
+carga. A execução ponta a ponta pelo scheduler/API em ambiente fictício está descrita em
+SCHEDULER_VALIDATION.md. É uma validação adicional, distinta da cobertura medida
+pelos testes de funções; não acessa o legado nem o destino reais.
 
 A DAG possui uma tarefa final workflow_finished com regra none_failed. Ela depende
 explicitamente da carga, reconciliação e histórico. Isso impede que o sucesso de
 archive_history (all_done) esconda falhas anteriores no estado final da execução.
 A etapa final não declara que houve importação quando a carga estava desabilitada.
+
+As funções de tarefa usam batch_id para a identificação do lote. run_id é uma
+chave reservada do contexto Airflow e não deve ser utilizada como parâmetro das
+funções de tarefa com op_args. O scheduler real revelou esse conflito; a regressão
+verifica os nomes e o teste ponta a ponta repete o caminho completo.
+O LocalExecutor foi limitado a dois processos, mantendo uma tarefa/execução por
+vez conforme a DAG, para reduzir consumo no ambiente local.

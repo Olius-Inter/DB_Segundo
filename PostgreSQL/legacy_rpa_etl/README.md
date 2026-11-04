@@ -131,3 +131,12 @@ recebem motivo CPF_DECRYPTION_KEY_REQUIRED, sem preenchimento fictício. O arqui
 histórico preserva o valor original criptografado, sem depender dessa chave.
 Ampliar cargas operacionais B2B/motorista/coleta/entrega/certificado permanece
 condicionado à complementação e às decisões já documentadas, sem enfraquecer FKs.
+
+## Scheduler real e regressão de parâmetros
+
+A validação do scheduler está em airflow/tests/scheduler_check.py e documentada em
+SCHEDULER_VALIDATION.md. Ela usa rede Docker interna, TLS e dados fictícios para
+carga, reexecução, falha e retomada. Não depende de CPF_CHAVE nem do Aiven.
+O CI repete a validação em job próprio. O ambiente pessoal do Airflow não foi
+reiniciado. Sucesso desse teste não autoriza carga real nem resolve complementos
+pendentes do legado.

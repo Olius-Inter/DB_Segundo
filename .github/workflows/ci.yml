@@ -169,3 +169,29 @@ jobs:
           if docker container inspect olius-ci-data-load > /dev/null 2>&1; then
             docker rm -f -v olius-ci-data-load
           fi
+
+  legacy-scheduler-validation:
+    name: Validate legacy ETL scheduler
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - name: Preparar dependências isoladas
+        run: |
+          python3 -m venv "$RUNNER_TEMP/olius-scheduler-venv"
+          "$RUNNER_TEMP/olius-scheduler-venv/bin/python" -m pip install -r PostgreSQL/legacy_rpa_etl/requirements.txt
+          docker build --target validation -t olius-legacy-airflow:validation -f PostgreSQL/legacy_rpa_etl/airflow/Dockerfile PostgreSQL/legacy_rpa_etl
+      - name: Executar DAG real com origem e destino fictícios em rede interna
+        env:
+          OLIUS_ETL_DISPOSABLE: '1'
+        run: |
+          "$RUNNER_TEMP/olius-scheduler-venv/bin/python" PostgreSQL/legacy_rpa_etl/airflow/tests/scheduler_check.py --repo "$GITHUB_WORKSPACE" --report coverage/scheduler-validation/report.json
+      - name: Publicar evidências agregadas do scheduler
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: legacy-scheduler-validation
+          path: coverage/scheduler-validation/report.json
+          if-no-files-found: warn
+          retention-days: 14
