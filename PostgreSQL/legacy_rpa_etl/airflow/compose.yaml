@@ -1,0 +1,63 @@
+name: olius-legacy-etl
+services:
+  metadata:
+    image: postgres:16.15
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_DB: airflow
+      POSTGRES_PASSWORD: ${AIRFLOW_METADATA_PASSWORD:?Configure o arquivo .env local}
+    volumes:
+      - metadata:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U airflow -d airflow']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+  airflow:
+    build:
+      context: ..
+      dockerfile: airflow/Dockerfile
+    command: [bash, -c, 'mkdir -p /opt/airflow/state /opt/airflow/staging && exec airflow standalone']
+    environment:
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:${AIRFLOW_METADATA_PASSWORD:?Configure .env}@metadata/airflow
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+      AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
+      AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_USERS: pedro:admin
+      AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_PASSWORDS_FILE: /opt/airflow/state/ui-passwords.json
+      AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW_FERNET_KEY:?Configure .env}
+      AIRFLOW__API_AUTH__JWT_SECRET: ${AIRFLOW_JWT_SECRET:?Configure .env}
+      PYTHONPATH: /opt/olius
+      OLIUS_STAGE_PATH: /opt/airflow/staging/legacy.sqlite
+      OLIUS_ETL_LOAD_ENABLED: ${OLIUS_ETL_LOAD_ENABLED:-false}
+      OLIUS_LEGACY_HOST: ${OLIUS_LEGACY_HOST:?Configure .env}
+      OLIUS_LEGACY_PORT: ${OLIUS_LEGACY_PORT:?Configure .env}
+      OLIUS_LEGACY_DATABASE: ${OLIUS_LEGACY_DATABASE:?Configure .env}
+      OLIUS_LEGACY_USER: olius_legacy_reader
+      OLIUS_LEGACY_CA: /run/secrets/source_ca
+    ports:
+      - '127.0.0.1:8088:8080'
+    volumes:
+      - ./dags:/opt/airflow/dags:ro
+      - ../pipeline.py:/opt/olius/pipeline.py:ro
+      - ../credentials.py:/opt/olius/credentials.py:ro
+      - ../loader.py:/opt/olius/loader.py:ro
+      - ../connections.py:/opt/olius/connections.py:ro
+      - airflow-home:/opt/airflow
+    secrets:
+      - source_ca
+      - source_pgpass
+      - credential_key
+    depends_on:
+      metadata:
+        condition: service_healthy
+secrets:
+  source_ca:
+    file: ${OLIUS_LEGACY_CA_FILE:?Configure .env}
+  source_pgpass:
+    file: ${OLIUS_LEGACY_PGPASS_FILE:?Configure .env}
+  credential_key:
+    file: ${OLIUS_CREDENTIAL_KEY_FILE:?Configure chave exclusiva do staging}
+volumes:
+  metadata:
+  airflow-home:
