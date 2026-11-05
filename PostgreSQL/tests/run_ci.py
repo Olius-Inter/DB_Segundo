@@ -90,6 +90,7 @@ def main():
         sql_file("PostgreSQL/tests/notifications_migration_regression.sql")
         execute("schedule-idempotency-migration-parity", [sys.executable, "-m", "unittest", "discover", "-s", str(TESTS), "-p", "test_schedule_idempotency_migration.py", "-v"])
         sql_file("PostgreSQL/tests/schedule_idempotency_migration_regression.sql")
+        execute("schedule-idempotency-access-review", [sys.executable, str(TESTS / "schedule_idempotency_access_review.py")])
 
     # Este teste reaplica ALTER OWNER/SECURITY/search_path nas rotinas, invalidando
     # seus perfis. Executar antes de iniciar a medição para preservar os cenários

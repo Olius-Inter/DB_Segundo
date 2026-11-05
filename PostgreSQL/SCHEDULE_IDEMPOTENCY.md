@@ -31,6 +31,30 @@ chave não obtêm a proteção contra reenvios antigos. A Core precisa usar o wr
 Ao atualizar o script 04, a nova rotina utiliza CREATE OR REPLACE como as demais.
 Seguir o processo existente de reaplicação de permissões após atualização de rotinas.
 
+## Isolamento e reenvio da transação
+
+READ COMMITTED reconhece a chave após o bloqueio da solicitação. Em REPEATABLE
+READ, um comando sem mudança de horário pode encontrar uma chave confirmada por
+outra transação que ainda não é visível no snapshot. Somente a colisão da PK
+collection_schedule_command_pkey é convertida de 23505 para 40001. Outras violações
+de unicidade mantêm seu erro original; não há ON CONFLICT DO NOTHING no wrapper.
+
+Ao receber 40001 (inclusive os emitidos naturalmente por níveis de isolamento mais
+fortes), a Core deve desfazer e repetir a TRANSAÇÃO INTEIRA em nova transação,
+com tentativas limitadas, mesma chave e mesmo payload. Repetir dentro do mesmo
+snapshot não resolve a invisibilidade. A nova tentativa compara os campos:
+igualdade retorna sem alteração e divergência continua produzindo 22000.
+Não considerar 40001 como sucesso nem como confirmação de aceite do comando.
+Referência: [isolamento no PostgreSQL 16](https://www.postgresql.org/docs/16/transaction-iso.html).
+
+Instalação e migração validam a ACL do wrapper antes de conceder EXECUTE à API.
+Concessões explícitas a outros destinatários, incluindo olius_reader, ou sobrecargas
+não revisadas interrompem a implantação com 42501 e rollback. Revisar/remover a
+concessão indevida ou o default privilege e repetir; não ignorar a falha. A checagem
+não elimina permissões de terceiros silenciosamente. CREATE OR REPLACE preserva
+ACLs, por isso somente revogar PUBLIC não resolve concessões explícitas anteriores.
+Referência: [CREATE PROCEDURE](https://www.postgresql.org/docs/16/sql-createprocedure.html).
+
 ## Implantação
 
 Instalação nova: seguir scripts principais, catálogo e controle de acesso na ordem

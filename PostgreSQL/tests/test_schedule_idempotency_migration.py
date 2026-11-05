@@ -18,6 +18,8 @@ class ScheduleIdempotencyMigrationTests(unittest.TestCase):
                      routines.rindex("COMMIT;")].strip(),
             catalog[catalog.index("-- Comandos de agendamento identificados"):
                     catalog.index("-- Descoberta genérica preserva")].strip(),
+            roles[roles.index("-- Falhar fechado em ACLs extras"):
+                  roles.index("END $schedule_once_acl$;") + len("END $schedule_once_acl$;")].strip(),
             "GRANT EXECUTE ON PROCEDURE public.schedule_collection_request_once(UUID,TIMESTAMPTZ,TIMESTAMPTZ,UUID,TEXT,UUID) TO olius_api;",
         ]
         for block in blocks:

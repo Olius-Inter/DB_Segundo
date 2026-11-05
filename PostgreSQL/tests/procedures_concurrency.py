@@ -200,3 +200,50 @@ query("SELECT olius_test.assert((SELECT scheduled_at='%s' FROM public.collection
       "AND (SELECT count(*)=2 FROM public.notification WHERE resource_id='%s'),"
       "'reenvio antigo após disputa preserva agenda e avisos');" % (revised_at, req, req, req))
 print("PASS: quatro cenários concorrentes de idempotência de agendamento")
+
+
+# RR fixes its snapshot before another transaction commits a same-time command.
+def repeatable_read_noop(divergent_payload=False):
+    request = schedule_request()
+    query(schedule_command(request, query("SELECT gen_random_uuid();"), schedule_at, agreed_at))
+    retry_key = query("SELECT gen_random_uuid();")
+    original = schedule_command(request, retry_key, schedule_at, agreed_at, 'RR no-op')
+    retried = schedule_command(request, retry_key, schedule_at, agreed_at,
+                               'RR changed reason' if divergent_payload else 'RR no-op')
+    session = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                               stderr=subprocess.PIPE, text=True, bufsize=1, **process_options)
+    try:
+        session.stdin.write("BEGIN ISOLATION LEVEL REPEATABLE READ; SET statement_timeout='15s'; "
+                            "SET SESSION AUTHORIZATION olius_core_api; SELECT count(*) FROM collection_request;\n"
+                            "\\echo SNAPSHOT_READY\n")
+        session.stdin.flush()
+        while True:
+            line = session.stdout.readline()
+            if line.strip() == 'SNAPSHOT_READY':
+                break
+            if not line:
+                raise RuntimeError(session.stderr.read())
+        query(original)
+        _, error = session.communicate(retried + "\nCOMMIT;\n", timeout=30)
+        if session.returncode == 0 or '40001' not in error:
+            raise AssertionError('Stale snapshot must require full transaction retry: ' + error)
+        # A fresh transaction must compare the payload, not silently discard a conflict.
+        fresh = subprocess.run(command, input=retried, text=True, capture_output=True,
+                               timeout=30, **process_options)
+        if divergent_payload:
+            if fresh.returncode == 0 or '22000' not in fresh.stderr:
+                raise AssertionError('Divergent payload must remain a conflict: ' + fresh.stderr)
+        elif fresh.returncode:
+            raise RuntimeError(fresh.stderr)
+        query("SELECT olius_test.assert((SELECT count(*)=2 FROM collection_schedule_command WHERE request_id='%s') "
+              "AND (SELECT count(*)=1 FROM collection_schedule_history WHERE collection_request_id='%s'),"
+              "'RR retry preserves commands and history');" % (request, request))
+    finally:
+        if session.poll() is None:
+            session.kill()
+        session.wait()
+
+
+repeatable_read_noop()
+repeatable_read_noop(divergent_payload=True)
+print('PASS: REPEATABLE READ no-op returns 40001; fresh retry validates identical and divergent payloads')

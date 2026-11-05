@@ -75,5 +75,26 @@ SELECT olius_test.assert(NOT EXISTS(SELECT 1 FROM public.collection_schedule_com
 SELECT olius_test.assert(NOT has_function_privilege('olius_reader',
     'public.schedule_collection_request_once(uuid,timestamptz,timestamptz,uuid,text,uuid)','EXECUTE'),
     'leitor sem execução');
+
+-- Uma violação de unicidade diferente não deve ser reclassificada como retry.
+CREATE FUNCTION olius_test.other_schedule_unique() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+    IF NEW.reason='Unrelated uniqueness' THEN
+        RAISE EXCEPTION 'Fixture unrelated unique' USING ERRCODE='23505',CONSTRAINT='fixture_other_unique';
+    END IF;
+    RETURN NEW;
+END $$;
+CREATE TRIGGER fixture_schedule_unique BEFORE INSERT ON public.collection_schedule_command
+    FOR EACH ROW EXECUTE FUNCTION olius_test.other_schedule_unique();
+SET LOCAL SESSION AUTHORIZATION olius_api;
+SELECT olius_test.expect_error(format(
+    'CALL public.schedule_collection_request_once(%L,%L,%L,%L,%L,%L)',
+    (SELECT id FROM public.collection_request ORDER BY request_at DESC LIMIT 1),
+    CURRENT_TIMESTAMP+INTERVAL '8 days',CURRENT_TIMESTAMP,olius_test.id('admin'),
+    'Unrelated uniqueness',gen_random_uuid()),'23505');
+RESET SESSION AUTHORIZATION;
+SELECT olius_test.assert((SELECT count(*)=4 FROM public.collection_schedule_command),
+    'falha não relacionada não deixa comando parcial');
+
 ROLLBACK;
 \echo 'PASS: late retries, conflicts, no-op keys, rollback and API permissions'

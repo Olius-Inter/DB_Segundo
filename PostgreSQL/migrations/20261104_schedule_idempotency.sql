@@ -22,6 +22,7 @@ AS $schedule_once$
 DECLARE
     v_command public.collection_schedule_command%ROWTYPE;
     v_request_at TIMESTAMPTZ;
+    v_constraint TEXT;
 BEGIN
     IF p_key IS NULL THEN
         RAISE EXCEPTION 'Chave de idempotencia obrigatoria.' USING ERRCODE = '22023';
@@ -55,12 +56,40 @@ BEGIN
 
     CALL public.schedule_collection_request(
         p_request_id, p_scheduled_at, p_agreed_at, p_admin_id, p_reason);
-    INSERT INTO public.collection_schedule_command
-        (request_id, idempotency_key, scheduled_at, agreed_at, admin_id, reason)
-    VALUES (p_request_id, p_key, p_scheduled_at, p_agreed_at, p_admin_id, btrim(p_reason));
+    BEGIN
+        INSERT INTO public.collection_schedule_command
+            (request_id, idempotency_key, scheduled_at, agreed_at, admin_id, reason)
+        VALUES (p_request_id, p_key, p_scheduled_at, p_agreed_at, p_admin_id, btrim(p_reason));
+    EXCEPTION WHEN unique_violation THEN
+        GET STACKED DIAGNOSTICS v_constraint = CONSTRAINT_NAME;
+        IF v_constraint IS DISTINCT FROM 'collection_schedule_command_pkey' THEN
+            RAISE;
+        END IF;
+        -- Snapshot antigo pode não enxergar um comando confirmado; não aceitar sem comparar.
+        RAISE EXCEPTION 'Conflito concorrente de agendamento; repita a transação completa com a mesma chave e dados.'
+            USING ERRCODE = '40001';
+    END;
 END;
 $schedule_once$;
 REVOKE ALL ON PROCEDURE public.schedule_collection_request_once(UUID,TIMESTAMPTZ,TIMESTAMPTZ,UUID,TEXT,UUID) FROM PUBLIC;
+
+-- Falhar fechado em ACLs extras: REVOKE de PUBLIC não remove concessões explícitas.
+DO $schedule_once_acl$
+DECLARE r RECORD;
+BEGIN
+    IF (SELECT count(*) FROM pg_catalog.pg_proc WHERE pronamespace='public'::regnamespace
+        AND proname='schedule_collection_request_once') <> 1 THEN
+        RAISE EXCEPTION 'Sobrecarga de agendamento idempotente não revisada.' USING ERRCODE='42501';
+    END IF;
+    SELECT proowner,proacl INTO STRICT r FROM pg_catalog.pg_proc
+    WHERE oid='public.schedule_collection_request_once(uuid,timestamptz,timestamptz,uuid,text,uuid)'::regprocedure;
+    IF EXISTS(SELECT 1 FROM pg_catalog.aclexplode(coalesce(r.proacl,pg_catalog.acldefault('f',r.proowner))) a
+        WHERE a.privilege_type='EXECUTE'
+          AND a.grantee NOT IN (r.proowner,'olius_owner'::regrole,'olius_api'::regrole)) THEN
+        RAISE EXCEPTION 'Agendamento idempotente tem EXECUTE externo; revisar concessões antes de implantar.'
+            USING ERRCODE='42501';
+    END IF;
+END $schedule_once_acl$;
 
 GRANT EXECUTE ON PROCEDURE public.schedule_collection_request_once(UUID,TIMESTAMPTZ,TIMESTAMPTZ,UUID,TEXT,UUID) TO olius_api;
 
