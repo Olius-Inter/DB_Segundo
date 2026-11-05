@@ -14,14 +14,9 @@ FIELDS = {'b2b': ('legacy_b2b_id', 'email', 'establishment_type') + COMMON,
           'driver': ('legacy_driver_id', 'cpf', 'cnh') + COMMON}
 
 
-def validate_file(path, kind, source_ids=None):
-    """Report eligibility for review only; source_ids comes from a trusted snapshot.
-
-    No source lookup or destination write occurs here. Without source_ids, identity
-    correspondence is explicitly unverified even when CSV fields are valid.
-    """
+def read_records(path, kind):
+    """Private values are returned only to the local preparation process."""
     fields = FIELDS[kind]
-    reasons = Counter()
     records = []
     with open(path, encoding='utf-8-sig', newline='') as stream:
         reader = csv.DictReader(stream, delimiter=';', strict=True)
@@ -31,6 +26,21 @@ def validate_file(path, kind, source_ids=None):
             if None in row or any(value is None for value in row.values()):
                 raise ValueError('Unexpected complement CSV column count')
             records.append({name: value.strip() for name, value in row.items()})
+    return records
+
+
+def validate_file(path, kind, source_ids=None):
+    """Report eligibility for review only; source_ids comes from a trusted snapshot.
+
+    No source lookup or destination write occurs here. Without source_ids, identity
+    correspondence is explicitly unverified even when CSV fields are valid.
+    """
+    return validate_records(read_records(path, kind), kind, source_ids)
+
+
+def validate_records(records, kind, source_ids=None):
+    fields = FIELDS[kind]
+    reasons = Counter()
     id_field = fields[0]
     ids = Counter(row[id_field] for row in records)
     emails = Counter(row['email'].rsplit('@', 1)[0] + '@' + row['email'].rsplit('@', 1)[-1].lower()

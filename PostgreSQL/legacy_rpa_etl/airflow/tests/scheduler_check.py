@@ -129,6 +129,8 @@ def main():
                 sql('olius_target', file='PostgreSQL/data_catalog/' + name)
             sql('olius_target', file='PostgreSQL/access_control/01_roles.sql')
             sql('olius_target', file='PostgreSQL/legacy_rpa_etl/01_destination_control.sql')
+            sql('olius_target', file='PostgreSQL/legacy_rpa_etl/02_extended_destination_control.sql')
+            sql('olius_target', "INSERT INTO establishment_type(name) VALUES('Restaurante');")
             sql('olius_target', f"CREATE ROLE etl_maintenance LOGIN PASSWORD '{password}';\n"
                 'GRANT olius_owner TO etl_maintenance; GRANT CONNECT ON DATABASE olius_target TO etl_maintenance;')
             # Same algorithm/shape as the legacy; never uses a real user's password/hash.
@@ -137,12 +139,27 @@ def main():
             encoded = 'pbkdf2$120000$' + base64.b64encode(salt).decode() + '$' + base64.b64encode(digest).decode()
             tables = ['ADM','ATUALIZACAO','B2B','CARTEIRA','CERTIFICADO','COLETA','ENDERECO',
                       'ENTREGA_PEV','MOTORISTA','MOVIMENTACAO_PONTOS','PEV','SOLICITACAO_COLETA']
+            tables = [table for table in tables if table not in ('B2B', 'MOTORISTA', 'ENDERECO')]
             source_sql = '\n'.join(f'CREATE TABLE public."{table}"(id int PRIMARY KEY,nota text);' for table in tables)
             source_sql += '''
                 CREATE TABLE public."USUARIO"("ID_usuario" int PRIMARY KEY,nome text,email text,
                     telefone text,primeiro_registro date,tipo_usuario text,senha text);
                 CREATE TABLE public."B2C"("ID_B2C" int PRIMARY KEY,"ID_usuario" int,"CPF" text);
             '''
+            source_sql += """
+                CREATE TABLE public."B2B"("ID_B2B" int PRIMARY KEY,"CNPJ" text,"ID_endereco" int,
+                    nome_empresa text,telefone text,"ID_usuario" int);
+                INSERT INTO public."B2B" VALUES(1,'11222333000181',1,'Fixture business','11999999999',NULL);
+                CREATE TABLE public."ENDERECO"("ID_endereco" int PRIMARY KEY,rua text,cidade text,bairro text,
+                    cep text,numero text,complemento text,estado text);
+                INSERT INTO public."ENDERECO" VALUES(1,'Fixture street','Fixture city','Fixture area','01001000','1',NULL,'SP');
+                CREATE TABLE public."MOTORISTA"("ID_motorista" int PRIMARY KEY,nome text,status text);
+                INSERT INTO public."MOTORISTA" VALUES(1,'Fixture driver','Ocupado');
+            """
+            (secure / 'b2b.csv').write_text('legacy_b2b_id;email;establishment_type;account_status;confirmed_by;confirmed_at\n'
+                '1;fixture-business@example.invalid;Restaurante;ACTIVE;Fixture;2026-01-01\n', encoding='utf-8')
+            (secure / 'drivers.csv').write_text('legacy_driver_id;cpf;cnh;account_status;confirmed_by;confirmed_at\n'
+                '1;11144477735;01234567890;ACTIVE;Fixture;2026-01-01\n', encoding='utf-8')
             for ident, cpf in ((1, '52998224725'), (2, 'aesgcm$fixture-unavailable-key')):
                 source_sql += f'''INSERT INTO public."USUARIO" VALUES({ident},'Scheduler fixture',
                     'scheduler-{ident}@example.invalid','11999999999','2025-01-01','B2C','{encoded}');
@@ -169,14 +186,16 @@ def main():
                 'OLIUS_TARGET_USER': 'etl_maintenance', 'OLIUS_TARGET_CA': '/run/secrets/ca.pem',
                 'OLIUS_TARGET_PGPASS': '/run/secrets/target_pgpass',
                 'OLIUS_ETL_CONFIRMED_TARGET': f'{db}:5432/olius_target',
-                'OLIUS_ETL_ARCHIVE_ENABLED': 'true'}
+                'OLIUS_ETL_ARCHIVE_ENABLED': 'true', 'OLIUS_ETL_EXTENDED_LOAD_ENABLED': 'true',
+                'OLIUS_B2B_COMPLEMENT_FILE': '/run/secrets/b2b.csv',
+                'OLIUS_DRIVER_COMPLEMENT_FILE': '/run/secrets/drivers.csv'}
             arguments = ['run', '-d', '--name', airflow, '--label', label, '--network', network,
                          '--mount', f'type=volume,source={volume},target=/opt/airflow',
                          '--mount', f'type=bind,source={secure},target=/run/secrets,readonly',
                          '--mount', f'type=bind,source={etl / "airflow/dags"},target=/opt/airflow/dags,readonly']
             if hasattr(os, 'getgid'):
                 arguments += ['--group-add', str(os.getgid())]
-            for module in ('pipeline.py','credentials.py','loader.py','connections.py','archive.py'):
+            for module in ('pipeline.py','credentials.py','loader.py','connections.py','archive.py','complements.py','extended.py'):
                 arguments += ['--mount', f'type=bind,source={etl / module},target=/opt/olius/{module},readonly']
             for name, path in outputs.items():
                 arguments += ['--mount', f'type=bind,source={path},target=/opt/olius-history/{name}']
@@ -208,10 +227,10 @@ def main():
                 return {'state': state, 'tasks': task_states.splitlines()}
 
             result_report['initial'] = run('scheduler-fixture-initial', 'success')
-            assert sql('olius_target', 'SELECT count(*) FROM users;') == '1'
+            assert sql('olius_target', 'SELECT count(*) FROM users;') == '2'
             sql('olius_target', "UPDATE users SET name='Edited fixture',password_hash='changed-fixture-hash';")
             result_report['repeat'] = run('scheduler-fixture-repeat', 'success')
-            assert sql('olius_target', "SELECT count(*) FROM users WHERE name='Edited fixture' AND password_hash='changed-fixture-hash';") == '1'
+            assert sql('olius_target', "SELECT count(*) FROM users WHERE name='Edited fixture' AND password_hash='changed-fixture-hash';") == '2'
             assert sql('olius_target', 'SELECT count(*) FROM olius_etl.citizen_import;') == '1'
             sql('legacy_fixture', f'''INSERT INTO public."USUARIO" VALUES(3,'New fixture',
                 'scheduler-3@example.invalid','11999999999','2025-01-01','B2C','{encoded}');
@@ -222,12 +241,14 @@ def main():
                 CREATE TRIGGER fixture_reject BEFORE INSERT ON public.users FOR EACH ROW EXECUTE FUNCTION public.fixture_reject();''')
             result_report['failure'] = run('scheduler-fixture-failure', 'failed')
             assert 'archive_history:success' in result_report['failure']['tasks']
-            assert sql('olius_target', 'SELECT count(*) FROM users;') == '1'
+            assert sql('olius_target', 'SELECT count(*) FROM users;') == '2'
             assert sql('olius_target', "SELECT count(*) FROM users_log WHERE email='scheduler-3@example.invalid';") == '0'
             sql('olius_target', 'DROP TRIGGER fixture_reject ON public.users; DROP FUNCTION public.fixture_reject();')
             result_report['recovery'] = run('scheduler-fixture-recovery', 'success')
-            assert sql('olius_target', 'SELECT count(*) FROM users;') == '2'
+            assert sql('olius_target', 'SELECT count(*) FROM users;') == '3'
             assert sql('olius_target', 'SELECT count(*) FROM olius_etl.citizen_import;') == '2'
+            assert sql('olius_target', 'SELECT count(*) FROM olius_etl.establishment_import;') == '1'
+            assert sql('olius_target', 'SELECT count(*) FROM olius_etl.driver_import;') == '1'
             assert sql('olius_target', 'SELECT count(*) FROM point_transaction;') == '0'
             assert sql('olius_target', 'SELECT count(*) FROM auth_session;') == '0'
             reports = list(outputs['reports'].glob('*.json'))
@@ -237,6 +258,7 @@ def main():
                 assert '@example.invalid' not in text and 'pbkdf2$' not in text and 'aesgcm$' not in text
                 assert json.loads(text)['local_backup_verified'] is True
             result_report.update(shared_reports=len(reports), imported_citizens=2,
+                                 imported_establishments=1, imported_drivers=1,
                                  cpf_without_key_rejected=True, backup_verified=True)
             report_path = Path(args.report).resolve()
             report_path.parent.mkdir(parents=True, exist_ok=True)

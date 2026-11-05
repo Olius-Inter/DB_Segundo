@@ -55,7 +55,8 @@ def main():
         paths += ['PostgreSQL/data_catalog/' + f for f in
                   ['01_structure.sql','02_check_constraints.sql','03_view.sql','04_load.sql']]
         paths += ['PostgreSQL/access_control/01_roles.sql',
-                  'PostgreSQL/legacy_rpa_etl/01_destination_control.sql']
+                  'PostgreSQL/legacy_rpa_etl/01_destination_control.sql',
+                  'PostgreSQL/legacy_rpa_etl/02_extended_destination_control.sql']
         for path in paths:
             docker('exec', name, 'psql', '-X', '-v', 'ON_ERROR_STOP=1', '-U', 'postgres',
                    '-d', 'olius_test', '-f', '/workspace/' + path)
@@ -182,6 +183,9 @@ def main():
                 assert stage.execute('SELECT status FROM load_results').fetchone()[0] == 'ALREADY_IMPORTED'
             finally:
                 stage.close()
+        from test_extended import exercise_destination
+        exercise_destination(operator_connect)
+        print('PASS: B2B and driver load, password preservation, reconciliation, conflicts and rollback')
         print('PASS: insert, rerun, app changes, source conflict, rollback with audit, concurrent rerun, sealed load and reconciliation')
         print('PASS: real read-only extraction, encrypted B2C-only credential transport, non-superuser destination, end-to-end repeat')
     finally:

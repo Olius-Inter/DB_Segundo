@@ -34,6 +34,8 @@ def history(stage, run_id, version, evaluation_date=None):
         candidate = json.loads(raw[0])
         imported_citizens.add(str(candidate['legacy_citizen_id']))
         imported_users.add(str(candidate['legacy_user_id']))
+    imported_extended = set(stage.execute("SELECT kind,source_id FROM extended_results WHERE run_id=? "
+                                          "AND status IN ('IMPORTED','ALREADY_IMPORTED')", (run_id,)))
     items = []
     counts = Counter()
     for table, source_id, raw in stage.execute('''SELECT source_table,source_id,payload
@@ -42,6 +44,10 @@ def history(stage, run_id, version, evaluation_date=None):
             continue
         payload = sanitize(json.loads(raw))
         reason = 'NOT_IMPORTED_OR_NO_APPROVED_OPERATIONAL_MAPPING'
+        kind = {'B2B': 'b2b', 'MOTORISTA': 'driver'}.get(table)
+        if (kind, source_id) in imported_extended:
+            # Plano, empresa_resp, telefone and other unmapped facts still need preservation.
+            reason = 'CADASTRO_IMPORTED_WITH_UNMAPPED_LEGACY_FIELDS'
         if table == 'USUARIO' and source_id in imported_users:
             # Citizens have no personal address in the new model. Preserve this
             # otherwise-lost link without duplicating the imported account profile.
@@ -57,7 +63,7 @@ def history(stage, run_id, version, evaluation_date=None):
                'extracted_at': run[0], 'source_system': run[1],
                'retention_deadline': deadline, 'records': items,
                'notice': 'Historical evidence only; not valid app operations or points. '
-                         'Encrypted source CPF values remain encrypted; original CPF key pending.'}
+                         'Encrypted source CPF values remain encrypted; decryption requires the original key kept separately.'}
     # No raw identifiers, source host, payloads, names, emails, CPF or credentials.
     public = {'format_version': 1, 'run_id': run_id, 'archive_version': version,
               'retention_deadline': deadline, 'historical_records': len(items),

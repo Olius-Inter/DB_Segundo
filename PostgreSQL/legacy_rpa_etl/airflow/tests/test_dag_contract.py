@@ -77,6 +77,24 @@ class DagContractTests(unittest.TestCase):
             prepared.assert_called_once_with(opened.return_value, 'batch', b'fixture-key')
             opened.return_value.close.assert_called_once()
 
+    def test_extended_preparation_loading_and_reconciliation_are_opt_in(self):
+        environment = {'OLIUS_STAGE_PATH': 'fixture', 'OLIUS_B2B_COMPLEMENT_FILE': '/private/b2b',
+                       'OLIUS_DRIVER_COMPLEMENT_FILE': '/private/drivers',
+                       'OLIUS_ETL_LOAD_ENABLED': 'true', 'OLIUS_ETL_EXTENDED_LOAD_ENABLED': 'true'}
+        with patch.dict(os.environ, environment), patch('pipeline.open_stage') as opened, \
+             patch('pipeline.prepare'), patch('extended.prepare_extended') as prepared, \
+             patch('extended.run_extended') as loaded, patch('loader.load'), patch('loader.reconcile'), \
+             patch('pipeline.report', return_value={}), \
+             patch('pathlib.Path.read_bytes', return_value=Fernet.generate_key()), \
+             redirect_stdout(io.StringIO()):
+            self.call('prepare_citizens', 'batch')
+            self.assertEqual(prepared.call_count, 2)
+            self.call('load_citizens', 'batch')
+            loaded.assert_called_once()
+            self.call('reconcile_destination', 'batch')
+            self.assertTrue(loaded.call_args.kwargs['reconcile_only'])
+            self.assertEqual(loaded.call_count, 2)
+
     def test_load_reconciliation_and_archive_delegate_without_exposing_secrets(self):
         environment = {'OLIUS_STAGE_PATH': 'fixture', 'OLIUS_ETL_LOAD_ENABLED': 'true',
                        'OLIUS_ETL_ARCHIVE_ENABLED': 'true'}

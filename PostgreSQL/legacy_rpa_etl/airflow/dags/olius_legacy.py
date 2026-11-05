@@ -52,6 +52,12 @@ def legacy_preparation():
         try:
             key_path = os.environ.get('OLIUS_LEGACY_CPF_KEY_FILE')
             prepare(stage, batch_id, read_cpf_key(key_path) if key_path else None)
+            for kind, variable in (('b2b', 'OLIUS_B2B_COMPLEMENT_FILE'),
+                                   ('driver', 'OLIUS_DRIVER_COMPLEMENT_FILE')):
+                path = os.environ.get(variable)
+                if path:
+                    from extended import prepare_extended
+                    prepare_extended(stage, batch_id, kind, path)
             return batch_id
         except Exception as exc:
             raise RuntimeError('Legacy preparation failed: ' + type(exc).__name__) from None
@@ -80,6 +86,9 @@ def legacy_preparation():
         try:
             load(stage, batch_id, Path('/run/secrets/credential_key').read_bytes().strip(),
                  destination_connection, enabled=True)
+            if os.environ.get('OLIUS_ETL_EXTENDED_LOAD_ENABLED') == 'true':
+                from extended import run_extended
+                run_extended(stage, batch_id, destination_connection, enabled=True)
             return batch_id
         except Exception as exc:
             raise RuntimeError('Destination loading failed: ' + type(exc).__name__) from None
@@ -94,6 +103,9 @@ def legacy_preparation():
         stage = open_stage(os.environ['OLIUS_STAGE_PATH'])
         try:
             reconcile(stage, batch_id, destination_connection)
+            if os.environ.get('OLIUS_ETL_EXTENDED_LOAD_ENABLED') == 'true':
+                from extended import run_extended
+                run_extended(stage, batch_id, destination_connection, enabled=True, reconcile_only=True)
             print(json.dumps(report(stage, batch_id)))
         except Exception as exc:
             raise RuntimeError('Destination reconciliation failed: ' + type(exc).__name__) from None

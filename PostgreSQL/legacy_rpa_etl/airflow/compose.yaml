@@ -47,6 +47,8 @@ services:
       - ../loader.py:/opt/olius/loader.py:ro
       - ../connections.py:/opt/olius/connections.py:ro
       - ../archive.py:/opt/olius/archive.py:ro
+      - ../complements.py:/opt/olius/complements.py:ro
+      - ../extended.py:/opt/olius/extended.py:ro
       - airflow-home:/opt/airflow
     secrets:
       - source_ca

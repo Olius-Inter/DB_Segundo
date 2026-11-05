@@ -23,9 +23,14 @@ class ComposeTests(unittest.TestCase):
                                OLIUS_ETL_CONFIRMED_TARGET='target.invalid:5432/target',
                                OLIUS_HISTORY_KEY_FILE=str(empty_env), OLIUS_HISTORY_PRIVATE_DIR=folder,
                                OLIUS_HISTORY_BACKUP_DIR=folder, OLIUS_HISTORY_REPORT_DIR=folder,
-                               OLIUS_ETL_LOAD_ENABLED='false', OLIUS_ETL_ARCHIVE_ENABLED='false')
+                               OLIUS_ETL_LOAD_ENABLED='false', OLIUS_ETL_ARCHIVE_ENABLED='false',
+                               OLIUS_LEGACY_CPF_KEY_HOST_FILE=str(empty_env),
+                               OLIUS_B2B_COMPLEMENT_HOST_FILE=str(empty_env),
+                               OLIUS_DRIVER_COMPLEMENT_HOST_FILE=str(empty_env))
             for extras in [[], ['compose.load.yaml'], ['compose.archive.yaml'],
-                           ['compose.load.yaml', 'compose.archive.yaml']]:
+                           ['compose.load.yaml', 'compose.archive.yaml'],
+                           ['compose.cpf.yaml'], ['compose.extended.yaml'],
+                           ['compose.load.yaml', 'compose.archive.yaml', 'compose.cpf.yaml', 'compose.extended.yaml']]:
                 command = ['docker', 'compose', '--env-file', str(empty_env), '-f', str(compose / 'compose.yaml')]
                 for extra in extras:
                     command += ['-f', str(compose / extra)]

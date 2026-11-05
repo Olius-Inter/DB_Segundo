@@ -36,6 +36,14 @@ def open_stage(path):
             ciphertext BLOB NOT NULL, PRIMARY KEY(run_id,user_id));
         CREATE TABLE IF NOT EXISTS credential_batches (
             run_id TEXT PRIMARY KEY REFERENCES runs(id));
+        CREATE TABLE IF NOT EXISTS extended_candidates (
+            run_id TEXT NOT NULL REFERENCES runs(id), kind TEXT NOT NULL,
+            source_id TEXT NOT NULL, status TEXT NOT NULL, reasons TEXT NOT NULL,
+            payload TEXT NOT NULL, PRIMARY KEY(run_id,kind,source_id));
+        CREATE TABLE IF NOT EXISTS extended_results (
+            run_id TEXT NOT NULL REFERENCES runs(id), kind TEXT NOT NULL,
+            source_id TEXT NOT NULL, status TEXT NOT NULL, destination_id TEXT,
+            target TEXT NOT NULL, PRIMARY KEY(run_id,kind,source_id));
         CREATE TABLE IF NOT EXISTS load_results (
             run_id TEXT NOT NULL REFERENCES runs(id), source_id TEXT NOT NULL,
             status TEXT NOT NULL, destination_id TEXT, target TEXT NOT NULL,
@@ -173,7 +181,8 @@ def prepare(stage, run_id, cpf_key=None):
     email_keys = [(str(row['email']).split('@')[0], str(row['email']).split('@')[-1].lower())
                   for row in users.values()]
     with stage:
-        if stage.execute('SELECT 1 FROM load_results WHERE run_id=? LIMIT 1', (run_id,)).fetchone():
+        if (stage.execute('SELECT 1 FROM load_results WHERE run_id=? LIMIT 1', (run_id,)).fetchone()
+                or stage.execute('SELECT 1 FROM extended_results WHERE run_id=? LIMIT 1', (run_id,)).fetchone()):
             raise ValueError('Cannot prepare an already attempted load; use load to resume')
         stage.execute('DELETE FROM candidates WHERE run_id=?', (run_id,))
         for citizen, (cpf, cpf_reason) in zip(citizens, decoded):
