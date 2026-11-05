@@ -207,7 +207,7 @@ SELECT 'public', 'notification', 'Notificações',
     'Avisos persistentes para mudanças de status de PEV e agendamentos B2B.',
     'Gerados por triggers na transação de origem. Unicidade por destinatário, tipo e evento. Exclusão do usuário remove os avisos por FK; prazo de retenção pendente de decisão.',
     'olius_owner mantém o objeto. olius_api consulta e atualiza somente read_at; a Core aplica titularidade e preserva a primeira leitura. Inserção pelas triggers. Leitores, BI e ranking sem acesso.',
-    'DEFINED', '01_structure.sql; 03_indexes.sql; 05_triggers.sql; access_control/01_roles.sql'
+    'DEFINED', '01_structure.sql; 02_check_constraints.sql; 03_indexes.sql; 05_triggers.sql; access_control/01_roles.sql'
 WHERE to_regclass('public.notification') IS NOT NULL
 ON CONFLICT (schema_name, table_name) DO UPDATE SET
     domain_name = EXCLUDED.domain_name, description = EXCLUDED.description,
@@ -229,7 +229,7 @@ WITH columns(column_name, description) AS (VALUES
 )
 INSERT INTO public.data_catalog_column
     (table_catalog_id, column_name, description, documentation_status, source_reference)
-SELECT d.id, s.column_name, s.description, 'DOCUMENTED', '01_structure.sql; 05_triggers.sql; access_control/01_roles.sql'
+SELECT d.id, s.column_name, s.description, 'DOCUMENTED', '01_structure.sql; 02_check_constraints.sql; 05_triggers.sql; access_control/01_roles.sql'
 FROM columns s JOIN public.data_catalog_table d
     ON d.schema_name = 'public' AND d.table_name = 'notification'
 JOIN pg_catalog.pg_attribute a ON a.attrelid = to_regclass('public.notification')
