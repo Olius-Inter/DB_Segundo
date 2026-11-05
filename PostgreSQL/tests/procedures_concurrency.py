@@ -146,3 +146,57 @@ req=visit_request()
 normal="CALL record_collection('%s',olius_test.id('driver'),0,0,'NOT_ASSESSED',false,ARRAY['VOLUME_OUT_OF_TOLERANCE']::text[],NULL,clock_timestamp(),NULL);" % req
 pair("registro administrativo bloqueia registro normal",visit_call(req),normal,second_should_fail=True,expected_error="22000")
 print("PASS: cinco cenários concorrentes de visita sem atendimento")
+
+# A mesma trava do pedido serializa comandos com chave e agendamentos legados.
+query("GRANT USAGE ON SCHEMA olius_test TO olius_api; GRANT SELECT ON olius_test.ids TO olius_api;")
+
+
+def schedule_request():
+    return query("CALL public.create_collection_request(olius_test.id('est'),10,'Agenda concorrente',gen_random_uuid(),NULL);")
+
+
+def schedule_command(request, key, at, agreed, reason="Acordo concorrente"):
+    return ("SET SESSION AUTHORIZATION olius_core_api; "
+            "CALL public.schedule_collection_request_once('%s','%s','%s',olius_test.id('admin'),'%s','%s');"
+            % (request, at, agreed, reason, key))
+
+
+schedule_at = query("SELECT CURRENT_TIMESTAMP + INTERVAL '1 day';")
+revised_at = query("SELECT CURRENT_TIMESTAMP + INTERVAL '2 days';")
+agreed_at = query("SELECT CURRENT_TIMESTAMP;")
+req = schedule_request()
+key = query("SELECT gen_random_uuid();")
+action = schedule_command(req, key, schedule_at, agreed_at)
+pair("mesma chave concorrente gera um comando", action, action)
+query("SELECT olius_test.assert((SELECT count(*)=1 FROM public.collection_schedule_command WHERE request_id='%s') "
+      "AND (SELECT count(*)=1 FROM public.notification WHERE resource_id='%s'),'comando e aviso únicos');" % (req, req))
+
+req = schedule_request()
+key = query("SELECT gen_random_uuid();")
+pair("mesma chave com dados diferentes é rejeitada",
+     schedule_command(req, key, schedule_at, agreed_at),
+     schedule_command(req, key, revised_at, agreed_at),
+     second_should_fail=True, expected_error="22000")
+query("SELECT olius_test.assert((SELECT scheduled_at='%s' FROM public.collection_request WHERE id='%s'),"
+      "'conflito preserva horário original');" % (schedule_at, req))
+
+req = schedule_request()
+key = query("SELECT gen_random_uuid();")
+action = schedule_command(req, key, schedule_at, agreed_at)
+pair("rollback libera a chave para a segunda sessão", action, action, rollback_first=True)
+query("SELECT olius_test.assert((SELECT count(*)=1 FROM public.collection_schedule_command WHERE request_id='%s') "
+      "AND (SELECT count(*)=1 FROM public.collection_schedule_history WHERE collection_request_id='%s'),"
+      "'segunda sessão confirma após rollback');" % (req, req))
+
+req = schedule_request()
+key = query("SELECT gen_random_uuid();")
+second_key = query("SELECT gen_random_uuid();")
+pair("duas chaves preservam a ordem dos reagendamentos",
+     schedule_command(req, key, schedule_at, agreed_at),
+     schedule_command(req, second_key, revised_at, agreed_at))
+query(schedule_command(req, key, schedule_at, agreed_at))
+query("SELECT olius_test.assert((SELECT scheduled_at='%s' FROM public.collection_request WHERE id='%s') "
+      "AND (SELECT count(*)=2 FROM public.collection_schedule_command WHERE request_id='%s') "
+      "AND (SELECT count(*)=2 FROM public.notification WHERE resource_id='%s'),"
+      "'reenvio antigo após disputa preserva agenda e avisos');" % (revised_at, req, req, req))
+print("PASS: quatro cenários concorrentes de idempotência de agendamento")

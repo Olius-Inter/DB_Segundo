@@ -13,7 +13,9 @@ class NotificationsMigrationTests(unittest.TestCase):
         triggers = (ROOT / "05_triggers.sql").read_text(encoding="utf-8")
         roles = (ROOT / "access_control/01_roles.sql").read_text(encoding="utf-8")
         blocks = [
-            structure[structure.index("-- Central de notificações"):].strip(),
+            structure[structure.index("-- Central de notificações"):
+                      structure.index("REVOKE ALL ON public.notification FROM PUBLIC;")
+                      + len("REVOKE ALL ON public.notification FROM PUBLIC;")].strip(),
             indexes[indexes.index("CREATE INDEX idx_notification_recipient_recent"):].strip(),
             triggers[triggers.index("CREATE FUNCTION public.notify_pev_status_change"):
                      triggers.rindex("COMMIT;")].strip(),

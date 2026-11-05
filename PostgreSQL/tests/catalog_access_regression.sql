@@ -14,12 +14,12 @@ BEGIN
 END $$;
 GRANT USAGE ON SCHEMA catalog_test TO olius_owner,olius_reader,olius_catalog_editor,olius_auditor;
 
-SELECT catalog_test.assert((SELECT count(*)=64 FROM public.data_catalog_table),'64 tabelas catalogadas');
-SELECT catalog_test.assert((SELECT count(*)=896 FROM public.data_catalog_column),'896 colunas documentadas');
+SELECT catalog_test.assert((SELECT count(*)=65 FROM public.data_catalog_table),'65 tabelas catalogadas');
+SELECT catalog_test.assert((SELECT count(*)=902 FROM public.data_catalog_column),'902 colunas documentadas');
 SELECT catalog_test.assert(NOT EXISTS(SELECT 1 FROM public.data_catalog_column WHERE documentation_status='PENDING'),'sem colunas pendentes');
 SELECT catalog_test.assert(NOT EXISTS(SELECT 1 FROM public.data_catalog_table WHERE access_status='PENDING' OR domain_name='Pendente de classificação'),'sem tabelas pendentes');
-SELECT catalog_test.assert((SELECT count(*)=61 FROM (SELECT DISTINCT table_name FROM public.vw_data_catalog) t),'view exclui 3 tabelas documentais');
-SELECT catalog_test.assert((SELECT count(*)=876 FROM (SELECT DISTINCT table_name,column_name FROM public.vw_data_catalog) t),'876 colunas distintas na view');
+SELECT catalog_test.assert((SELECT count(*)=62 FROM (SELECT DISTINCT table_name FROM public.vw_data_catalog) t),'view exclui 3 tabelas documentais');
+SELECT catalog_test.assert((SELECT count(*)=882 FROM (SELECT DISTINCT table_name,column_name FROM public.vw_data_catalog) t),'882 colunas distintas na view');
 SELECT catalog_test.assert(
     (SELECT array_agg(role_name ORDER BY role_name) FROM public.data_catalog_role)
     = ARRAY['olius_api','olius_auditor','olius_bi_reader_role','olius_bi_refresh_role',
