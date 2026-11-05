@@ -13,6 +13,8 @@ import xml.etree.ElementTree as ET
 def build_report(root, routines):
     sources = {p: p.read_text(encoding="utf-8-sig").replace("\r\n", "\n")
                for p in (root / "PostgreSQL").glob("0[45]_*.sql")}
+    migrations = {p: p.read_text(encoding="utf-8-sig").replace("\r\n", "\n")
+                  for p in (root / "PostgreSQL/migrations").glob("*.sql")}
     lines = {}
     for routine in routines:
         body = routine["source"].replace("\r\n", "\n")
@@ -20,8 +22,11 @@ def build_report(root, routines):
                    if body and text.count(body) == 1]
         if len(matches) != 1:
             raise ValueError(f"Corpo não localizado de forma única no checkout: {routine['signature']}")
-        path, text, start = matches[0]
-        offset = text[:start].count("\n")
+        # O mesmo corpo medido pode estar espelhado na migração. Somente a
+        # igualdade integral permite reutilizar os contadores, sem inferir
+        # execução de preflight/DDL ou de uma versão diferente da função.
+        matches.extend((path, text, text.find(body)) for path, text in migrations.items()
+                       if text.count(body) == 1)
         body_lines = body.splitlines()
         for stmt in routine["statements"]:
             number = stmt["lineno"]
@@ -31,9 +36,11 @@ def build_report(root, routines):
                 continue
             if number > len(body_lines):
                 raise ValueError(f"Linha fora do corpo: {routine['signature']}:{number}")
-            location = (path.relative_to(root).as_posix(), offset + number)
             executed = (stmt.get("exec_stmts") or 0) > 0 or (stmt.get("exec_stmts_err") or 0) > 0
-            lines.setdefault(location, []).append(executed)
+            for path, text, start in matches:
+                offset = text[:start].count("\n")
+                location = (path.relative_to(root).as_posix(), offset + number)
+                lines.setdefault(location, []).append(executed)
     if not lines:
         raise ValueError("Nenhuma instrução mensurável encontrada; não gerar cobertura vazia.")
     report = ET.Element("coverage", version="1")

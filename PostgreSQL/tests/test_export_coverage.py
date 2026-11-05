@@ -46,6 +46,35 @@ class CoverageMappingTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             build_report(self.root, [routine])
 
+    def test_identical_migration_maps_measured_lines_and_keeps_uncovered_lines(self):
+        migrations = self.root / "PostgreSQL/migrations"
+        migrations.mkdir()
+        mirror = migrations / "test.sql"
+        mirror.write_text("-- migration\n-- preflight\n" + self.file.read_text(encoding="utf-8"),
+                          encoding="utf-8")
+        statements = [
+            {"lineno": 3, "stmtname": "RETURN", "exec_stmts": 1},
+            {"lineno": 4, "stmtname": "RETURN", "exec_stmts": 0},
+        ]
+        report, covered, total = build_report(self.root, [self.routine(statements)])
+        self.assertEqual((covered, total), (2, 4))
+        files = {node.attrib["path"]: list(node) for node in report}
+        canonical = files["PostgreSQL/04_functions_procedures.sql"]
+        mirrored = files["PostgreSQL/migrations/test.sql"]
+        self.assertEqual([node.attrib["covered"] for node in mirrored], ["true", "false"])
+        self.assertEqual([int(node.attrib["lineNumber"]) for node in mirrored],
+                         [int(node.attrib["lineNumber"]) + 2 for node in canonical])
+
+    def test_changed_migration_body_does_not_inherit_coverage(self):
+        migrations = self.root / "PostgreSQL/migrations"
+        migrations.mkdir()
+        (migrations / "test.sql").write_text(
+            self.file.read_text(encoding="utf-8").replace("RETURN 2", "RETURN 3"), encoding="utf-8")
+        statement = {"lineno": 4, "stmtname": "RETURN", "exec_stmts": 1}
+        report, covered, total = build_report(self.root, [self.routine([statement])])
+        self.assertEqual((covered, total), (1, 1))
+        self.assertEqual(len(report), 1)
+
 
 class CoverageOrchestrationTests(unittest.TestCase):
     def test_role_reinstallation_precedes_profile_inventory_and_measurement(self):
