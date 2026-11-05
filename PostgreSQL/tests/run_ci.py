@@ -86,6 +86,8 @@ def main():
 
     if has_access:
         execute("password-reset-migration", [sys.executable, str(TESTS / "password_reset_migration_regression.py")])
+        execute("notifications-migration-parity", [sys.executable, "-m", "unittest", "discover", "-s", str(TESTS), "-p", "test_notifications_migration.py", "-v"])
+        sql_file("PostgreSQL/tests/notifications_migration_regression.sql")
 
     # Este teste reaplica ALTER OWNER/SECURITY/search_path nas rotinas, invalidando
     # seus perfis. Executar antes de iniciar a medição para preservar os cenários
