@@ -207,7 +207,7 @@ SELECT 'public', 'notification', 'Notificações',
     'Avisos persistentes para mudanças de status de PEV e agendamentos B2B.',
     'Gerados por triggers na transação de origem. Unicidade por destinatário, tipo e evento. Exclusão do usuário remove os avisos por FK; prazo de retenção pendente de decisão.',
     'olius_owner mantém o objeto. olius_api consulta e atualiza somente read_at; a Core aplica titularidade e preserva a primeira leitura. Inserção pelas triggers. Leitores, BI e ranking sem acesso.',
-    'DEFINED', '01_structure.sql; 03_indexes.sql; 05_triggers.sql; access_control/01_roles.sql'
+    'DEFINED', '01_structure.sql; 02_check_constraints.sql; 03_indexes.sql; 05_triggers.sql; access_control/01_roles.sql'
 WHERE to_regclass('public.notification') IS NOT NULL
 ON CONFLICT (schema_name, table_name) DO UPDATE SET
     domain_name = EXCLUDED.domain_name, description = EXCLUDED.description,
@@ -229,7 +229,7 @@ WITH columns(column_name, description) AS (VALUES
 )
 INSERT INTO public.data_catalog_column
     (table_catalog_id, column_name, description, documentation_status, source_reference)
-SELECT d.id, s.column_name, s.description, 'DOCUMENTED', '01_structure.sql; 05_triggers.sql; access_control/01_roles.sql'
+SELECT d.id, s.column_name, s.description, 'DOCUMENTED', '01_structure.sql; 02_check_constraints.sql; 05_triggers.sql; access_control/01_roles.sql'
 FROM columns s JOIN public.data_catalog_table d
     ON d.schema_name = 'public' AND d.table_name = 'notification'
 JOIN pg_catalog.pg_attribute a ON a.attrelid = to_regclass('public.notification')
@@ -239,14 +239,14 @@ ON CONFLICT (table_catalog_id, column_name) DO UPDATE SET
     source_reference = EXCLUDED.source_reference
 WHERE data_catalog_column.documentation_status = 'PENDING';
 
--- Tabelas futuras são descobertas, sem inventar sua finalidade ou acesso.
+-- Comandos de agendamento identificados: documentação da proteção contra reenvios.
 INSERT INTO public.data_catalog_table
     (schema_name, table_name, domain_name, description, business_rules, access_policy, access_status, source_reference)
 SELECT 'public', 'collection_schedule_command', 'Coletas B2B',
     'Comandos de agendamento identificados pela solicitação e chave de idempotência.',
     'Reenvio idêntico preserva a agenda atual; dados diferentes para a mesma chave são rejeitados. Comando sem mudança também guarda a chave. Retenção das chaves pendente de decisão.',
     'olius_owner mantém o objeto. Core usa EXECUTE em schedule_collection_request_once; sem acesso direto da API, leitores, BI ou ranking.',
-    'DEFINED', 'migrations/20261104_schedule_idempotency.sql; access_control/01_roles.sql'
+    'DEFINED', '01_structure.sql; 04_functions_procedures.sql; access_control/01_roles.sql'
 WHERE to_regclass('public.collection_schedule_command') IS NOT NULL
 ON CONFLICT (schema_name, table_name) DO UPDATE SET
     domain_name = EXCLUDED.domain_name, description = EXCLUDED.description,
@@ -264,7 +264,7 @@ WITH command_columns(column_name, description) AS (VALUES
 )
 INSERT INTO public.data_catalog_column
     (table_catalog_id, column_name, description, documentation_status, source_reference)
-SELECT d.id, s.column_name, s.description, 'DOCUMENTED', 'migrations/20261104_schedule_idempotency.sql'
+SELECT d.id, s.column_name, s.description, 'DOCUMENTED', '01_structure.sql; 04_functions_procedures.sql'
 FROM command_columns s JOIN public.data_catalog_table d
     ON d.schema_name = 'public' AND d.table_name = 'collection_schedule_command'
 JOIN pg_catalog.pg_attribute a ON a.attrelid = to_regclass('public.collection_schedule_command')

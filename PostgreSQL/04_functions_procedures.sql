@@ -2814,7 +2814,7 @@ END $$;
 REVOKE ALL ON FUNCTION public.issue_password_reset(TEXT,BYTEA,INTERVAL),
     public.complete_password_reset(BYTEA,TEXT) FROM PUBLIC;
 
-CREATE PROCEDURE public.schedule_collection_request_once(
+CREATE OR REPLACE PROCEDURE public.schedule_collection_request_once(
     p_request_id UUID, p_scheduled_at TIMESTAMPTZ, p_agreed_at TIMESTAMPTZ,
     p_admin_id UUID, p_reason TEXT, p_key UUID
 )
