@@ -1,13 +1,27 @@
 # OLIUS — Migração B2C do legado por Airflow/Python
 
+## Natureza acadêmica dos dados
+
+Em 05/11/2026, a equipe esclareceu que os cadastros do banco legado também são
+simulados. Os CSVs originais de complementação foram preenchidos com dados
+sintéticos autorizados, preservando os IDs da origem, para demonstrar a migração.
+A pasta Demonstracao_Ficticia contém exemplos anteriores e não é a entrada usada.
+Validar formato, vínculos, duplicações e falhas continua parte do exercício; essa
+autorização não equivale a verificação de identidade ou posse de e-mail em produção.
+Não alterar documentos inválidos da origem silenciosamente: rejeitá-los e demonstrar
+o tratamento de falhas. Senhas, hashes e chaves continuam fora de logs/Git.
+Escrita exige alvo de demonstração identificado; não usar banco de aplicação ativo
+sem autorização específica. Carga no legado permanece proibida.
+
 ## Escopo aprovado
 
 Importar somente cadastros B2C válidos: users, telephone, user_qr_code e citizens.
 Preservar os hashes PBKDF2 legados para a Core convertê-los em Argon2id após login
 válido. Importar ACTIVE, sem pontos históricos, sem criação de sessões. Os timestamps
 no destino refletem a importação. A data original fica em olius_etl.citizen_import.
-Não importar automaticamente ADM, B2B, PEV, motorista, coleta, entrega, carteira,
-movimentação de pontos ou certificado. Esses dados permanecem apenas na preparação.
+ADM, PEV, coleta, entrega, carteira, pontos e certificados não são importados.
+B2Bs e motoristas têm carga complementar opt-in documentada em EXTENDED_LOAD.md;
+sem os complementos/flag, continuam somente no staging/histórico.
 
 ## Fluxo e arquivos
 
@@ -145,8 +159,9 @@ podem repetir prepare com a chave; após tentativa de carga, usar novo lote para
 reavaliar documentos antes rejeitados, preservando a proveniência dos já importados.
 A carga continua desabilitada por padrão. O arquivo
 histórico preserva o valor original criptografado, sem depender dessa chave.
-Ampliar cargas operacionais B2B/motorista/coleta/entrega/certificado permanece
-condicionado à complementação e às decisões já documentadas, sem enfraquecer FKs.
+A carga cadastral B2B/motorista está implementada em extended.py, mas depende dos
+complementos privados confirmados e de habilitação explícita. Fatos operacionais
+coleta/entrega/certificado continuam sem carga, sem enfraquecer FKs.
 
 ## Scheduler real e regressão de parâmetros
 
@@ -160,4 +175,11 @@ pendentes do legado.
 ## Complementação de B2Bs e motoristas
 
 O validador local complements.py confere os CSVs privados sem importar registros.
+O preparo/carga complementares estão em extended.py; ver EXTENDED_LOAD.md.
 Ver COMPLEMENTS.md para comandos, limites e pendências de fechamento da sprint.
+
+## Resultado da execução acadêmica no Aiven
+
+Ver RESULTADO_DEMONSTRACAO.md para carga, reenvio, reconciliação, preservação
+e limites observados em 05/11/2026. A execução manual dos módulos no Aiven
+é distinta da validação do scheduler em ambiente descartável.

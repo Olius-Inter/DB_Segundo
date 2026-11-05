@@ -34,7 +34,7 @@ pessoal que não possui equivalente no modelo atual. Essa referência é preserv
 sem duplicar o perfil já importado. Endereços legados continuam no arquivo.
 
 CPFs com prefixo aesgcm permanecem exatamente criptografados como estavam na origem:
-sem CPF_CHAVE não podem ser convertidos. Preservar o ciphertext não soluciona a
+a conversão na preparação exige a chave original, armazenada separadamente. Preservar o ciphertext não soluciona a
 perda dessa chave. Ausência dela não impede arquivar o histórico externo cifrado.
 
 Não gerar pontos/certificados nem registrar esses fatos como operações válidas na
@@ -85,3 +85,7 @@ histórico do Aiven nem escritas nas pastas compartilhadas nos testes.
 A tarefa final workflow_finished impede que o histórico executado com all_done
 mascare uma falha na carga ou na reconciliação. Nenhum componente envia a chave
 ao OneDrive ou ao relatório compartilhado.
+
+Cadastros B2B e MOTORISTA importados por extended.py continuam no histórico original,
+com motivo CADASTRO_IMPORTED_WITH_UNMAPPED_LEGACY_FIELDS, para preservar campos sem
+destino (por exemplo Plano e empresa_resp). Isso não atribui contratos ou operações.

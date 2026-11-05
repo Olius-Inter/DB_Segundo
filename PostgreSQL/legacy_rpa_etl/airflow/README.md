@@ -187,3 +187,14 @@ Adicionar `-f compose.cpf.yaml` ao conjunto de arquivos Compose utilizado e defi
 Não copiar o conteúdo para .env. A tarefa prepare_citizens lê o segredo pelo arquivo;
 sem o complemento, CPFs cifrados continuam rejeitados por falta da chave.
 Ver ../README.md para validações, proteção do staging e regras de reprocessamento.
+
+## Cadastros B2B e motorista (opcional)
+
+Adicionar `-f compose.extended.yaml` e configurar os caminhos privados
+`OLIUS_B2B_COMPLEMENT_HOST_FILE` e `OLIUS_DRIVER_COMPLEMENT_HOST_FILE`.
+O complemento habilita preparo dos CSVs no mesmo snapshot. Para escrever, são
+necessários também compose.load.yaml, instalação única de
+02_extended_destination_control.sql e ambas as flags de carga em true.
+Sem `OLIUS_ETL_EXTENDED_LOAD_ENABLED=true`, a carga continua somente B2C.
+Não houve alteração do .env pessoal nem execução contra o destino real.
+Ver ../EXTENDED_LOAD.md para instalação, reexecução, primeira senha e limites.

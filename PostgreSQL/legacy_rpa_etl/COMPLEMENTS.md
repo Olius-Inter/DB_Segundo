@@ -31,8 +31,9 @@ Falhas de estrutura/leitura retornam FAILED sem conteúdo sensível.
 FIELDS_VALID não significa cadastro autorizado ou pronto para carga: o CLI não
 confere os IDs com a extração, colisões no destino ou vínculos de negócio.
 validate_file aceita source_ids de um snapshot confiável para conferência em memória;
-essa integração ainda não está conectada à DAG. Não alterar staging ou carga por
-conta desse resultado. A preparação/carga efetiva continua somente B2C.
+extended.py utiliza esse vínculo contra o snapshot para preparação complementar,
+inclusive na DAG com compose.extended.yaml. FIELDS_VALID sozinho continua sem
+autorizar carga. Ver EXTENDED_LOAD.md para o contrato de primeira senha e carga.
 
 ## Pendências para encerramento da sprint ampliada
 
@@ -40,9 +41,9 @@ conta desse resultado. A preparação/carga efetiva continua somente B2C.
 |---|---|
 | Extração e carga B2C | Implementadas; validar execução autorizada no destino real |
 | CPF AES-GCM | Integrado por arquivo privado; 5 dos 6 documentos consultados precisam conferência dos verificadores |
-| Complementos B2B/motoristas | Validador pronto; arquivos ainda não preenchidos |
-| Primeira senha B2B | Contrato de provisionamento seguro pendente; não usar senha compartilhada/fictícia |
-| Carga ampliada | Integrar complementos conferidos ao snapshot e definir mapeamentos antes de desenvolver loaders |
+| Complementos B2B/motoristas | Originais preenchidos com complementos simulados autorizados em 05/11/2026; validar contra o snapshot |
+| Primeira senha B2B | Contrato aprovado: hash inicial aleatório e recuperação pela Core para ACTIVE; ver EXTENDED_LOAD.md |
+| Carga ampliada | Preparação e loaders cadastrais implementados; complementos simulados preenchidos; validar execução em alvo de demonstração autorizado |
 | Fatos históricos | Não inventar horários, ciclos, qualidade, PEV ou pontuação; manter no histórico quando não migráveis |
 | Histórico real | Executar exportação autorizada e testar recuperação; verificar compartilhamento e sincronização OneDrive |
 | Recuperação independente | Confirmar cópia protegida da chave e teste com Caio |

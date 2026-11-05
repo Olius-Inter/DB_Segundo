@@ -56,4 +56,10 @@ remota do CI ou do Sonar.
 Não é uma migração real nem um teste da Core Java. A compatibilidade da Core foi
 validada em sua revisão própria. Sincronização OneDrive, acesso de Pedro/Caio,
 recuperação das chaves por Caio e política de retenção dependem do ambiente real.
-O teste não amplia automaticamente o mapeamento para B2B ou fatos operacionais.
+O teste agora inclui também um B2B e um motorista fictícios, com complementos
+privados gerados temporariamente, controle técnico separado e carga ampliada
+habilitada apenas na rede interna. Confere o reenvio sem substituir a senha do B2B,
+a existência de uma única proveniência por cadastro e a preservação no histórico
+dos campos sem equivalente. O relatório registra imported_establishments=1 e
+imported_drivers=1, além dos dois cidadãos. Isso não autoriza carga real nem cria
+mapeamento para fatos operacionais.
