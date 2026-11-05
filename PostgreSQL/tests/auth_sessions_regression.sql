@@ -20,7 +20,7 @@ INSERT INTO public.users(id,name,email,password_hash,user_type) VALUES
 ('10000000-0000-0000-0000-000000000001','Citizen test','authcit@olius.test','test-hash','CITIZENS'),
 ('10000000-0000-0000-0000-000000000002','Admin test','authadm@olius.test','test-hash','ADMIN'),
 ('10000000-0000-0000-0000-000000000003','Est test','authest@olius.test','test-hash','ESTABLISHMENT');
-SELECT auth_test.assert((SELECT COUNT(*)=60 FROM pg_tables WHERE schemaname='public' AND tablename NOT IN ('data_catalog_table','data_catalog_column','data_catalog_role')),'60 application tables');
+SELECT auth_test.assert((SELECT COUNT(*)=61 FROM pg_tables WHERE schemaname='public' AND tablename NOT IN ('data_catalog_table','data_catalog_column','data_catalog_role')),'61 application tables');
 SELECT auth_test.assert((SELECT COUNT(*)=25 FROM pg_tables WHERE schemaname='public' AND tablename LIKE '%\_log'),'25 logs');
 
 SET LOCAL SESSION AUTHORIZATION olius_api;
