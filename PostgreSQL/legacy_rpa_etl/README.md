@@ -156,3 +156,8 @@ carga, reexecução, falha e retomada. Não depende de CPF_CHAVE nem do Aiven.
 O CI repete a validação em job próprio. O ambiente pessoal do Airflow não foi
 reiniciado. Sucesso desse teste não autoriza carga real nem resolve complementos
 pendentes do legado.
+
+## Complementação de B2Bs e motoristas
+
+O validador local complements.py confere os CSVs privados sem importar registros.
+Ver COMPLEMENTS.md para comandos, limites e pendências de fechamento da sprint.
