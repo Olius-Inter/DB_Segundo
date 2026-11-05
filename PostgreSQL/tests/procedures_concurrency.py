@@ -146,3 +146,104 @@ req=visit_request()
 normal="CALL record_collection('%s',olius_test.id('driver'),0,0,'NOT_ASSESSED',false,ARRAY['VOLUME_OUT_OF_TOLERANCE']::text[],NULL,clock_timestamp(),NULL);" % req
 pair("registro administrativo bloqueia registro normal",visit_call(req),normal,second_should_fail=True,expected_error="22000")
 print("PASS: cinco cenários concorrentes de visita sem atendimento")
+
+# A mesma trava do pedido serializa comandos com chave e agendamentos legados.
+query("GRANT USAGE ON SCHEMA olius_test TO olius_api; GRANT SELECT ON olius_test.ids TO olius_api;")
+
+
+def schedule_request():
+    return query("CALL public.create_collection_request(olius_test.id('est'),10,'Agenda concorrente',gen_random_uuid(),NULL);")
+
+
+def schedule_command(request, key, at, agreed, reason="Acordo concorrente"):
+    return ("SET SESSION AUTHORIZATION olius_core_api; "
+            "CALL public.schedule_collection_request_once('%s','%s','%s',olius_test.id('admin'),'%s','%s');"
+            % (request, at, agreed, reason, key))
+
+
+schedule_at = query("SELECT CURRENT_TIMESTAMP + INTERVAL '1 day';")
+revised_at = query("SELECT CURRENT_TIMESTAMP + INTERVAL '2 days';")
+agreed_at = query("SELECT CURRENT_TIMESTAMP;")
+req = schedule_request()
+key = query("SELECT gen_random_uuid();")
+action = schedule_command(req, key, schedule_at, agreed_at)
+pair("mesma chave concorrente gera um comando", action, action)
+query("SELECT olius_test.assert((SELECT count(*)=1 FROM public.collection_schedule_command WHERE request_id='%s') "
+      "AND (SELECT count(*)=1 FROM public.notification WHERE resource_id='%s'),'comando e aviso únicos');" % (req, req))
+
+req = schedule_request()
+key = query("SELECT gen_random_uuid();")
+pair("mesma chave com dados diferentes é rejeitada",
+     schedule_command(req, key, schedule_at, agreed_at),
+     schedule_command(req, key, revised_at, agreed_at),
+     second_should_fail=True, expected_error="22000")
+query("SELECT olius_test.assert((SELECT scheduled_at='%s' FROM public.collection_request WHERE id='%s'),"
+      "'conflito preserva horário original');" % (schedule_at, req))
+
+req = schedule_request()
+key = query("SELECT gen_random_uuid();")
+action = schedule_command(req, key, schedule_at, agreed_at)
+pair("rollback libera a chave para a segunda sessão", action, action, rollback_first=True)
+query("SELECT olius_test.assert((SELECT count(*)=1 FROM public.collection_schedule_command WHERE request_id='%s') "
+      "AND (SELECT count(*)=1 FROM public.collection_schedule_history WHERE collection_request_id='%s'),"
+      "'segunda sessão confirma após rollback');" % (req, req))
+
+req = schedule_request()
+key = query("SELECT gen_random_uuid();")
+second_key = query("SELECT gen_random_uuid();")
+pair("duas chaves preservam a ordem dos reagendamentos",
+     schedule_command(req, key, schedule_at, agreed_at),
+     schedule_command(req, second_key, revised_at, agreed_at))
+query(schedule_command(req, key, schedule_at, agreed_at))
+query("SELECT olius_test.assert((SELECT scheduled_at='%s' FROM public.collection_request WHERE id='%s') "
+      "AND (SELECT count(*)=2 FROM public.collection_schedule_command WHERE request_id='%s') "
+      "AND (SELECT count(*)=2 FROM public.notification WHERE resource_id='%s'),"
+      "'reenvio antigo após disputa preserva agenda e avisos');" % (revised_at, req, req, req))
+print("PASS: quatro cenários concorrentes de idempotência de agendamento")
+
+
+# RR fixes its snapshot before another transaction commits a same-time command.
+def repeatable_read_noop(divergent_payload=False):
+    request = schedule_request()
+    query(schedule_command(request, query("SELECT gen_random_uuid();"), schedule_at, agreed_at))
+    retry_key = query("SELECT gen_random_uuid();")
+    original = schedule_command(request, retry_key, schedule_at, agreed_at, 'RR no-op')
+    retried = schedule_command(request, retry_key, schedule_at, agreed_at,
+                               'RR changed reason' if divergent_payload else 'RR no-op')
+    session = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                               stderr=subprocess.PIPE, text=True, bufsize=1, **process_options)
+    try:
+        session.stdin.write("BEGIN ISOLATION LEVEL REPEATABLE READ; SET statement_timeout='15s'; "
+                            "SET SESSION AUTHORIZATION olius_core_api; SELECT count(*) FROM collection_request;\n"
+                            "\\echo SNAPSHOT_READY\n")
+        session.stdin.flush()
+        while True:
+            line = session.stdout.readline()
+            if line.strip() == 'SNAPSHOT_READY':
+                break
+            if not line:
+                raise RuntimeError(session.stderr.read())
+        query(original)
+        _, error = session.communicate(retried + "\nCOMMIT;\n", timeout=30)
+        if session.returncode == 0 or '40001' not in error:
+            raise AssertionError('Stale snapshot must require full transaction retry: ' + error)
+        # A fresh transaction must compare the payload, not silently discard a conflict.
+        fresh = subprocess.run(command, input=retried, text=True, capture_output=True,
+                               timeout=30, **process_options)
+        if divergent_payload:
+            if fresh.returncode == 0 or '22000' not in fresh.stderr:
+                raise AssertionError('Divergent payload must remain a conflict: ' + fresh.stderr)
+        elif fresh.returncode:
+            raise RuntimeError(fresh.stderr)
+        query("SELECT olius_test.assert((SELECT count(*)=2 FROM collection_schedule_command WHERE request_id='%s') "
+              "AND (SELECT count(*)=1 FROM collection_schedule_history WHERE collection_request_id='%s'),"
+              "'RR retry preserves commands and history');" % (request, request))
+    finally:
+        if session.poll() is None:
+            session.kill()
+        session.wait()
+
+
+repeatable_read_noop()
+repeatable_read_noop(divergent_payload=True)
+print('PASS: REPEATABLE READ no-op returns 40001; fresh retry validates identical and divergent payloads')

@@ -239,7 +239,42 @@ ON CONFLICT (table_catalog_id, column_name) DO UPDATE SET
     source_reference = EXCLUDED.source_reference
 WHERE data_catalog_column.documentation_status = 'PENDING';
 
--- Tabelas futuras são descobertas, sem inventar sua finalidade ou acesso.
+-- Comandos de agendamento identificados: documentação da proteção contra reenvios.
+INSERT INTO public.data_catalog_table
+    (schema_name, table_name, domain_name, description, business_rules, access_policy, access_status, source_reference)
+SELECT 'public', 'collection_schedule_command', 'Coletas B2B',
+    'Comandos de agendamento identificados pela solicitação e chave de idempotência.',
+    'Reenvio idêntico preserva a agenda atual; dados diferentes para a mesma chave são rejeitados. Comando sem mudança também guarda a chave. Retenção das chaves pendente de decisão.',
+    'olius_owner mantém o objeto. Core usa EXECUTE em schedule_collection_request_once; sem acesso direto da API, leitores, BI ou ranking.',
+    'DEFINED', '01_structure.sql; 04_functions_procedures.sql; access_control/01_roles.sql'
+WHERE to_regclass('public.collection_schedule_command') IS NOT NULL
+ON CONFLICT (schema_name, table_name) DO UPDATE SET
+    domain_name = EXCLUDED.domain_name, description = EXCLUDED.description,
+    business_rules = EXCLUDED.business_rules, access_policy = EXCLUDED.access_policy,
+    access_status = EXCLUDED.access_status, source_reference = EXCLUDED.source_reference
+WHERE data_catalog_table.domain_name = 'Pendente de classificação';
+
+WITH command_columns(column_name, description) AS (VALUES
+    ('request_id', 'Solicitação de coleta serializada pelo comando.'),
+    ('idempotency_key', 'Chave da ação, única por solicitação e preservada nos reenvios.'),
+    ('scheduled_at', 'Horário proposto no comando original.'),
+    ('agreed_at', 'Instante do acordo informado no comando original.'),
+    ('admin_id', 'Administrador ativo que solicitou o agendamento.'),
+    ('reason', 'Motivo original normalizado com remoção de espaços nas extremidades.')
+)
+INSERT INTO public.data_catalog_column
+    (table_catalog_id, column_name, description, documentation_status, source_reference)
+SELECT d.id, s.column_name, s.description, 'DOCUMENTED', '01_structure.sql; 04_functions_procedures.sql'
+FROM command_columns s JOIN public.data_catalog_table d
+    ON d.schema_name = 'public' AND d.table_name = 'collection_schedule_command'
+JOIN pg_catalog.pg_attribute a ON a.attrelid = to_regclass('public.collection_schedule_command')
+    AND a.attname = s.column_name AND a.attnum > 0 AND NOT a.attisdropped
+ON CONFLICT (table_catalog_id, column_name) DO UPDATE SET
+    description = EXCLUDED.description, documentation_status = EXCLUDED.documentation_status,
+    source_reference = EXCLUDED.source_reference
+WHERE data_catalog_column.documentation_status = 'PENDING';
+
+-- Descoberta genérica preserva a documentação revisada acima.
 INSERT INTO data_catalog_table
     (schema_name, table_name, domain_name, description, business_rules, access_policy, source_reference)
 SELECT n.nspname, c.relname, 'Pendente de classificação',
