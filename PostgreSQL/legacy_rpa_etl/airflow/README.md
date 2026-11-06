@@ -49,7 +49,7 @@ chave Base64 URL-safe para AIRFLOW_FERNET_KEY. Proteja o `.env` local.
 Na pasta `PostgreSQL/legacy_rpa_etl/airflow`:
 
 ```powershell
-docker compose up -d --build
+python start.py
 docker compose exec airflow airflow dags list-import-errors
 ```
 
@@ -105,7 +105,7 @@ automaticamente por esta alteração.
 Para somente extrair/preparar, mantenha OLIUS_ETL_LOAD_ENABLED=false:
 
 ```powershell
-docker compose --env-file .env up -d --build
+python start.py
 ```
 
 Para carga autorizada, primeiro instale ../01_destination_control.sql no banco de
@@ -114,7 +114,7 @@ destino e configure a conta de manutenção, CA e pgpass exclusivo desse destino
 como host:porta/banco e OLIUS_ETL_LOAD_ENABLED=true. Então use ambos os arquivos:
 
 ```powershell
-docker compose --env-file .env -f compose.yaml -f compose.load.yaml up -d --build
+python start.py --load
 ```
 
 Esses comandos só iniciam o ambiente; não disparam a DAG nem instalam SQL no alvo.
@@ -135,11 +135,11 @@ OneDrive e relatórios compartilhados. O complemento Compose não cria caminhos
 faltantes automaticamente. Defina OLIUS_ETL_ARCHIVE_ENABLED=true e então:
 
 ```powershell
-docker compose --env-file .env -f compose.yaml -f compose.archive.yaml up -d --build
+python start.py --archive
 ```
 
 Para habilitar simultaneamente a carga autorizada, acrescente também
-`-f compose.load.yaml`, com todas as salvaguardas de destino já configuradas.
+`--load` ao comando `python start.py --archive`, com as salvaguardas de destino configuradas.
 Nada é disparado pelo comando acima: a DAG continua manual. Não foi alterado seu
 .env nem reiniciado o ambiente em uso durante a implementação.
 
@@ -182,7 +182,7 @@ vez conforme a DAG, para reduzir consumo no ambiente local.
 
 ## Chave original do CPF (opcional)
 
-Adicionar `-f compose.cpf.yaml` ao conjunto de arquivos Compose utilizado e definir
+Adicionar `--cpf` ao comando `python start.py` utilizado e definir
 `OLIUS_LEGACY_CPF_KEY_HOST_FILE` com o caminho do arquivo privado de chave.
 Não copiar o conteúdo para .env. A tarefa prepare_citizens lê o segredo pelo arquivo;
 sem o complemento, CPFs cifrados continuam rejeitados por falta da chave.
@@ -190,11 +190,43 @@ Ver ../README.md para validações, proteção do staging e regras de reprocessa
 
 ## Cadastros B2B e motorista (opcional)
 
-Adicionar `-f compose.extended.yaml` e configurar os caminhos privados
+Adicionar `--extended` ao comando `python start.py` e configurar os caminhos privados
 `OLIUS_B2B_COMPLEMENT_HOST_FILE` e `OLIUS_DRIVER_COMPLEMENT_HOST_FILE`.
 O complemento habilita preparo dos CSVs no mesmo snapshot. Para escrever, são
 necessários também compose.load.yaml, instalação única de
 02_extended_destination_control.sql e ambas as flags de carga em true.
 Sem `OLIUS_ETL_EXTENDED_LOAD_ENABLED=true`, a carga continua somente B2C.
-Não houve alteração do .env pessoal nem execução contra o destino real.
+O histórico da demonstração com registros simulados no Aiven está em
+../RESULTADO_DEMONSTRACAO.md. Esta revisão não executa novas cargas no destino.
 Ver ../EXTENDED_LOAD.md para instalação, reexecução, primeira senha e limites.
+
+## Proteções desta revisão
+
+Inicie os serviços por `python start.py`, acrescentando `--load`, `--cpf`,
+`--extended` e/ou `--archive` conforme os complementos autorizados. O iniciador
+inspeciona a configuração Compose em memória, sem exibir segredos, e rejeita
+pastas de histórico, backup e relatórios iguais ou aninhadas no computador,
+inclusive aliases resolvíveis. Também impede sobreposição com secrets e staging
+montado. Não contorne essa verificação iniciando diretamente o Compose com arquivo
+`.archive.yaml`; caminhos diferentes no container não provam separação no host.
+
+No Linux, secrets bind-mounted conservam proprietário e permissões do host.
+Um arquivo 0600 de outro UID não será legível pelo Airflow (UID 50000).
+Conceda leitura somente ao UID 50000 por ACL específica ou use grupo restrito
+com leitura e travessia dos diretórios. Mantenha o operador com acesso e negue
+outros usuários; não use chmod 644/777 para resolver esse problema. O passfile é
+copiado pela tarefa para um temporário 0600 antes de ser entregue ao PostgreSQL.
+Diretórios de saída devem permitir escrita do UID do Airflow e leitura dos
+responsáveis autorizados; nunca monte a pasta de chaves dentro de relatórios.
+
+Clear/retry de lote congelado reutiliza a preparação existente e retoma os
+registros pendentes, sem recalcular candidatos nem apagar resultados. Se a carga
+ou reconciliação mudar o conteúdo histórico após uma exportação, uma nova versão
+revisada de `OLIUS_ETL_ARCHIVE_VERSION` é necessária; a versão antiga não será
+sobrescrita. Para nova avaliação dos CSVs/dados, crie nova execução da DAG.
+
+A imagem fixa o digest do Airflow e instala somente wheels com versões e hashes
+SHA-256 verificados, sem resolução de dependências transitivas. Estas permanecem
+na imagem base fixada. Ao atualizar versões, revise também os arquivos `.lock`
+e repita os testes da DAG, integração e scheduler. Ambos os estágios usam o
+usuário restrito airflow.

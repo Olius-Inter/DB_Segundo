@@ -183,3 +183,22 @@ Ver COMPLEMENTS.md para comandos, limites e pendências de fechamento da sprint.
 Ver RESULTADO_DEMONSTRACAO.md para carga, reenvio, reconciliação, preservação
 e limites observados em 05/11/2026. A execução manual dos módulos no Aiven
 é distinta da validação do scheduler em ambiente descartável.
+
+## Limites de arquivos e retomada
+
+As entradas locais são restritas às pastas privadas do operador: por padrão,
+`~/OLIUS_Privado/HistoricoLegado/04_Preparacao_Demonstracao` (SQLite),
+`02_Chaves` (chaves) e `03_Complementacao_Cadastral` (CSV).
+Para outra instalação, configure previamente `OLIUS_ETL_STAGE_ROOT`,
+`OLIUS_ETL_KEY_ROOT` e `OLIUS_ETL_COMPLEMENT_ROOT` com diretórios privados existentes.
+Esses limites vêm do ambiente confiável do operador; não são argumentos da carga.
+Caminhos externos, URIs SQLite, escapes e arquivos com extensão incompatível são rejeitados.
+
+Antes da primeira escrita de negócio no PostgreSQL, o SQLite persiste um vínculo
+imutável entre lote e destino (host/porta/banco), compartilhado pelas cargas B2C,
+B2B e motoristas. Mesmo uma interrupção entre COMMIT e checkpoint não libera outro
+alvo. A preparação fica congelada; retomar a carga reutiliza o snapshot e a
+proveniência, sem reescrever cadastros já importados. Reconciliação concluída fica
+registrada por grupo e destino; uma nova tentativa invalida sua confirmação.
+O histórico só deixa de repetir o perfil B2C após essa confirmação durável.
+Uma falha de reconciliação preserva os registros originais completos no histórico.

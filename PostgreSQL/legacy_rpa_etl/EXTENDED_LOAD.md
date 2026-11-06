@@ -102,5 +102,12 @@ Os CSVs originais foram preenchidos em 05/11/2026 com complementos sintéticos
 autorizados pela equipe; a origem também é simulada. Esses dados não comprovam
 identidade, posse de e-mail ou recuperação de conta em produção. Os testes usam dados fictícios e PostgreSQL
 isolado, incluindo reenvio, preservação de senha alterada, reconciliação, conflito
-e rollback. Não houve instalação/carga no Aiven, envio de e-mail ou validação de
-posse de e-mail real. Execução remota de CI/Sonar e aceite de dados continuam pendentes.
+e rollback. Em 05/11/2026 houve instalação/carga no Aiven exclusivamente com
+registros simulados, conforme RESULTADO_DEMONSTRACAO.md. Não houve envio de
+e-mail nem comprovação de posse de e-mail real. A validação remota desta revisão
+depende de novo envio à esteira CI/Sonar.
+
+As duas categorias devem ser preparadas explicitamente antes da carga ampliada,
+mesmo quando uma origem não tiver registros. Ausência de CSV não equivale a carga
+concluída. Uma tentativa de qualquer carga congela todo o lote para preparação.
+CNPJ aceita 14 dígitos ou a máscara NN.NNN.NNN/NNNN-NN, sem descartar letras.

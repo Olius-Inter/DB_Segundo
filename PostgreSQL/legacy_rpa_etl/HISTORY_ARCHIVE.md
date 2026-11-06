@@ -89,3 +89,16 @@ ao OneDrive ou ao relatório compartilhado.
 Cadastros B2B e MOTORISTA importados por extended.py continuam no histórico original,
 com motivo CADASTRO_IMPORTED_WITH_UNMAPPED_LEGACY_FIELDS, para preservar campos sem
 destino (por exemplo Plano e empresa_resp). Isso não atribui contratos ou operações.
+
+### Confirmação e publicação
+
+A exclusão do perfil B2C do histórico depende de reconciliação durável com o
+mesmo destino vinculado ao lote. Checkpoint IMPORTED isolado não basta; em falha,
+os dados originais continuam preservados. B2B/motoristas mantêm dados não mapeados.
+Staging e chaves não podem estar dentro das pastas de saída, especialmente a
+compartilhada. Para Airflow, execute `python start.py --archive` (demais flags
+conforme o escopo) na pasta airflow: o iniciador valida a separação real no host.
+Arquivos são escritos e sincronizados em temporário no mesmo diretório e só
+então publicados atomicamente, sem sobrescrever versão existente. Interrupção
+não deixa um relatório final parcial; temporários não constituem evidência de
+conclusão. Mudança de conteúdo exige nova versão revisada.

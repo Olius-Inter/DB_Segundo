@@ -16,7 +16,7 @@ interna, sem Aiven, .env, pastas reais de histórico ou credenciais existentes.
    preserva as já confirmadas e não cria pontos ou sessões.
 
 A rejeição de CPF é deliberada. Não é descriptografado nem substituído; a ausência
-de CPF_CHAVE continua sendo pendência real. As contas/certificados/campos dos
+da chave é simulada neste teste, não uma pendência atual da demonstração. As contas/certificados/campos dos
 testes são fictícios e não representam informações recuperadas do legado.
 
 ## Correção encontrada pela execução real
@@ -63,3 +63,16 @@ a existência de uma única proveniência por cadastro e a preservação no hist
 dos campos sem equivalente. O relatório registra imported_establishments=1 e
 imported_drivers=1, além dos dois cidadãos. Isso não autoriza carga real nem cria
 mapeamento para fatos operacionais.
+
+## Validação da retomada e das evidências
+
+O scheduler também limpa todas as tarefas da primeira execução e reexecuta o
+mesmo lote preparado/congelado, mantendo a contagem de cadastros e o histórico
+sem duplicações. `cleared_initial` documenta esse cenário. A preparação não é
+recalculada após a primeira vinculação do destino.
+
+O indicador `cpf_without_key_rejected` só é publicado após consultar os candidatos
+reais do SQLite e confirmar status REJECTED e motivo CPF_DECRYPTION_KEY_REQUIRED
+em todos os quatro snapshots. Não é uma constante usada como evidência.
+Mesmo quando um cenário falha ou expira, o relatório agregado registra FAILED,
+o cenário em andamento e os resultados já obtidos, antes da limpeza dos recursos.
