@@ -146,7 +146,7 @@ jobs:
 
       - name: Publicar relatório e logs dos testes
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: postgresql-tests-and-coverage
           path: coverage/
@@ -189,7 +189,7 @@ jobs:
           "$RUNNER_TEMP/olius-scheduler-venv/bin/python" PostgreSQL/legacy_rpa_etl/airflow/tests/scheduler_check.py --repo "$GITHUB_WORKSPACE" --report coverage/scheduler-validation/report.json
       - name: Publicar evidências agregadas do scheduler
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: legacy-scheduler-validation
           path: coverage/scheduler-validation/report.json
