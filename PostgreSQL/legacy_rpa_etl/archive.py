@@ -6,6 +6,9 @@ import hashlib
 import json
 from pathlib import Path
 import sqlite3
+import os
+import tempfile
+from file_policy import checked_path, read_secret
 import uuid
 
 from cryptography.fernet import Fernet
@@ -30,12 +33,16 @@ def history(stage, run_id, version, evaluation_date=None):
     imported_citizens, imported_users = set(), set()
     for raw in stage.execute('''SELECT c.payload FROM candidates c
         JOIN load_results r USING(run_id,source_id)
+        JOIN run_targets t ON t.run_id=c.run_id AND t.target=r.target
+        JOIN reconciliations q ON q.run_id=t.run_id AND q.target=t.target AND q.group_name='citizens'
         WHERE c.run_id=? AND r.status IN ('IMPORTED','ALREADY_IMPORTED')''', (run_id,)):
         candidate = json.loads(raw[0])
         imported_citizens.add(str(candidate['legacy_citizen_id']))
         imported_users.add(str(candidate['legacy_user_id']))
-    imported_extended = set(stage.execute("SELECT kind,source_id FROM extended_results WHERE run_id=? "
-                                          "AND status IN ('IMPORTED','ALREADY_IMPORTED')", (run_id,)))
+    imported_extended = set(stage.execute("SELECT r.kind,r.source_id FROM extended_results r "
+        "JOIN run_targets t ON t.run_id=r.run_id AND t.target=r.target "
+        "JOIN reconciliations q ON q.run_id=t.run_id AND q.target=t.target AND q.group_name='extended' "
+        "WHERE r.run_id=? AND r.status IN ('IMPORTED','ALREADY_IMPORTED')", (run_id,)))
     items = []
     counts = Counter()
     for table, source_id, raw in stage.execute('''SELECT source_table,source_id,payload
@@ -77,16 +84,27 @@ def inside(path, directory):
 
 
 def put_once(path, data):
-    """Never overwrite; an interrupted write must be reviewed, not silently replaced."""
+    """Publish a complete, fsynced file atomically without overwriting another version."""
     if path.exists():
         if path.read_bytes() != data:
             raise ValueError('Existing output differs; create a reviewed new version')
         return
-    with path.open('xb') as handle:
-        handle.write(data)
-        handle.flush()
-        import os
-        os.fsync(handle.fileno())
+    descriptor, temporary = tempfile.mkstemp(prefix='.olius-pending-', dir=path.parent)
+    try:
+        with os.fdopen(descriptor, 'wb') as handle:
+            handle.write(data)
+            handle.flush()
+            os.fsync(handle.fileno())
+        try:
+            if os.name == 'nt':
+                os.rename(temporary, path)  # Windows rename refuses an existing destination.
+            else:
+                os.link(temporary, path)  # Atomic create-if-absent on the same filesystem.
+        except FileExistsError:
+            if path.read_bytes() != data:
+                raise ValueError('Concurrent output differs; review a new version') from None
+    finally:
+        Path(temporary).unlink(missing_ok=True)
 
 
 def export_history(stage, run_id, version, key_file, encrypted_dir, backup_dir, report_dir,
@@ -95,7 +113,10 @@ def export_history(stage, run_id, version, key_file, encrypted_dir, backup_dir, 
     if not isinstance(version, int) or version < 1:
         raise ValueError('Positive archive version required')
     paths = [Path(item).resolve() for item in (encrypted_dir, backup_dir, report_dir)]
-    key_file = Path(key_file).resolve()
+    key_file = checked_path(key_file, 'key')
+    databases = [Path(row[2]).resolve() for row in stage.execute('PRAGMA database_list') if row[2]]
+    if any(inside(database, path) for database in databases for path in paths):
+        raise ValueError('Staging must remain outside all archive and report directories')
     for i, path in enumerate(paths):
         if inside(key_file, path):
             raise ValueError('Keep the key separate from archive, backup and shared report')
@@ -104,7 +125,7 @@ def export_history(stage, run_id, version, key_file, encrypted_dir, backup_dir, 
                 raise ValueError('Archive, backup and report require separate locations')
     private, public = history(stage, run_id, version, evaluation_date)
     plaintext = json.dumps(private, ensure_ascii=False, sort_keys=True).encode()
-    cipher = Fernet(key_file.read_bytes().strip())
+    cipher = Fernet(read_secret(key_file))
     encrypted_dir, backup_dir, report_dir = paths
     for path in paths:
         path.mkdir(parents=True, exist_ok=True)
@@ -144,7 +165,7 @@ def main():
     stage = None
     try:
         # Read-only staging: archive generation never changes extraction/load state.
-        stage = sqlite3.connect(Path(args.stage).resolve().as_uri() + '?mode=ro', uri=True)
+        stage = sqlite3.connect(checked_path(args.stage, 'stage').as_uri() + '?mode=ro', uri=True)
         stage.execute('BEGIN')
         with stage:
             result = export_history(stage, args.run_id, args.version, args.key_file,

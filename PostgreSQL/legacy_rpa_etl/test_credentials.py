@@ -1,3 +1,4 @@
+from test_file_policy import PathTestCase
 import hashlib
 import json
 import tempfile
@@ -19,7 +20,7 @@ def fake_hash():
     return 'pbkdf2$120000$' + base64.b64encode(salt).decode() + '$' + base64.b64encode(digest).decode()
 
 
-class CredentialTests(unittest.TestCase):
+class CredentialTests(PathTestCase):
     def test_roundtrip_is_bound_to_run_and_identity(self):
         key = Fernet.generate_key()
         value = fake_hash()

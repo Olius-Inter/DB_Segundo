@@ -1,3 +1,4 @@
+# Iniciar por python start.py --archive para validar separacao de pastas no host.
 # Opt-in: arquivos completos somente na pasta protegida; grupo recebe agregados.
 services:
   airflow:

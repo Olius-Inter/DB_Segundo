@@ -1,3 +1,4 @@
+from test_file_policy import PathTestCase
 import csv
 import json
 import tempfile
@@ -36,8 +37,9 @@ def fixture(stage, folder, kind, identity='1'):
     return path
 
 
-class ExtendedTests(unittest.TestCase):
+class ExtendedTests(PathTestCase):
     def setUp(self):
+        super().setUp()
         self.folder = tempfile.TemporaryDirectory()
         self.addCleanup(self.folder.cleanup)
         self.stage = open_stage(Path(self.folder.name) / 'stage.sqlite')
@@ -79,6 +81,16 @@ class ExtendedTests(unittest.TestCase):
         prepare_extended(self.stage, 'run', 'b2b', path)
         self.assertIn('COMPLEMENT_REQUIRED', self.stage.execute('SELECT reasons FROM extended_candidates').fetchone()[0])
 
+    def test_cnpj_accepts_only_digits_or_the_standard_mask(self):
+        path = fixture(self.stage, self.folder.name, 'b2b')
+        for cnpj, expected in [('11.222.333/0001-81', 'READY'), ('x11222333000181', 'REJECTED')]:
+            raw = self.stage.execute("SELECT payload FROM raw_rows WHERE source_table='B2B'").fetchone()[0]
+            payload = json.loads(raw); payload['CNPJ'] = cnpj
+            self.stage.execute("UPDATE raw_rows SET payload=? WHERE source_table='B2B'", (json.dumps(payload),))
+            self.stage.commit()
+            prepare_extended(self.stage, 'run', 'b2b', path)
+            self.assertEqual(self.stage.execute('SELECT status FROM extended_candidates').fetchone()[0], expected)
+
     def test_invalid_address_and_unknown_complement(self):
         path = fixture(self.stage, self.folder.name, 'b2b', identity='2')
         with self.assertRaises(ValueError):
@@ -107,7 +119,8 @@ def exercise_destination(connect):
                 prepare_extended(stage, 'run', kind, path)
             # The runtime requires a real UUID for durable provenance.
             stage.execute('INSERT INTO runs SELECT ?,started_at,source,status FROM runs WHERE id=?', (run_id, 'run'))
-            stage.execute('UPDATE extended_candidates SET run_id=?', (run_id,))
+            for table in ('raw_rows', 'extended_candidates', 'extended_preparations'):
+                stage.execute('UPDATE ' + table + ' SET run_id=?', (run_id,))
             stage.commit()
             connection = connect()
             try:

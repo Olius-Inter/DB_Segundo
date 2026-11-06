@@ -1,3 +1,4 @@
+from test_file_policy import PathTestCase
 import json
 from pathlib import Path
 import tempfile
@@ -9,12 +10,13 @@ from unittest.mock import patch
 
 from cryptography.fernet import Fernet
 
-from archive import export_history, main
+from archive import export_history, main, put_once
 from pipeline import open_stage
 
 
-class ArchiveTests(unittest.TestCase):
+class ArchiveTests(PathTestCase):
     def setUp(self):
+        super().setUp()
         self.temp = tempfile.TemporaryDirectory()
         self.root = Path(self.temp.name)
         self.stage = open_stage(self.root / 's.sqlite')
@@ -33,6 +35,40 @@ class ArchiveTests(unittest.TestCase):
     def tearDown(self):
         self.stage.close()
         self.temp.cleanup()
+
+    def confirm_import(self):
+        self.stage.execute('INSERT INTO run_targets VALUES(?,?)', (self.run, 'fixture'))
+        self.stage.execute('INSERT INTO reconciliations VALUES(?,?,?,?)', (self.run, 'citizens', 'fixture', 'now'))
+        self.stage.commit()
+
+    def test_unreconciled_load_does_not_remove_history(self):
+        self.stage.execute('INSERT INTO candidates VALUES(?,?,?,?,?)',
+            (self.run, '1', 'READY', '[]', json.dumps({'legacy_user_id': 1, 'legacy_citizen_id': 1})))
+        self.stage.execute('INSERT INTO load_results VALUES(?,?,?,?,?)',
+            (self.run, '1', 'IMPORTED', str(uuid.uuid4()), 'fixture'))
+        self.stage.commit()
+        self.assertEqual(self.export()['historical_records'], 3)
+        self.confirm_import()
+        self.assertEqual(self.export(version=2)['historical_records'], 1)
+
+    def test_shared_folder_cannot_contain_staging(self):
+        isolated_key = self.policy_root / 'separate-key'
+        isolated_key.write_bytes(self.key.read_bytes())
+        with self.assertRaisesRegex(ValueError, 'Staging'):
+            export_history(self.stage, self.run, 1, isolated_key,
+                self.policy_root / 'private', self.policy_root / 'backup', self.root)
+
+    def test_interrupted_publication_leaves_no_partial_final(self):
+        final = self.root / 'atomic.json'
+        with patch('archive.os.fsync', side_effect=OSError('fixture interruption')):
+            with self.assertRaises(OSError):
+                put_once(final, b'complete')
+        self.assertFalse(final.exists())
+        self.assertEqual(list(self.root.glob('.olius-pending-*')), [])
+        put_once(final, b'complete')
+        self.assertEqual(final.read_bytes(), b'complete')
+        with self.assertRaises(ValueError):
+            put_once(final, b'changed')
 
     def export(self, version=1, **options):
         return export_history(self.stage, self.run, version, self.key,
@@ -84,6 +120,7 @@ class ArchiveTests(unittest.TestCase):
         self.stage.execute('INSERT INTO load_results VALUES(?,?,?,?,?)',
                            (self.run, '1', 'IMPORTED', str(uuid.uuid4()), 'fixture'))
         self.stage.commit()
+        self.confirm_import()
         result = self.export()
         self.assertEqual(result['records_by_table'], {'COLETA': 1})
 
@@ -97,6 +134,7 @@ class ArchiveTests(unittest.TestCase):
         self.stage.execute('INSERT INTO load_results VALUES(?,?,?,?,?)',
                            (self.run, '1', 'IMPORTED', str(uuid.uuid4()), 'fixture'))
         self.stage.commit()
+        self.confirm_import()
         self.export()
         path = next((self.root / 'private').glob('*.fernet'))
         data = json.loads(Fernet(self.key.read_bytes()).decrypt(path.read_bytes()))

@@ -24,6 +24,8 @@ ROOT = Path(__file__).resolve().parents[2]
 def main():
     if os.environ.get('OLIUS_ETL_DISPOSABLE') != '1':
         raise RuntimeError('Set OLIUS_ETL_DISPOSABLE=1 for an isolated Docker test only')
+    os.environ['OLIUS_ETL_STAGE_ROOT'] = tempfile.gettempdir()
+    os.environ['OLIUS_ETL_COMPLEMENT_ROOT'] = tempfile.gettempdir()
     name = 'olius-etl-test-' + uuid.uuid4().hex[:10]
     password = secrets.token_hex(24)
     created = False

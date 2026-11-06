@@ -50,6 +50,12 @@ def legacy_preparation():
         from pipeline import open_stage, prepare, read_cpf_key
         stage = open_stage(os.environ['OLIUS_STAGE_PATH'])
         try:
+            from stage_state import frozen, prepared, require_extended
+            if frozen(stage, batch_id):
+                prepared(stage, batch_id)
+                if os.environ.get('OLIUS_ETL_EXTENDED_LOAD_ENABLED') == 'true':
+                    require_extended(stage, batch_id)
+                return batch_id
             key_path = os.environ.get('OLIUS_LEGACY_CPF_KEY_FILE')
             prepare(stage, batch_id, read_cpf_key(key_path) if key_path else None)
             for kind, variable in (('b2b', 'OLIUS_B2B_COMPLEMENT_FILE'),

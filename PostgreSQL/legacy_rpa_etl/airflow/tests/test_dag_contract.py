@@ -13,6 +13,9 @@ from airflow.sdk.exceptions import AirflowSkipException
 
 
 class DagContractTests(unittest.TestCase):
+    def setUp(self):
+        self.enterContext(patch('stage_state.frozen', return_value=False))
+
     @classmethod
     def setUpClass(cls):
         cls.bag = DagBag(dag_folder=os.environ.get('OLIUS_DAG_FOLDER', '/opt/airflow/dags'), safe_mode=False)
@@ -66,6 +69,17 @@ class DagContractTests(unittest.TestCase):
                 action.return_value = {}
                 self.assertEqual(self.call(name, 'run'), 'run')
                 opened.return_value.close.assert_called_once()
+
+    def test_frozen_batch_resumes_without_repreparation(self):
+        with patch.dict(os.environ, {'OLIUS_STAGE_PATH': 'fixture', 'OLIUS_ETL_EXTENDED_LOAD_ENABLED': 'true'}), \
+             patch('pipeline.open_stage') as opened, patch('pipeline.prepare') as prepare, \
+             patch('stage_state.frozen', return_value=True), patch('stage_state.prepared') as prepared, \
+             patch('stage_state.require_extended') as extended:
+            self.assertEqual(self.call('prepare_citizens', 'batch'), 'batch')
+            prepared.assert_called_once_with(opened.return_value, 'batch')
+            extended.assert_called_once_with(opened.return_value, 'batch')
+            prepare.assert_not_called()
+            opened.return_value.close.assert_called_once()
 
     def test_prepare_reads_optional_cpf_secret(self):
         with patch.dict(os.environ, {'OLIUS_STAGE_PATH': 'fixture',

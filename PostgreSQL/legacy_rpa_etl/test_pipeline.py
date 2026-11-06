@@ -1,3 +1,4 @@
+from test_file_policy import PathTestCase
 import json
 import tempfile
 import unittest
@@ -11,12 +12,15 @@ class SourceFixture:
         self.fail_after = fail_after
         self.tables = 0
         self.closed = False
+        self.named_cursors = []
 
     def set_session(self, **options):
         if options != {'isolation_level': 'REPEATABLE READ', 'readonly': True}:
             raise AssertionError('Extraction must use a consistent read-only snapshot')
 
-    def cursor(self):
+    def cursor(self, name=None):
+        if name:
+            self.named_cursors.append(name)
         return self
 
     def __enter__(self):
@@ -59,8 +63,9 @@ class SourceFixture:
         self.closed = True
 
 
-class StagingTests(unittest.TestCase):
+class StagingTests(PathTestCase):
     def setUp(self):
+        super().setUp()
         self.directory = tempfile.TemporaryDirectory()
         self.stage = open_stage(Path(self.directory.name) / 'stage.sqlite')
         self.stage.execute("INSERT INTO runs VALUES ('test','2026-11-01','fixture','EXTRACTED')")
@@ -137,6 +142,15 @@ class StagingTests(unittest.TestCase):
         self.assertEqual(decode_cpf(None, None), (None, 'INVALID_CPF_FORMAT'))
         self.assertEqual(decode_cpf('12345678901', None), (None, 'INVALID_CPF_CHECK_DIGITS'))
 
+    def test_null_name_is_rejected_without_aborting_the_batch(self):
+        self.stage.execute("UPDATE raw_rows SET payload=? WHERE source_table='USUARIO'",
+                           (json.dumps(dict(self.user, nome=None)),))
+        self.stage.commit()
+        prepare(self.stage, 'test')
+        row = self.stage.execute('SELECT status,reasons FROM candidates').fetchone()
+        self.assertEqual(row[0], 'REJECTED')
+        self.assertIn('INVALID_NAME', row[1])
+
     def test_missing_user_is_rejected(self):
         self.stage.execute("DELETE FROM raw_rows WHERE source_table='USUARIO'")
         prepare(self.stage, 'test')
@@ -177,6 +191,7 @@ class StagingTests(unittest.TestCase):
         self.assertEqual(result['status'], 'EXTRACTED')
         self.assertEqual(sum(result['source_counts'].values()), 14)
         self.assertTrue(source.closed)
+        self.assertEqual(len(source.named_cursors), 14)
         self.assertTrue(all('senha' not in row[0] for row in self.stage.execute(
             "SELECT payload FROM raw_rows WHERE run_id='snapshot'")))
 

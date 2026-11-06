@@ -1,3 +1,4 @@
+from test_file_policy import PathTestCase
 import csv
 import io
 import json
@@ -11,8 +12,9 @@ from unittest.mock import patch
 from complements import FIELDS, main, validate_file
 
 
-class ComplementTests(unittest.TestCase):
+class ComplementTests(PathTestCase):
     def setUp(self):
+        super().setUp()
         self.folder = tempfile.TemporaryDirectory()
         self.addCleanup(self.folder.cleanup)
         self.path = Path(self.folder.name) / 'private.csv'

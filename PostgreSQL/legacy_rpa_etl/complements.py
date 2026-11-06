@@ -6,6 +6,7 @@ from collections import Counter
 from datetime import date
 
 from pipeline import decode_cpf
+from file_policy import checked_path
 
 CATEGORIES = frozenset(('Restaurante', 'Lanchonete', 'Padaria e confeitaria', 'Bar',
                         'Hotel e pousada', 'Cozinha institucional', 'Outro'))
@@ -18,7 +19,8 @@ def read_records(path, kind):
     """Private values are returned only to the local preparation process."""
     fields = FIELDS[kind]
     records = []
-    with open(path, encoding='utf-8-sig', newline='') as stream:
+    path = checked_path(path, 'complement')
+    with path.open(encoding='utf-8-sig', newline='') as stream:
         reader = csv.DictReader(stream, delimiter=';', strict=True)
         if reader.fieldnames != list(fields):
             raise ValueError('Unexpected complement CSV header')

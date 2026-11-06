@@ -2,6 +2,7 @@
 import argparse
 import json
 import os
+import re
 import secrets
 import uuid
 from collections import Counter
@@ -12,6 +13,7 @@ from cryptography.hazmat.primitives.kdf.argon2 import Argon2id
 from complements import read_records, validate_records
 from loader import ImportConflict, fingerprint
 from pipeline import open_stage
+from stage_state import frozen, bind_target, invalidate, confirm, require_extended
 
 MAPPINGS = {'b2b': ('B2B', 'ID_B2B', 'establishment_import', 'establishment'),
             'driver': ('MOTORISTA', 'ID_motorista', 'driver_import', 'driver')}
@@ -44,6 +46,8 @@ def prepare_extended(stage, run_id, kind, path):
     table, _, _, _ = MAPPINGS[kind]
     if stage.execute('SELECT status FROM runs WHERE id=?', (run_id,)).fetchone() != ('PREPARED',):
         raise ValueError('Prepare the original snapshot first')
+    if frozen(stage, run_id):
+        raise ValueError('Cannot change complements after any load attempt')
     source = raw_records(stage, run_id, table)
     rows = read_records(path, kind)
     summary = validate_records(rows, kind, set(source))
@@ -57,9 +61,8 @@ def prepare_extended(stage, run_id, kind, path):
     identity_field = 'cnpj' if kind == 'b2b' else 'cpf'
     duplicates = Counter(item[2].get(identity_field) for item in prepared if not item[1])
     with stage:
-        if stage.execute('SELECT 1 FROM extended_results WHERE run_id=? AND kind=? LIMIT 1',
-                         (run_id, kind)).fetchone():
-            raise ValueError('Cannot reprepare an attempted extended load')
+        if frozen(stage, run_id):
+            raise ValueError('Cannot change a frozen preparation')
         stage.execute('DELETE FROM extended_candidates WHERE run_id=? AND kind=?', (run_id, kind))
         for identity, reasons, payload in prepared:
             if payload.get(identity_field) and duplicates[payload[identity_field]] > 1:
@@ -67,6 +70,7 @@ def prepare_extended(stage, run_id, kind, path):
             stage.execute('INSERT INTO extended_candidates VALUES(?,?,?,?,?,?)',
                           (run_id, kind, identity, 'REJECTED' if reasons else 'READY',
                            json.dumps(reasons), json.dumps(payload, ensure_ascii=False)))
+        stage.execute('INSERT OR IGNORE INTO extended_preparations VALUES(?,?)', (run_id, kind))
     return extended_report(stage, run_id, kind)
 
 
@@ -91,7 +95,7 @@ def prepare_establishment(record, complement, addresses, payload, reasons):
         reasons.append('LINKED_LEGACY_ACCOUNT_REQUIRES_REVIEW')
     payload.update(email=complement['email'], category=complement['establishment_type'],
                    cnpj=digits(record.get('CNPJ')), telephone=digits(record.get('telefone')))
-    if len(payload['cnpj']) != 14:
+    if not re.fullmatch(r'(?:[0-9]{14}|[0-9]{2}\.[0-9]{3}\.[0-9]{3}/[0-9]{4}-[0-9]{2})', text(record.get('CNPJ'))):
         reasons.append('INVALID_CNPJ_FORMAT')
     if not 10 <= len(payload['telephone']) <= 15:
         reasons.append('INVALID_PHONE')
@@ -212,13 +216,11 @@ def run_extended(stage, run_id, connect, *, enabled=False, reconcile_only=False)
     run = stage.execute('SELECT source,status FROM runs WHERE id=?', (run_id,)).fetchone()
     if not run or run[1] != 'PREPARED':
         raise ValueError('Prepared snapshot required')
+    require_extended(stage, run_id)
+    invalidate(stage, run_id, 'extended')
     connection = connect()
     try:
-        info = connection.get_dsn_parameters()
-        target = json.dumps([info.get('host'), info.get('port'), info.get('dbname')])
-        if stage.execute('SELECT 1 FROM extended_results WHERE run_id=? AND target<>?',
-                         (run_id, target)).fetchone():
-            raise ValueError('Extended run belongs to another target')
+        target = bind_target(stage, run_id, connection)
         for kind, identity, raw in stage.execute("SELECT kind,source_id,payload FROM extended_candidates "
                                                "WHERE run_id=? AND status='READY'", (run_id,)).fetchall():
             payload = json.loads(raw)
@@ -241,6 +243,8 @@ def run_extended(stage, run_id, connect, *, enabled=False, reconcile_only=False)
                                   'ON CONFLICT(run_id,kind,source_id) DO UPDATE SET status=excluded.status,'
                                   'destination_id=excluded.destination_id,target=excluded.target',
                                   (run_id, kind, identity, status, destination, target))
+        if reconcile_only:
+            confirm(stage, run_id, 'extended', target)
     finally:
         connection.close()
 
@@ -253,8 +257,9 @@ def main():
     parser.add_argument('--kind', choices=tuple(MAPPINGS))
     parser.add_argument('--file')
     args = parser.parse_args()
-    stage = open_stage(args.stage)
+    stage = None
     try:
+        stage = open_stage(args.stage)
         if args.step == 'prepare':
             if not args.kind or not args.file:
                 raise ValueError('Kind and private complement file required')
@@ -269,7 +274,8 @@ def main():
         print(json.dumps(dict(status='FAILED', error_type=type(exc).__name__)))
         return 1
     finally:
-        stage.close()
+        if stage is not None:
+            stage.close()
     return 0
 
 

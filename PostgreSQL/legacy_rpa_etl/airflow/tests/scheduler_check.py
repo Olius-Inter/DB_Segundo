@@ -179,7 +179,8 @@ def main():
                 'AIRFLOW__CORE__FERNET_KEY': Fernet.generate_key().decode(),
                 'AIRFLOW__API_AUTH__JWT_SECRET': secrets.token_hex(32), 'AIRFLOW__API__WORKERS': '1',
                 'PYTHONPATH': '/opt/olius', 'OLIUS_STAGE_PATH': '/opt/airflow/staging/legacy.sqlite',
-                'OLIUS_LEGACY_HOST': db, 'OLIUS_LEGACY_PORT': '5432',
+                'OLIUS_ETL_STAGE_ROOT': '/opt/airflow/staging', 'OLIUS_ETL_KEY_ROOT': '/run/secrets',
+                'OLIUS_ETL_COMPLEMENT_ROOT': '/run/secrets', 'OLIUS_LEGACY_HOST': db, 'OLIUS_LEGACY_PORT': '5432',
                 'OLIUS_LEGACY_DATABASE': 'legacy_fixture', 'OLIUS_LEGACY_USER': 'olius_legacy_reader',
                 'OLIUS_LEGACY_CA': '/run/secrets/ca.pem', 'OLIUS_ETL_LOAD_ENABLED': 'true',
                 'OLIUS_TARGET_HOST': db, 'OLIUS_TARGET_PORT': '5432', 'OLIUS_TARGET_DATABASE': 'olius_target',
@@ -195,7 +196,7 @@ def main():
                          '--mount', f'type=bind,source={etl / "airflow/dags"},target=/opt/airflow/dags,readonly']
             if hasattr(os, 'getgid'):
                 arguments += ['--group-add', str(os.getgid())]
-            for module in ('pipeline.py','credentials.py','loader.py','connections.py','archive.py','complements.py','extended.py'):
+            for module in ('pipeline.py','credentials.py','loader.py','connections.py','archive.py','complements.py','extended.py','file_policy.py','stage_state.py'):
                 arguments += ['--mount', f'type=bind,source={etl / module},target=/opt/olius/{module},readonly']
             for name, path in outputs.items():
                 arguments += ['--mount', f'type=bind,source={path},target=/opt/olius-history/{name}']
@@ -209,9 +210,15 @@ def main():
                  180, 'DAG registration')
             command('exec', airflow, 'airflow', 'dags', 'unpause', 'olius_legacy_preparation')
 
-            def run(run_id, expected):
-                command('exec', airflow, 'airflow', 'dags', 'trigger', '--run-id', run_id,
-                        'olius_legacy_preparation')
+            def run(run_id, expected, *, clear=False):
+                result_report['active_scenario'] = run_id + ('-clear' if clear else '')
+                if clear:
+                    logical_date = sql('airflow', f"SELECT logical_date::text FROM dag_run WHERE run_id='{run_id}';")
+                    command('exec', airflow, 'airflow', 'tasks', 'clear', '-y', '-s', logical_date,
+                            '-e', logical_date, 'olius_legacy_preparation')
+                else:
+                    command('exec', airflow, 'airflow', 'dags', 'trigger', '--run-id', run_id,
+                            '--logical-date', datetime.now(timezone.utc).isoformat(), 'olius_legacy_preparation')
                 state_query = f"SELECT state FROM dag_run WHERE dag_id='olius_legacy_preparation' AND run_id='{run_id}';"
                 wait(lambda: sql('airflow', state_query) in ('success', 'failed'), 300, 'scheduler run ' + run_id)
                 state = sql('airflow', state_query)
@@ -227,6 +234,8 @@ def main():
                 return {'state': state, 'tasks': task_states.splitlines()}
 
             result_report['initial'] = run('scheduler-fixture-initial', 'success')
+            assert sql('olius_target', 'SELECT count(*) FROM users;') == '2'
+            result_report['cleared_initial'] = run('scheduler-fixture-initial', 'success', clear=True)
             assert sql('olius_target', 'SELECT count(*) FROM users;') == '2'
             sql('olius_target', "UPDATE users SET name='Edited fixture',password_hash='changed-fixture-hash';")
             result_report['repeat'] = run('scheduler-fixture-repeat', 'success')
@@ -257,7 +266,12 @@ def main():
                 text = report.read_text(encoding='utf-8')
                 assert '@example.invalid' not in text and 'pbkdf2$' not in text and 'aesgcm$' not in text
                 assert json.loads(text)['local_backup_verified'] is True
-            result_report.update(shared_reports=len(reports), imported_citizens=2,
+            checked = command('exec', airflow, 'python', '-c',
+                "import os,json,pipeline; s=pipeline.open_stage(os.environ['OLIUS_STAGE_PATH']); "
+                "rows=s.execute(\"SELECT status,reasons FROM candidates WHERE source_id='2'\").fetchall(); "
+                "assert len(rows)==4 and all(status=='REJECTED' and 'CPF_DECRYPTION_KEY_REQUIRED' in json.loads(reasons) for status,reasons in rows); print('PASS')")
+            assert checked.stdout.strip() == 'PASS'
+            result_report.update(status='PASSED', shared_reports=len(reports), imported_citizens=2,
                                  imported_establishments=1, imported_drivers=1,
                                  cpf_without_key_rejected=True, backup_verified=True)
             report_path = Path(args.report).resolve()
@@ -265,6 +279,11 @@ def main():
             report_path.write_text(json.dumps(result_report, indent=2), encoding='utf-8')
             print('PASS: real scheduler, TLS, partial rejection, transactional load, rerun, archival and failure propagation')
         finally:
+            # Preserve aggregate diagnostics even when a timeout/assertion interrupts a scenario.
+            result_report.setdefault('status', 'FAILED')
+            report_path = Path(args.report).resolve()
+            report_path.parent.mkdir(parents=True, exist_ok=True)
+            report_path.write_text(json.dumps(result_report, indent=2), encoding='utf-8')
             for name in reversed(created_containers):
                 inspection = command('inspect', name, check=False)
                 if inspection.returncode == 0 and json.loads(inspection.stdout)[0]['Config']['Labels'].get('org.olius.scheduler-test') == tag:

@@ -8,6 +8,7 @@ from datetime import date
 import psycopg2
 
 from credentials import unseal
+from stage_state import bind_target, invalidate, confirm, prepared
 
 
 class ImportConflict(Exception):
@@ -96,11 +97,8 @@ def load(stage, run_id, key, connect, *, enabled=False):
     connection = connect()
     try:
         connection.autocommit = False
-        info = connection.get_dsn_parameters()
-        target = json.dumps([info.get('host'), info.get('port'), info.get('dbname')])
-        if stage.execute('SELECT 1 FROM load_results WHERE run_id=? AND target<>? LIMIT 1',
-                         (run_id, target)).fetchone():
-            raise ValueError('This run already targets a different destination')
+        target = bind_target(stage, run_id, connection)
+        invalidate(stage, run_id, 'citizens')
         for source_id, raw in rows:
             payload = json.loads(raw)
             secret = stage.execute('''SELECT ciphertext FROM sealed_credentials
@@ -128,9 +126,8 @@ def load(stage, run_id, key, connect, *, enabled=False):
 
 def reconcile(stage, run_id, connect):
     """Verify durable mapping and structural links, not mutable profile values/hashes."""
-    source = stage.execute('SELECT source FROM runs WHERE id=?', (run_id,)).fetchone()
-    if not source:
-        raise ValueError('Unknown snapshot')
+    source = prepared(stage, run_id)
+    invalidate(stage, run_id, 'citizens')
     expected = stage.execute("SELECT count(*) FROM candidates WHERE run_id=? AND status='READY'",
                              (run_id,)).fetchone()[0]
     completed = stage.execute('''SELECT count(*) FROM load_results
@@ -140,6 +137,7 @@ def reconcile(stage, run_id, connect):
     connection = connect()
     try:
         connection.set_session(readonly=True)
+        target = bind_target(stage, run_id, connection)
         for raw, destination_id in stage.execute('''SELECT c.payload,r.destination_id
             FROM candidates c JOIN load_results r USING(run_id,source_id)
             WHERE c.run_id=? AND r.status IN ('IMPORTED','ALREADY_IMPORTED')''', (run_id,)):
@@ -151,9 +149,10 @@ def reconcile(stage, run_id, connect):
                     JOIN public.user_qr_code q ON q.user_id=c.id AND q.qr_token=c.qr_token
                     WHERE m.source_system=%s AND m.source_user_id=%s AND u.id=%s
                       AND u.user_type='CITIZENS')''',
-                               (source[0], str(payload['legacy_user_id']), destination_id))
+                               (source, str(payload['legacy_user_id']), destination_id))
                 if not cursor.fetchone()[0]:
                     raise ValueError('Destination reconciliation failed')
+        confirm(stage, run_id, 'citizens', target)
     finally:
         connection.rollback()
         connection.close()
