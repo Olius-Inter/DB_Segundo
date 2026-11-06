@@ -1,0 +1,19 @@
+# Complemento opt-in: não utilizar até preparar o destino e confirmar o alvo.
+services:
+  airflow:
+    environment:
+      OLIUS_TARGET_HOST: ${OLIUS_TARGET_HOST:?Configure destino}
+      OLIUS_TARGET_PORT: ${OLIUS_TARGET_PORT:?Configure destino}
+      OLIUS_TARGET_DATABASE: ${OLIUS_TARGET_DATABASE:?Configure destino}
+      OLIUS_TARGET_USER: ${OLIUS_TARGET_USER:?Configure conta de manutencao autorizada}
+      OLIUS_TARGET_CA: /run/secrets/target_ca
+      OLIUS_TARGET_PGPASS: /run/secrets/target_pgpass
+      OLIUS_ETL_CONFIRMED_TARGET: ${OLIUS_ETL_CONFIRMED_TARGET:?Confirme host:porta/banco}
+    secrets:
+      - target_ca
+      - target_pgpass
+secrets:
+  target_ca:
+    file: ${OLIUS_TARGET_CA_FILE:?Configure CA do destino}
+  target_pgpass:
+    file: ${OLIUS_TARGET_PGPASS_FILE:?Configure pgpass exclusivo do destino}

@@ -1,0 +1,324 @@
+"""Legacy extraction, sealed credentials, and opt-in atomic B2C migration."""
+import argparse
+import base64
+import binascii
+import json
+import os
+import sqlite3
+import uuid
+from collections import Counter
+from stage_state import frozen
+from file_policy import checked_path, read_secret
+from datetime import datetime, timezone
+from pathlib import Path
+
+TABLES = ('ADM', 'ATUALIZACAO', 'B2B', 'B2C', 'CARTEIRA', 'CERTIFICADO',
+          'COLETA', 'ENDERECO', 'ENTREGA_PEV', 'MOTORISTA',
+          'MOVIMENTACAO_PONTOS', 'PEV', 'SOLICITACAO_COLETA', 'USUARIO')
+
+
+def open_stage(path):
+    path = checked_path(path, 'stage', must_exist=False)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    connection = sqlite3.connect(str(path), uri=False)
+    connection.execute('PRAGMA foreign_keys=ON')
+    connection.executescript('''
+        CREATE TABLE IF NOT EXISTS runs (
+            id TEXT PRIMARY KEY, started_at TEXT NOT NULL,
+            source TEXT NOT NULL, status TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS run_targets (
+            run_id TEXT PRIMARY KEY REFERENCES runs(id), target TEXT NOT NULL);
+        CREATE TRIGGER IF NOT EXISTS immutable_run_target_update BEFORE UPDATE ON run_targets
+            BEGIN SELECT RAISE(ABORT,'Batch target is immutable'); END;
+        CREATE TRIGGER IF NOT EXISTS immutable_run_target_delete BEFORE DELETE ON run_targets
+            BEGIN SELECT RAISE(ABORT,'Batch target is immutable'); END;
+        CREATE TABLE IF NOT EXISTS reconciliations (
+            run_id TEXT REFERENCES runs(id),group_name TEXT,target TEXT NOT NULL,confirmed_at TEXT NOT NULL,
+            PRIMARY KEY(run_id,group_name));
+        CREATE TABLE IF NOT EXISTS extended_preparations (
+            run_id TEXT REFERENCES runs(id),kind TEXT,PRIMARY KEY(run_id,kind));
+        CREATE TABLE IF NOT EXISTS raw_rows (
+            run_id TEXT NOT NULL REFERENCES runs(id), source_table TEXT NOT NULL,
+            source_id TEXT NOT NULL, payload TEXT NOT NULL,
+            PRIMARY KEY(run_id, source_table, source_id));
+        CREATE TABLE IF NOT EXISTS candidates (
+            run_id TEXT NOT NULL REFERENCES runs(id), source_id TEXT NOT NULL,
+            status TEXT NOT NULL, reasons TEXT NOT NULL, payload TEXT NOT NULL,
+            PRIMARY KEY(run_id, source_id));
+        CREATE TABLE IF NOT EXISTS sealed_credentials (
+            run_id TEXT NOT NULL REFERENCES runs(id), user_id TEXT NOT NULL,
+            ciphertext BLOB NOT NULL, PRIMARY KEY(run_id,user_id));
+        CREATE TABLE IF NOT EXISTS credential_batches (
+            run_id TEXT PRIMARY KEY REFERENCES runs(id));
+        CREATE TABLE IF NOT EXISTS extended_candidates (
+            run_id TEXT NOT NULL REFERENCES runs(id), kind TEXT NOT NULL,
+            source_id TEXT NOT NULL, status TEXT NOT NULL, reasons TEXT NOT NULL,
+            payload TEXT NOT NULL, PRIMARY KEY(run_id,kind,source_id));
+        CREATE TABLE IF NOT EXISTS extended_results (
+            run_id TEXT NOT NULL REFERENCES runs(id), kind TEXT NOT NULL,
+            source_id TEXT NOT NULL, status TEXT NOT NULL, destination_id TEXT,
+            target TEXT NOT NULL, PRIMARY KEY(run_id,kind,source_id));
+        CREATE TABLE IF NOT EXISTS load_results (
+            run_id TEXT NOT NULL REFERENCES runs(id), source_id TEXT NOT NULL,
+            status TEXT NOT NULL, destination_id TEXT, target TEXT NOT NULL,
+            PRIMARY KEY(run_id,source_id));
+    ''')
+    return connection
+
+
+def extract(stage, source_name, connect, run_id=None, credential_key=None):
+    """Commit one complete snapshot to SQLite, or leave no partial raw snapshot."""
+    run_id = run_id or str(uuid.uuid4())
+    previous = stage.execute('SELECT source,status FROM runs WHERE id=?', (run_id,)).fetchone()
+    if previous:
+        if previous[0] != source_name:
+            raise ValueError('Run already belongs to another source')
+        if previous[1] in ('EXTRACTED', 'PREPARED'):
+            if credential_key and not stage.execute(
+                    'SELECT 1 FROM credential_batches WHERE run_id=?', (run_id,)).fetchone():
+                raise ValueError('Use a new run to extract protected credentials')
+            return run_id
+        if frozen(stage, run_id):
+            raise ValueError('Cannot replace a frozen snapshot')
+        with stage:
+            stage.execute('DELETE FROM extended_candidates WHERE run_id=?', (run_id,))
+            stage.execute('DELETE FROM extended_preparations WHERE run_id=?', (run_id,))
+            stage.execute('DELETE FROM candidates WHERE run_id=?', (run_id,))
+            stage.execute('DELETE FROM sealed_credentials WHERE run_id=?', (run_id,))
+            stage.execute('DELETE FROM credential_batches WHERE run_id=?', (run_id,))
+            stage.execute('DELETE FROM load_results WHERE run_id=?', (run_id,))
+            stage.execute('DELETE FROM raw_rows WHERE run_id=?', (run_id,))
+            stage.execute("UPDATE runs SET status='EXTRACTING' WHERE id=?", (run_id,))
+    else:
+        stage.execute('INSERT INTO runs VALUES (?,?,?,?)',
+                      (run_id, datetime.now(timezone.utc).isoformat(), source_name, 'EXTRACTING'))
+    stage.commit()
+    source = None
+    try:
+        from psycopg2 import sql
+        source = connect()
+        source.set_session(isolation_level='REPEATABLE READ', readonly=True)
+        with source.cursor() as cursor:
+            cursor.execute("SELECT current_setting('transaction_read_only')")
+            if cursor.fetchone()[0] != 'on':
+                raise RuntimeError('Source must be read-only')
+            for table in TABLES:
+                cursor.execute('''SELECT column_name FROM information_schema.columns
+                    WHERE table_schema='public' AND table_name=%s
+                    ORDER BY ordinal_position''', (table,))
+                # Credential values never leave PostgreSQL. Raw means original
+                # selected values, not a full backup of secret columns.
+                columns = [row[0] for row in cursor.fetchall() if row[0].lower() != 'senha']
+                cursor.execute('''SELECT a.attname FROM pg_constraint c
+                    JOIN pg_class t ON t.oid=c.conrelid
+                    JOIN pg_namespace n ON n.oid=t.relnamespace
+                    JOIN pg_attribute a ON a.attrelid=t.oid AND a.attnum=ANY(c.conkey)
+                    WHERE c.contype='p' AND n.nspname='public' AND t.relname=%s''', (table,))
+                keys = [row[0] for row in cursor.fetchall()]
+                if len(keys) != 1 or keys[0] not in columns:
+                    raise RuntimeError('Unexpected legacy primary key')
+                with source.cursor(name='legacy_' + table.lower()) as rows_cursor:
+                    rows_cursor.itersize = 500
+                    rows_cursor.execute(sql.SQL('SELECT {} FROM public.{}').format(
+                        sql.SQL(',').join(map(sql.Identifier, columns)), sql.Identifier(table)))
+                    while True:
+                        rows = rows_cursor.fetchmany(500)
+                        if not rows:
+                            break
+                        for values in rows:
+                            payload = dict(zip(columns, values))
+                            stage.execute('INSERT INTO raw_rows VALUES (?,?,?,?)',
+                                          (run_id, table, str(payload[keys[0]]),
+                                           json.dumps(payload, ensure_ascii=False, default=str)))
+            if credential_key:
+                from credentials import store_credentials
+                with source.cursor(name='legacy_credentials') as credentials_cursor:
+                    credentials_cursor.itersize = 500
+                    store_credentials(stage, credentials_cursor, run_id, credential_key)
+                stage.execute('INSERT INTO credential_batches VALUES (?)', (run_id,))
+        stage.execute("UPDATE runs SET status='EXTRACTED' WHERE id=?", (run_id,))
+        stage.commit()
+        return run_id
+    except Exception:
+        stage.rollback()
+        stage.execute("UPDATE runs SET status='FAILED' WHERE id=?", (run_id,))
+        stage.commit()
+        raise
+    finally:
+        if source is not None:
+            source.rollback()
+            source.close()
+
+
+def read_cpf_key(path):
+    """Read the original AES key without including its value in errors."""
+    try:
+        key = base64.b64decode(read_secret(path).decode('utf-8-sig').strip(), validate=True)
+    except (ValueError, UnicodeError, binascii.Error):
+        raise ValueError('Invalid CPF key file') from None
+    if len(key) != 32:
+        raise ValueError('Invalid CPF key length')
+    return key
+
+
+def decode_cpf(value, key):
+    """Return a candidate document and a non-sensitive rejection reason."""
+    cpf = str(value)
+    if cpf.startswith('aesgcm$'):
+        if key is None:
+            return None, 'CPF_DECRYPTION_KEY_REQUIRED'
+        from cryptography.exceptions import InvalidTag
+        from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+        try:
+            _, nonce, ciphertext = cpf.split('$')
+            nonce = base64.b64decode(nonce, validate=True)
+            ciphertext = base64.b64decode(ciphertext, validate=True)
+            if len(nonce) != 12 or len(ciphertext) < 16:
+                raise ValueError()
+            cpf = AESGCM(key).decrypt(nonce, ciphertext, None).decode('utf-8')
+        except (ValueError, UnicodeError, binascii.Error, InvalidTag):
+            return None, 'CPF_DECRYPTION_FAILED'
+    if not (cpf.isascii() and cpf.isdigit() and len(cpf) == 11):
+        return None, 'INVALID_CPF_FORMAT'
+    digits = list(map(int, cpf))
+    valid = len(set(cpf)) > 1
+    for size in (9, 10):
+        check = (sum(digits[i] * (size + 1 - i) for i in range(size)) * 10) % 11
+        valid = valid and digits[size] == (0 if check == 10 else check)
+    return (cpf, None) if valid else (None, 'INVALID_CPF_CHECK_DIGITS')
+
+
+def prepare(stage, run_id, cpf_key=None):
+    run = stage.execute('SELECT status FROM runs WHERE id=?', (run_id,)).fetchone()
+    if not run or run[0] not in ('EXTRACTED', 'PREPARED'):
+        raise ValueError('Run must contain a complete extraction')
+    def records(table):
+        return [json.loads(row[0]) for row in stage.execute(
+            'SELECT payload FROM raw_rows WHERE run_id=? AND source_table=?', (run_id, table))]
+    users = {row['ID_usuario']: row for row in records('USUARIO')}
+    citizens = records('B2C')
+    decoded = [decode_cpf(row['CPF'], cpf_key) for row in citizens]
+    cpfs = Counter(cpf for cpf, reason in decoded if reason is None)
+    owners = Counter(row['ID_usuario'] for row in citizens)
+    email_keys = Counter((str(row['email']).split('@')[0], str(row['email']).split('@')[-1].lower())
+                         for row in users.values())
+    with stage:
+        if frozen(stage, run_id):
+            raise ValueError('Cannot prepare an already attempted load; use load to resume')
+        stage.execute('DELETE FROM candidates WHERE run_id=?', (run_id,))
+        for citizen, (cpf, cpf_reason) in zip(citizens, decoded):
+            reasons = []
+            user = users.get(citizen['ID_usuario'])
+            if cpf_reason:
+                reasons.append(cpf_reason)
+            if (cpf is not None and cpfs[cpf] > 1) or owners[citizen['ID_usuario']] > 1:
+                reasons.append('DUPLICATE_IDENTITY')
+            if not user:
+                reasons.append('MISSING_USER')
+            else:
+                email = str(user['email'])
+                phone = ''.join(char for char in str(user['telefone']) if char in '0123456789')
+                if user['tipo_usuario'] != 'B2C':
+                    reasons.append('PROFILE_MISMATCH')
+                if not isinstance(user['nome'], str) or not user['nome'].strip() or len(user['nome']) > 150:
+                    reasons.append('INVALID_NAME')
+                if email.count('@') != 1 or any(char.isspace() for char in email) or len(email) > 255:
+                    reasons.append('INVALID_EMAIL')
+                elif not all(email.split('@')):
+                    reasons.append('INVALID_EMAIL')
+                elif email_keys[(email.split('@')[0], email.split('@')[1].lower())] > 1:
+                    reasons.append('DUPLICATE_EMAIL')
+                if not 10 <= len(phone) <= 15:
+                    reasons.append('INVALID_PHONE')
+                try:
+                    from datetime import date
+                    if date.fromisoformat(user['primeiro_registro']) > date.today():
+                        reasons.append('INVALID_REGISTRATION_DATE')
+                except (ValueError, TypeError):
+                    reasons.append('INVALID_REGISTRATION_DATE')
+            payload = {'legacy_citizen_id': citizen['ID_B2C'],
+                       'legacy_user_id': citizen['ID_usuario']}
+            if user:
+                payload.update(name=user['nome'], email=user['email'], cpf=cpf,
+                               telephone=phone, user_type='CITIZENS',
+                               original_registration_date=user['primeiro_registro'])
+            protected = stage.execute('''SELECT 1 FROM sealed_credentials
+                WHERE run_id=? AND user_id=?''', (run_id, str(citizen['ID_usuario']))).fetchone()
+            if not protected and stage.execute('SELECT 1 FROM credential_batches WHERE run_id=?',
+                                              (run_id,)).fetchone():
+                reasons.append('UNSUPPORTED_OR_MISSING_LEGACY_CREDENTIAL')
+            status = 'REJECTED' if reasons else ('READY' if protected else 'BLOCKED_POLICY')
+            if not reasons and not protected:
+                reasons = ['PROTECTED_LEGACY_CREDENTIAL_REQUIRED']
+            stage.execute('INSERT INTO candidates VALUES (?,?,?,?,?)',
+                          (run_id, str(citizen['ID_B2C']), status,
+                           json.dumps(reasons), json.dumps(payload, ensure_ascii=False)))
+        stage.execute("UPDATE runs SET status='PREPARED' WHERE id=?", (run_id,))
+
+
+def report(stage, run_id):
+    run = stage.execute('SELECT status FROM runs WHERE id=?', (run_id,)).fetchone()
+    if not run:
+        raise ValueError('Unknown run')
+    loaded = dict(stage.execute('''SELECT status,count(*) FROM load_results
+        WHERE run_id=? GROUP BY status''', (run_id,)))
+    return {'run_id': run_id, 'status': run[0], 'destination_writes': loaded.get('IMPORTED', 0),
+            'load_counts': loaded,
+            'source_counts': dict(stage.execute('''SELECT source_table,count(*)
+                FROM raw_rows WHERE run_id=? GROUP BY source_table''', (run_id,))),
+            'candidate_counts': dict(stage.execute('''SELECT status,count(*)
+                FROM candidates WHERE run_id=? GROUP BY status''', (run_id,)))}
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('step', choices=('extract', 'prepare', 'report', 'load', 'reconcile'))
+    parser.add_argument('--stage', required=True)
+    parser.add_argument('--run-id')
+    parser.add_argument('--credential-key-file')
+    parser.add_argument('--cpf-key-file')
+    args = parser.parse_args()
+    stage = None
+    try:
+        stage = open_stage(args.stage)
+        if args.step == 'extract':
+            import psycopg2
+            # Explicit host/database/user/CA avoid silently using a default target.
+            connection = {key: os.environ['OLIUS_LEGACY_' + env] for key, env in
+                          [('host', 'HOST'), ('port', 'PORT'), ('dbname', 'DATABASE'),
+                           ('user', 'USER'), ('sslrootcert', 'CA')]}
+            connection.update(sslmode='verify-full', connect_timeout=15,
+                              options='-c default_transaction_read_only=on -c statement_timeout=60000',
+                              application_name='olius_legacy_etl')
+            run_id = extract(stage, connection['host'] + ':' + connection['port'] + '/' + connection['dbname'],
+                             lambda: psycopg2.connect(**connection), run_id=args.run_id,
+                             credential_key=read_secret(args.credential_key_file)
+                             if args.credential_key_file else None)
+        else:
+            if not args.run_id:
+                parser.error('--run-id is required for prepare/report')
+            run_id = args.run_id
+            if args.step == 'prepare':
+                prepare(stage, run_id, read_cpf_key(args.cpf_key_file) if args.cpf_key_file else None)
+            elif args.step in ('load', 'reconcile'):
+                from loader import load, reconcile
+                from connections import destination_connection
+                if args.step == 'load':
+                    if not args.credential_key_file:
+                        raise ValueError('Protected credential key required')
+                    load(stage, run_id, read_secret(args.credential_key_file),
+                         destination_connection, enabled=os.environ.get('OLIUS_ETL_LOAD_ENABLED') == 'true')
+                else:
+                    reconcile(stage, run_id, destination_connection)
+        print(json.dumps(report(stage, run_id), indent=2))
+    except Exception as exc:
+        # Exception text from drivers may contain connection details or data.
+        print(json.dumps({'status': 'FAILED', 'error_type': type(exc).__name__}))
+        raise SystemExit(1) from None
+    finally:
+        if stage is not None:
+            stage.close()
+
+
+if __name__ == '__main__':
+    main()

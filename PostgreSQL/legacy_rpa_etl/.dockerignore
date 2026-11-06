@@ -1,0 +1,4 @@
+**
+!requirements.lock
+!airflow/Dockerfile
+!airflow/coverage.lock

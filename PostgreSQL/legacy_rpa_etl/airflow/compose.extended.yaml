@@ -1,0 +1,15 @@
+# Entradas privadas opcionais; não habilita escrita sem a flag específica e compose.load.yaml.
+services:
+  airflow:
+    environment:
+      OLIUS_B2B_COMPLEMENT_FILE: /run/secrets/b2b_complement
+      OLIUS_DRIVER_COMPLEMENT_FILE: /run/secrets/driver_complement
+      OLIUS_ETL_EXTENDED_LOAD_ENABLED: ${OLIUS_ETL_EXTENDED_LOAD_ENABLED:-false}
+    secrets:
+      - b2b_complement
+      - driver_complement
+secrets:
+  b2b_complement:
+    file: ${OLIUS_B2B_COMPLEMENT_HOST_FILE:?Configure caminho do CSV privado B2B}
+  driver_complement:
+    file: ${OLIUS_DRIVER_COMPLEMENT_HOST_FILE:?Configure caminho do CSV privado de motoristas}
