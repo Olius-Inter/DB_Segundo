@@ -86,6 +86,11 @@ def main():
 
     if has_access:
         execute("password-reset-migration", [sys.executable, str(TESTS / "password_reset_migration_regression.py")])
+        execute("notifications-migration-parity", [sys.executable, "-m", "unittest", "discover", "-s", str(TESTS), "-p", "test_notifications_migration.py", "-v"])
+        sql_file("PostgreSQL/tests/notifications_migration_regression.sql")
+        execute("schedule-idempotency-migration-parity", [sys.executable, "-m", "unittest", "discover", "-s", str(TESTS), "-p", "test_schedule_idempotency_migration.py", "-v"])
+        sql_file("PostgreSQL/tests/schedule_idempotency_migration_regression.sql")
+        execute("schedule-idempotency-access-review", [sys.executable, str(TESTS / "schedule_idempotency_access_review.py")])
 
     # Este teste reaplica ALTER OWNER/SECURITY/search_path nas rotinas, invalidando
     # seus perfis. Executar antes de iniciar a medição para preservar os cenários
@@ -125,6 +130,8 @@ def main():
         sql_file("PostgreSQL/tests/data_mart_access_regression.sql")
         sql_file("PostgreSQL/tests/admin_management_regression.sql")
         sql_file("PostgreSQL/tests/collection_history_regression.sql")
+        sql_file("PostgreSQL/tests/notifications_regression.sql")
+        sql_file("PostgreSQL/tests/schedule_idempotency_regression.sql")
     else:
         print("NOTA: testes de API/permissões e catálogo/permissões dependem da PR access_control; não executados nesta branch.")
 
