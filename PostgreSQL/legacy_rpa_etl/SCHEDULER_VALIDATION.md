@@ -76,3 +76,18 @@ reais do SQLite e confirmar status REJECTED e motivo CPF_DECRYPTION_KEY_REQUIRED
 em todos os quatro snapshots. Não é uma constante usada como evidência.
 Mesmo quando um cenário falha ou expira, o relatório agregado registra FAILED,
 o cenário em andamento e os resultados já obtidos, antes da limpeza dos recursos.
+
+## Permissões Linux dos relatórios
+
+Os arquivos publicados atomicamente mantêm modo restrito 0600. No runner Linux,
+o usuário do host não é o UID 50000 do Airflow. A inspeção dos relatórios ocorre
+por `docker exec` com o usuário padrão do container que os produziu, retornando
+somente contagens e validações agregadas ao host. Não se altera o modo dos arquivos,
+não se usa root para ler os relatórios e não se expõe seu conteúdo nos logs.
+
+O teste cria ainda um relatório fictício no volume Linux do Airflow, confirma que
+outro UID recebe PermissionError e que o produtor consegue validá-lo. Isso evita
+que diferenças de ACL do Docker Desktop/Windows escondam o problema de acesso
+que ocorre no CI Ubuntu. `private_report_access_verified` registra essa evidência.
+O contexto Docker inclui somente os três arquivos necessários ao build; o `.env`
+local e os demais arquivos do diretório airflow ficam excluídos.

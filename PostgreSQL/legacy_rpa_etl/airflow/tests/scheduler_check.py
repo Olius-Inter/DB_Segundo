@@ -27,6 +27,43 @@ def command(*args, input=None, timeout=90, check=True):
     return result
 
 
+def validate_reports(container, expected_count=4, directory='/opt/olius-history/reports'):
+    """Inspect private files as their producer; return aggregates, never report contents."""
+    script = """
+import json
+from pathlib import Path
+import sys
+reports = list(Path(sys.argv[1]).glob('*.json'))
+assert len(reports) == int(sys.argv[2]), 'Unexpected report count'
+for report in reports:
+    text = report.read_text(encoding='utf-8')
+    assert all(secret not in text for secret in ('@example.invalid', 'pbkdf2$', 'aesgcm$')), 'Sensitive fixture data in report'
+    assert json.loads(text)['local_backup_verified'] is True, 'Unverified backup'
+print(json.dumps({'shared_reports': len(reports)}))
+"""
+    result = command('exec', container, 'python', '-c', script, directory, str(expected_count))
+    return json.loads(result.stdout)
+
+
+def validate_private_report_access(container):
+    """Exercise a real Linux 0600 file, including when the host uses Windows ACLs."""
+    directory = '/opt/airflow/state/report-permissions'
+    command('exec', container, 'python', '-c',
+            "import json,os; from pathlib import Path; "
+            "p=Path('/opt/airflow/state/report-permissions'); p.mkdir(mode=0o711); "
+            "f=p/'fixture.json'; f.write_text(json.dumps({'local_backup_verified':True})); f.chmod(0o600)")
+    denied = command('exec', '--user', '65534:65534', container, 'python', '-c',
+        "from pathlib import Path; import errno; "
+        "p=Path('/opt/airflow/state/report-permissions/fixture.json')\n"
+        "try: p.read_text()\n"
+        "except PermissionError as exc: assert exc.errno==errno.EACCES; print('DENIED')\n"
+        "else: raise AssertionError('Unrelated UID could read a private report')")
+    if denied.stdout.strip() != 'DENIED':
+        raise AssertionError('Private report access was not denied')
+    if validate_reports(container, 1, directory) != {'shared_reports': 1}:
+        raise AssertionError('Producer could not validate a private report')
+
+
 def certificates(folder, hostname):
     now = datetime.now(timezone.utc)
     ca_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
@@ -260,18 +297,15 @@ def main():
             assert sql('olius_target', 'SELECT count(*) FROM olius_etl.driver_import;') == '1'
             assert sql('olius_target', 'SELECT count(*) FROM point_transaction;') == '0'
             assert sql('olius_target', 'SELECT count(*) FROM auth_session;') == '0'
-            reports = list(outputs['reports'].glob('*.json'))
-            assert len(reports) == 4
-            for report in reports:
-                text = report.read_text(encoding='utf-8')
-                assert '@example.invalid' not in text and 'pbkdf2$' not in text and 'aesgcm$' not in text
-                assert json.loads(text)['local_backup_verified'] is True
+            report_summary = validate_reports(airflow)
+            validate_private_report_access(airflow)
             checked = command('exec', airflow, 'python', '-c',
                 "import os,json,pipeline; s=pipeline.open_stage(os.environ['OLIUS_STAGE_PATH']); "
                 "rows=s.execute(\"SELECT status,reasons FROM candidates WHERE source_id='2'\").fetchall(); "
                 "assert len(rows)==4 and all(status=='REJECTED' and 'CPF_DECRYPTION_KEY_REQUIRED' in json.loads(reasons) for status,reasons in rows); print('PASS')")
             assert checked.stdout.strip() == 'PASS'
-            result_report.update(status='PASSED', shared_reports=len(reports), imported_citizens=2,
+            result_report.update(status='PASSED', shared_reports=report_summary['shared_reports'],
+                                 private_report_access_verified=True, imported_citizens=2,
                                  imported_establishments=1, imported_drivers=1,
                                  cpf_without_key_rejected=True, backup_verified=True)
             report_path = Path(args.report).resolve()
